@@ -1,0 +1,3636 @@
+{
+  "version": 34,
+  "name": "Zurich Fitout - Meeting Rms (one-shot)",
+  "nodes": [
+    {
+      "id": "node-1",
+      "type": "room",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "style": {
+        "width": 1500,
+        "height": 1100
+      },
+      "data": {
+        "label": "14.01 Arrival",
+        "locked": false
+      },
+      "zIndex": -1
+    },
+    {
+      "id": "node-2",
+      "type": "room",
+      "position": {
+        "x": 50,
+        "y": 50
+      },
+      "style": {
+        "width": 1400,
+        "height": 700
+      },
+      "data": {
+        "label": "Display Wall",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-1"
+    },
+    {
+      "id": "node-3",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 350
+      },
+      "data": {
+        "label": "Client Laptop",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-arr-laptop-0",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-arr-laptop-1",
+            "label": "USB-C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          }
+        ],
+        "templateId": "c0a80101-0027-4000-8000-000000000039"
+      },
+      "parentId": "node-2"
+    },
+    {
+      "id": "node-4",
+      "type": "device",
+      "position": {
+        "x": 320,
+        "y": 350
+      },
+      "data": {
+        "label": "Wall Plate (WP/01-01)",
+        "deviceType": "wall-plate",
+        "ports": [
+          {
+            "id": "p-arr-wp-0",
+            "label": "HDMI In",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-arr-wp-1",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          }
+        ]
+      },
+      "parentId": "node-2"
+    },
+    {
+      "id": "node-5",
+      "type": "device",
+      "position": {
+        "x": 600,
+        "y": 60
+      },
+      "data": {
+        "label": "Signage Player (BrightSign XD235)",
+        "deviceType": "media-player",
+        "ports": [
+          {
+            "id": "p-arr-sp-0",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-arr-sp-1",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-arr-sp-2",
+            "label": "Audio Out",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-arr-sp-3",
+            "label": "IR",
+            "signalType": "ir",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-arr-sp-4",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "templateId": "c0a80101-0034-4000-8000-000000000052",
+        "manufacturer": "BrightSign",
+        "modelNumber": "XD235"
+      },
+      "parentId": "node-2"
+    },
+    {
+      "id": "node-6",
+      "type": "device",
+      "position": {
+        "x": 950,
+        "y": 60
+      },
+      "data": {
+        "label": "55\" LCD (LG 55UR640S0TD)",
+        "deviceType": "tv",
+        "ports": [
+          {
+            "id": "p-arr-tv-0",
+            "label": "HDMI IN 1",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-arr-tv-1",
+            "label": "HDMI IN 2",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-arr-tv-2",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-arr-tv-3",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-arr-tv-4",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-arr-tv-5",
+            "label": "PWR",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0004-4000-8000-000000000004",
+        "manufacturer": "LG",
+        "modelNumber": "55UR640S0TD"
+      },
+      "parentId": "node-2"
+    },
+    {
+      "id": "node-7",
+      "type": "room",
+      "position": {
+        "x": 1600,
+        "y": 0
+      },
+      "style": {
+        "width": 1500,
+        "height": 1100
+      },
+      "data": {
+        "label": "14.07 4P Meeting Rm 1",
+        "locked": false
+      },
+      "zIndex": -1
+    },
+    {
+      "id": "node-8",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Table",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-7"
+    },
+    {
+      "id": "node-9",
+      "type": "room",
+      "position": {
+        "x": 360,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Behind Display",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-7"
+    },
+    {
+      "id": "node-10",
+      "type": "room",
+      "position": {
+        "x": 700,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "UC Engine",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-7"
+    },
+    {
+      "id": "node-11",
+      "type": "room",
+      "position": {
+        "x": 1040,
+        "y": 50
+      },
+      "style": {
+        "width": 360,
+        "height": 380
+      },
+      "data": {
+        "label": "Display Wall",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-7"
+    },
+    {
+      "id": "node-12",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 450
+      },
+      "style": {
+        "width": 700,
+        "height": 220
+      },
+      "data": {
+        "label": "Ceiling",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-7"
+    },
+    {
+      "id": "node-13",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 690
+      },
+      "style": {
+        "width": 1380,
+        "height": 240
+      },
+      "data": {
+        "label": "Outside Room",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-7"
+    },
+    {
+      "id": "node-14",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Client Laptop",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r07-laptop-0",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r07-laptop-1",
+            "label": "USB-C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r07-laptop-2",
+            "label": "Ethernet",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r07-laptop-3",
+            "label": "AC Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0027-4000-8000-000000000039"
+      },
+      "parentId": "node-8"
+    },
+    {
+      "id": "node-15",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 230
+      },
+      "data": {
+        "label": "Touch Panel (TS-1070)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r07-touch-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-touch-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r07-touch-2",
+            "label": "PoE Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TS-1070-B-S"
+      },
+      "parentId": "node-8"
+    },
+    {
+      "id": "node-16",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "HD-CONV-USB-300",
+        "deviceType": "converter",
+        "ports": [
+          {
+            "id": "p-r07-hdconv-0",
+            "label": "HDMI In",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r07-hdconv-1",
+            "label": "Audio In",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r07-hdconv-2",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          },
+          {
+            "id": "p-r07-hdconv-3",
+            "label": "USB Out",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-hdconv-4",
+            "label": "Audio Out",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r07-hdconv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "HD-CONV-USB-300"
+      },
+      "parentId": "node-9"
+    },
+    {
+      "id": "node-17",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "UC Engine (Optiplex 7080)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r07-ue-0",
+            "label": "USB 1",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-ue-1",
+            "label": "USB 2",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-ue-2",
+            "label": "USB 3",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-ue-3",
+            "label": "USB 4",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-ue-4",
+            "label": "USB 5",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-ue-5",
+            "label": "USB 6",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-ue-6",
+            "label": "HDMI",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r07-ue-7",
+            "label": "DP 1",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r07-ue-8",
+            "label": "DP 2",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r07-ue-9",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r07-ue-10",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "manufacturer": "Dell",
+        "modelNumber": "Optiplex 7080 Micro"
+      },
+      "parentId": "node-10"
+    },
+    {
+      "id": "node-18",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 60
+      },
+      "data": {
+        "label": "55\" LCD (LG 55UR640S0TD)",
+        "deviceType": "tv",
+        "ports": [
+          {
+            "id": "p-r07-tv-0",
+            "label": "HDMI IN 1",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r07-tv-1",
+            "label": "HDMI IN 2",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r07-tv-2",
+            "label": "HDMI IN 3",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r07-tv-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r07-tv-4",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-tv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r07-tv-6",
+            "label": "RF",
+            "signalType": "rf",
+            "direction": "input",
+            "connectorType": "f-type"
+          },
+          {
+            "id": "p-r07-tv-7",
+            "label": "RS-232",
+            "signalType": "serial",
+            "direction": "bidirectional",
+            "connectorType": "phoenix"
+          },
+          {
+            "id": "p-r07-tv-8",
+            "label": "PWR",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0004-4000-8000-000000000004",
+        "manufacturer": "LG",
+        "modelNumber": "55UR640S0TD"
+      },
+      "parentId": "node-11"
+    },
+    {
+      "id": "node-19",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 240
+      },
+      "data": {
+        "label": "Video Bar (PanaCast 50)",
+        "deviceType": "camera",
+        "ports": [
+          {
+            "id": "p-r07-vbar-0",
+            "label": "USB B",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-b"
+          },
+          {
+            "id": "p-r07-vbar-1",
+            "label": "USB C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r07-vbar-2",
+            "label": "AUDIO IN",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r07-vbar-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r07-vbar-4",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r07-vbar-5",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "templateId": "c0a80101-0001-4000-8000-000000000001",
+        "manufacturer": "Jabra",
+        "modelNumber": "PanaCast 50"
+      },
+      "parentId": "node-11"
+    },
+    {
+      "id": "node-20",
+      "type": "device",
+      "position": {
+        "x": 250,
+        "y": 50
+      },
+      "data": {
+        "label": "Occupancy Sensor (CEN-ODT-C-POE)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r07-occ-0",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "CEN-ODT-C-POE"
+      },
+      "parentId": "node-12"
+    },
+    {
+      "id": "node-21",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Light Bar (T3R-770-LB)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r07-light-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "T3R-770-LB-B-S"
+      },
+      "parentId": "node-13"
+    },
+    {
+      "id": "node-22",
+      "type": "device",
+      "position": {
+        "x": 350,
+        "y": 60
+      },
+      "data": {
+        "label": "Room Booking (TSS-770)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r07-booking-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "input",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r07-booking-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TSS-770-B-S"
+      },
+      "parentId": "node-13"
+    },
+    {
+      "id": "node-23",
+      "type": "room",
+      "position": {
+        "x": 3200,
+        "y": 0
+      },
+      "style": {
+        "width": 1500,
+        "height": 1100
+      },
+      "data": {
+        "label": "14.14 Colab 2",
+        "locked": false
+      },
+      "zIndex": -1
+    },
+    {
+      "id": "node-24",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Table",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-23"
+    },
+    {
+      "id": "node-25",
+      "type": "room",
+      "position": {
+        "x": 360,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Behind Display",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-23"
+    },
+    {
+      "id": "node-26",
+      "type": "room",
+      "position": {
+        "x": 700,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "UC Engine",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-23"
+    },
+    {
+      "id": "node-27",
+      "type": "room",
+      "position": {
+        "x": 1040,
+        "y": 50
+      },
+      "style": {
+        "width": 360,
+        "height": 380
+      },
+      "data": {
+        "label": "Display Wall",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-23"
+    },
+    {
+      "id": "node-28",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 450
+      },
+      "style": {
+        "width": 700,
+        "height": 220
+      },
+      "data": {
+        "label": "Ceiling",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-23"
+    },
+    {
+      "id": "node-29",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 690
+      },
+      "style": {
+        "width": 1380,
+        "height": 240
+      },
+      "data": {
+        "label": "Outside Room",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-23"
+    },
+    {
+      "id": "node-30",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Client Laptop",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r14-laptop-0",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r14-laptop-1",
+            "label": "USB-C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r14-laptop-2",
+            "label": "Ethernet",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r14-laptop-3",
+            "label": "AC Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0027-4000-8000-000000000039"
+      },
+      "parentId": "node-24"
+    },
+    {
+      "id": "node-31",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 230
+      },
+      "data": {
+        "label": "Touch Panel (TS-1070)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r14-touch-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-touch-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r14-touch-2",
+            "label": "PoE Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TS-1070-B-S"
+      },
+      "parentId": "node-24"
+    },
+    {
+      "id": "node-32",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "HD-CONV-USB-300",
+        "deviceType": "converter",
+        "ports": [
+          {
+            "id": "p-r14-hdconv-0",
+            "label": "HDMI In",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r14-hdconv-1",
+            "label": "Audio In",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r14-hdconv-2",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          },
+          {
+            "id": "p-r14-hdconv-3",
+            "label": "USB Out",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-hdconv-4",
+            "label": "Audio Out",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r14-hdconv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "HD-CONV-USB-300"
+      },
+      "parentId": "node-25"
+    },
+    {
+      "id": "node-33",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "UC Engine (Optiplex 7080)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r14-ue-0",
+            "label": "USB 1",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-ue-1",
+            "label": "USB 2",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-ue-2",
+            "label": "USB 3",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-ue-3",
+            "label": "USB 4",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-ue-4",
+            "label": "USB 5",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-ue-5",
+            "label": "USB 6",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-ue-6",
+            "label": "HDMI",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r14-ue-7",
+            "label": "DP 1",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r14-ue-8",
+            "label": "DP 2",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r14-ue-9",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r14-ue-10",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "manufacturer": "Dell",
+        "modelNumber": "Optiplex 7080 Micro"
+      },
+      "parentId": "node-26"
+    },
+    {
+      "id": "node-34",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 60
+      },
+      "data": {
+        "label": "55\" LCD (LG 55UR640S0TD)",
+        "deviceType": "tv",
+        "ports": [
+          {
+            "id": "p-r14-tv-0",
+            "label": "HDMI IN 1",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r14-tv-1",
+            "label": "HDMI IN 2",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r14-tv-2",
+            "label": "HDMI IN 3",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r14-tv-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r14-tv-4",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-tv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r14-tv-6",
+            "label": "RF",
+            "signalType": "rf",
+            "direction": "input",
+            "connectorType": "f-type"
+          },
+          {
+            "id": "p-r14-tv-7",
+            "label": "RS-232",
+            "signalType": "serial",
+            "direction": "bidirectional",
+            "connectorType": "phoenix"
+          },
+          {
+            "id": "p-r14-tv-8",
+            "label": "PWR",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0004-4000-8000-000000000004",
+        "manufacturer": "LG",
+        "modelNumber": "55UR640S0TD"
+      },
+      "parentId": "node-27"
+    },
+    {
+      "id": "node-35",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 240
+      },
+      "data": {
+        "label": "Video Bar (PanaCast 50)",
+        "deviceType": "camera",
+        "ports": [
+          {
+            "id": "p-r14-vbar-0",
+            "label": "USB B",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-b"
+          },
+          {
+            "id": "p-r14-vbar-1",
+            "label": "USB C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r14-vbar-2",
+            "label": "AUDIO IN",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r14-vbar-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r14-vbar-4",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r14-vbar-5",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "templateId": "c0a80101-0001-4000-8000-000000000001",
+        "manufacturer": "Jabra",
+        "modelNumber": "PanaCast 50"
+      },
+      "parentId": "node-27"
+    },
+    {
+      "id": "node-36",
+      "type": "device",
+      "position": {
+        "x": 250,
+        "y": 50
+      },
+      "data": {
+        "label": "Occupancy Sensor (CEN-ODT-C-POE)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r14-occ-0",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "CEN-ODT-C-POE"
+      },
+      "parentId": "node-28"
+    },
+    {
+      "id": "node-37",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Light Bar (T3R-770-LB)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r14-light-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "T3R-770-LB-B-S"
+      },
+      "parentId": "node-29"
+    },
+    {
+      "id": "node-38",
+      "type": "device",
+      "position": {
+        "x": 350,
+        "y": 60
+      },
+      "data": {
+        "label": "Room Booking (TSS-770)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r14-booking-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "input",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r14-booking-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TSS-770-B-S"
+      },
+      "parentId": "node-29"
+    },
+    {
+      "id": "node-39",
+      "type": "room",
+      "position": {
+        "x": 0,
+        "y": 1220
+      },
+      "style": {
+        "width": 1500,
+        "height": 1100
+      },
+      "data": {
+        "label": "14.16 4P Meeting Rm 2",
+        "locked": false
+      },
+      "zIndex": -1
+    },
+    {
+      "id": "node-40",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Table",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-39"
+    },
+    {
+      "id": "node-41",
+      "type": "room",
+      "position": {
+        "x": 360,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Behind Display",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-39"
+    },
+    {
+      "id": "node-42",
+      "type": "room",
+      "position": {
+        "x": 700,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "UC Engine",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-39"
+    },
+    {
+      "id": "node-43",
+      "type": "room",
+      "position": {
+        "x": 1040,
+        "y": 50
+      },
+      "style": {
+        "width": 360,
+        "height": 380
+      },
+      "data": {
+        "label": "Display Wall",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-39"
+    },
+    {
+      "id": "node-44",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 450
+      },
+      "style": {
+        "width": 700,
+        "height": 220
+      },
+      "data": {
+        "label": "Ceiling",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-39"
+    },
+    {
+      "id": "node-45",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 690
+      },
+      "style": {
+        "width": 1380,
+        "height": 240
+      },
+      "data": {
+        "label": "Outside Room",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-39"
+    },
+    {
+      "id": "node-46",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Client Laptop",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r16-laptop-0",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r16-laptop-1",
+            "label": "USB-C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r16-laptop-2",
+            "label": "Ethernet",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r16-laptop-3",
+            "label": "AC Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0027-4000-8000-000000000039"
+      },
+      "parentId": "node-40"
+    },
+    {
+      "id": "node-47",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 230
+      },
+      "data": {
+        "label": "Touch Panel (TS-1070)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r16-touch-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-touch-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r16-touch-2",
+            "label": "PoE Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TS-1070-B-S"
+      },
+      "parentId": "node-40"
+    },
+    {
+      "id": "node-48",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "HD-CONV-USB-300",
+        "deviceType": "converter",
+        "ports": [
+          {
+            "id": "p-r16-hdconv-0",
+            "label": "HDMI In",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r16-hdconv-1",
+            "label": "Audio In",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r16-hdconv-2",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          },
+          {
+            "id": "p-r16-hdconv-3",
+            "label": "USB Out",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-hdconv-4",
+            "label": "Audio Out",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r16-hdconv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "HD-CONV-USB-300"
+      },
+      "parentId": "node-41"
+    },
+    {
+      "id": "node-49",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "UC Engine (Optiplex 7080)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r16-ue-0",
+            "label": "USB 1",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-ue-1",
+            "label": "USB 2",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-ue-2",
+            "label": "USB 3",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-ue-3",
+            "label": "USB 4",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-ue-4",
+            "label": "USB 5",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-ue-5",
+            "label": "USB 6",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-ue-6",
+            "label": "HDMI",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r16-ue-7",
+            "label": "DP 1",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r16-ue-8",
+            "label": "DP 2",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r16-ue-9",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r16-ue-10",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "manufacturer": "Dell",
+        "modelNumber": "Optiplex 7080 Micro"
+      },
+      "parentId": "node-42"
+    },
+    {
+      "id": "node-50",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 60
+      },
+      "data": {
+        "label": "55\" LCD (LG 55UR640S0TD)",
+        "deviceType": "tv",
+        "ports": [
+          {
+            "id": "p-r16-tv-0",
+            "label": "HDMI IN 1",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r16-tv-1",
+            "label": "HDMI IN 2",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r16-tv-2",
+            "label": "HDMI IN 3",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r16-tv-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r16-tv-4",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-tv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r16-tv-6",
+            "label": "RF",
+            "signalType": "rf",
+            "direction": "input",
+            "connectorType": "f-type"
+          },
+          {
+            "id": "p-r16-tv-7",
+            "label": "RS-232",
+            "signalType": "serial",
+            "direction": "bidirectional",
+            "connectorType": "phoenix"
+          },
+          {
+            "id": "p-r16-tv-8",
+            "label": "PWR",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0004-4000-8000-000000000004",
+        "manufacturer": "LG",
+        "modelNumber": "55UR640S0TD"
+      },
+      "parentId": "node-43"
+    },
+    {
+      "id": "node-51",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 240
+      },
+      "data": {
+        "label": "Video Bar (PanaCast 50)",
+        "deviceType": "camera",
+        "ports": [
+          {
+            "id": "p-r16-vbar-0",
+            "label": "USB B",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-b"
+          },
+          {
+            "id": "p-r16-vbar-1",
+            "label": "USB C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r16-vbar-2",
+            "label": "AUDIO IN",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r16-vbar-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r16-vbar-4",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r16-vbar-5",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "templateId": "c0a80101-0001-4000-8000-000000000001",
+        "manufacturer": "Jabra",
+        "modelNumber": "PanaCast 50"
+      },
+      "parentId": "node-43"
+    },
+    {
+      "id": "node-52",
+      "type": "device",
+      "position": {
+        "x": 250,
+        "y": 50
+      },
+      "data": {
+        "label": "Occupancy Sensor (CEN-ODT-C-POE)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r16-occ-0",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "CEN-ODT-C-POE"
+      },
+      "parentId": "node-44"
+    },
+    {
+      "id": "node-53",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Light Bar (T3R-770-LB)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r16-light-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "T3R-770-LB-B-S"
+      },
+      "parentId": "node-45"
+    },
+    {
+      "id": "node-54",
+      "type": "device",
+      "position": {
+        "x": 350,
+        "y": 60
+      },
+      "data": {
+        "label": "Room Booking (TSS-770)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r16-booking-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "input",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r16-booking-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TSS-770-B-S"
+      },
+      "parentId": "node-45"
+    },
+    {
+      "id": "node-55",
+      "type": "room",
+      "position": {
+        "x": 1600,
+        "y": 1220
+      },
+      "style": {
+        "width": 1500,
+        "height": 1100
+      },
+      "data": {
+        "label": "14.23 4P Meeting Rm 3",
+        "locked": false
+      },
+      "zIndex": -1
+    },
+    {
+      "id": "node-56",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Table",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-55"
+    },
+    {
+      "id": "node-57",
+      "type": "room",
+      "position": {
+        "x": 360,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Behind Display",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-55"
+    },
+    {
+      "id": "node-58",
+      "type": "room",
+      "position": {
+        "x": 700,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "UC Engine",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-55"
+    },
+    {
+      "id": "node-59",
+      "type": "room",
+      "position": {
+        "x": 1040,
+        "y": 50
+      },
+      "style": {
+        "width": 360,
+        "height": 380
+      },
+      "data": {
+        "label": "Display Wall",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-55"
+    },
+    {
+      "id": "node-60",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 450
+      },
+      "style": {
+        "width": 700,
+        "height": 220
+      },
+      "data": {
+        "label": "Ceiling",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-55"
+    },
+    {
+      "id": "node-61",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 690
+      },
+      "style": {
+        "width": 1380,
+        "height": 240
+      },
+      "data": {
+        "label": "Outside Room",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-55"
+    },
+    {
+      "id": "node-62",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Client Laptop",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r23-laptop-0",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r23-laptop-1",
+            "label": "USB-C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r23-laptop-2",
+            "label": "Ethernet",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r23-laptop-3",
+            "label": "AC Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0027-4000-8000-000000000039"
+      },
+      "parentId": "node-56"
+    },
+    {
+      "id": "node-63",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 230
+      },
+      "data": {
+        "label": "Touch Panel (TS-1070)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r23-touch-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-touch-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r23-touch-2",
+            "label": "PoE Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TS-1070-B-S"
+      },
+      "parentId": "node-56"
+    },
+    {
+      "id": "node-64",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "HD-CONV-USB-300",
+        "deviceType": "converter",
+        "ports": [
+          {
+            "id": "p-r23-hdconv-0",
+            "label": "HDMI In",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r23-hdconv-1",
+            "label": "Audio In",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r23-hdconv-2",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          },
+          {
+            "id": "p-r23-hdconv-3",
+            "label": "USB Out",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-hdconv-4",
+            "label": "Audio Out",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r23-hdconv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "HD-CONV-USB-300"
+      },
+      "parentId": "node-57"
+    },
+    {
+      "id": "node-65",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "UC Engine (Optiplex 7080)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r23-ue-0",
+            "label": "USB 1",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-ue-1",
+            "label": "USB 2",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-ue-2",
+            "label": "USB 3",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-ue-3",
+            "label": "USB 4",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-ue-4",
+            "label": "USB 5",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-ue-5",
+            "label": "USB 6",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-ue-6",
+            "label": "HDMI",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r23-ue-7",
+            "label": "DP 1",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r23-ue-8",
+            "label": "DP 2",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r23-ue-9",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r23-ue-10",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "manufacturer": "Dell",
+        "modelNumber": "Optiplex 7080 Micro"
+      },
+      "parentId": "node-58"
+    },
+    {
+      "id": "node-66",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 60
+      },
+      "data": {
+        "label": "55\" LCD (LG 55UR640S0TD)",
+        "deviceType": "tv",
+        "ports": [
+          {
+            "id": "p-r23-tv-0",
+            "label": "HDMI IN 1",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r23-tv-1",
+            "label": "HDMI IN 2",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r23-tv-2",
+            "label": "HDMI IN 3",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r23-tv-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r23-tv-4",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-tv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r23-tv-6",
+            "label": "RF",
+            "signalType": "rf",
+            "direction": "input",
+            "connectorType": "f-type"
+          },
+          {
+            "id": "p-r23-tv-7",
+            "label": "RS-232",
+            "signalType": "serial",
+            "direction": "bidirectional",
+            "connectorType": "phoenix"
+          },
+          {
+            "id": "p-r23-tv-8",
+            "label": "PWR",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0004-4000-8000-000000000004",
+        "manufacturer": "LG",
+        "modelNumber": "55UR640S0TD"
+      },
+      "parentId": "node-59"
+    },
+    {
+      "id": "node-67",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 240
+      },
+      "data": {
+        "label": "Video Bar (PanaCast 50)",
+        "deviceType": "camera",
+        "ports": [
+          {
+            "id": "p-r23-vbar-0",
+            "label": "USB B",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-b"
+          },
+          {
+            "id": "p-r23-vbar-1",
+            "label": "USB C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r23-vbar-2",
+            "label": "AUDIO IN",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r23-vbar-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r23-vbar-4",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r23-vbar-5",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "templateId": "c0a80101-0001-4000-8000-000000000001",
+        "manufacturer": "Jabra",
+        "modelNumber": "PanaCast 50"
+      },
+      "parentId": "node-59"
+    },
+    {
+      "id": "node-68",
+      "type": "device",
+      "position": {
+        "x": 250,
+        "y": 50
+      },
+      "data": {
+        "label": "Occupancy Sensor (CEN-ODT-C-POE)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r23-occ-0",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "CEN-ODT-C-POE"
+      },
+      "parentId": "node-60"
+    },
+    {
+      "id": "node-69",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Light Bar (T3R-770-LB)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r23-light-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "T3R-770-LB-B-S"
+      },
+      "parentId": "node-61"
+    },
+    {
+      "id": "node-70",
+      "type": "device",
+      "position": {
+        "x": 350,
+        "y": 60
+      },
+      "data": {
+        "label": "Room Booking (TSS-770)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r23-booking-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "input",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r23-booking-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TSS-770-B-S"
+      },
+      "parentId": "node-61"
+    },
+    {
+      "id": "node-71",
+      "type": "room",
+      "position": {
+        "x": 3200,
+        "y": 1220
+      },
+      "style": {
+        "width": 1500,
+        "height": 1100
+      },
+      "data": {
+        "label": "14.24 Colab 1",
+        "locked": false
+      },
+      "zIndex": -1
+    },
+    {
+      "id": "node-72",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Table",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-71"
+    },
+    {
+      "id": "node-73",
+      "type": "room",
+      "position": {
+        "x": 360,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "Behind Display",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-71"
+    },
+    {
+      "id": "node-74",
+      "type": "room",
+      "position": {
+        "x": 700,
+        "y": 50
+      },
+      "style": {
+        "width": 320,
+        "height": 380
+      },
+      "data": {
+        "label": "UC Engine",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-71"
+    },
+    {
+      "id": "node-75",
+      "type": "room",
+      "position": {
+        "x": 1040,
+        "y": 50
+      },
+      "style": {
+        "width": 360,
+        "height": 380
+      },
+      "data": {
+        "label": "Display Wall",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-71"
+    },
+    {
+      "id": "node-76",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 450
+      },
+      "style": {
+        "width": 700,
+        "height": 220
+      },
+      "data": {
+        "label": "Ceiling",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-71"
+    },
+    {
+      "id": "node-77",
+      "type": "room",
+      "position": {
+        "x": 20,
+        "y": 690
+      },
+      "style": {
+        "width": 1380,
+        "height": 240
+      },
+      "data": {
+        "label": "Outside Room",
+        "locked": false
+      },
+      "zIndex": -1,
+      "parentId": "node-71"
+    },
+    {
+      "id": "node-78",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Client Laptop",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r24-laptop-0",
+            "label": "HDMI Out",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r24-laptop-1",
+            "label": "USB-C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r24-laptop-2",
+            "label": "Ethernet",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r24-laptop-3",
+            "label": "AC Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0027-4000-8000-000000000039"
+      },
+      "parentId": "node-72"
+    },
+    {
+      "id": "node-79",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 230
+      },
+      "data": {
+        "label": "Touch Panel (TS-1070)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r24-touch-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-touch-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r24-touch-2",
+            "label": "PoE Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TS-1070-B-S"
+      },
+      "parentId": "node-72"
+    },
+    {
+      "id": "node-80",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "HD-CONV-USB-300",
+        "deviceType": "converter",
+        "ports": [
+          {
+            "id": "p-r24-hdconv-0",
+            "label": "HDMI In",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r24-hdconv-1",
+            "label": "Audio In",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r24-hdconv-2",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          },
+          {
+            "id": "p-r24-hdconv-3",
+            "label": "USB Out",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-hdconv-4",
+            "label": "Audio Out",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r24-hdconv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "HD-CONV-USB-300"
+      },
+      "parentId": "node-73"
+    },
+    {
+      "id": "node-81",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "UC Engine (Optiplex 7080)",
+        "deviceType": "computer",
+        "ports": [
+          {
+            "id": "p-r24-ue-0",
+            "label": "USB 1",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-ue-1",
+            "label": "USB 2",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-ue-2",
+            "label": "USB 3",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-ue-3",
+            "label": "USB 4",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-ue-4",
+            "label": "USB 5",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-ue-5",
+            "label": "USB 6",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-ue-6",
+            "label": "HDMI",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r24-ue-7",
+            "label": "DP 1",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r24-ue-8",
+            "label": "DP 2",
+            "signalType": "displayport",
+            "direction": "output",
+            "connectorType": "displayport"
+          },
+          {
+            "id": "p-r24-ue-9",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r24-ue-10",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "manufacturer": "Dell",
+        "modelNumber": "Optiplex 7080 Micro"
+      },
+      "parentId": "node-74"
+    },
+    {
+      "id": "node-82",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 240
+      },
+      "data": {
+        "label": "DM-NVX-D30 (Decoder 3)",
+        "deviceType": "converter",
+        "ports": [
+          {
+            "id": "p-r24-decoder-0",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r24-decoder-1",
+            "label": "Audio",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r24-decoder-2",
+            "label": "HDMI",
+            "signalType": "hdmi",
+            "direction": "output",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r24-decoder-3",
+            "label": "IR",
+            "signalType": "ir",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r24-decoder-4",
+            "label": "COM",
+            "signalType": "serial",
+            "direction": "bidirectional",
+            "connectorType": "phoenix"
+          },
+          {
+            "id": "p-r24-decoder-5",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "DM-NVX-D30"
+      },
+      "parentId": "node-74"
+    },
+    {
+      "id": "node-83",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 60
+      },
+      "data": {
+        "label": "55\" LCD (LG 55UR640S0TD)",
+        "deviceType": "tv",
+        "ports": [
+          {
+            "id": "p-r24-tv-0",
+            "label": "HDMI IN 1",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r24-tv-1",
+            "label": "HDMI IN 2",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r24-tv-2",
+            "label": "HDMI IN 3",
+            "signalType": "hdmi",
+            "direction": "input",
+            "connectorType": "hdmi"
+          },
+          {
+            "id": "p-r24-tv-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r24-tv-4",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-tv-5",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r24-tv-6",
+            "label": "RF",
+            "signalType": "rf",
+            "direction": "input",
+            "connectorType": "f-type"
+          },
+          {
+            "id": "p-r24-tv-7",
+            "label": "RS-232",
+            "signalType": "serial",
+            "direction": "bidirectional",
+            "connectorType": "phoenix"
+          },
+          {
+            "id": "p-r24-tv-8",
+            "label": "PWR",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "templateId": "c0a80101-0004-4000-8000-000000000004",
+        "manufacturer": "LG",
+        "modelNumber": "55UR640S0TD"
+      },
+      "parentId": "node-75"
+    },
+    {
+      "id": "node-84",
+      "type": "device",
+      "position": {
+        "x": 20,
+        "y": 240
+      },
+      "data": {
+        "label": "Video Bar (PanaCast 50)",
+        "deviceType": "camera",
+        "ports": [
+          {
+            "id": "p-r24-vbar-0",
+            "label": "USB B",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-b"
+          },
+          {
+            "id": "p-r24-vbar-1",
+            "label": "USB C",
+            "signalType": "usb",
+            "direction": "bidirectional",
+            "connectorType": "usb-c"
+          },
+          {
+            "id": "p-r24-vbar-2",
+            "label": "AUDIO IN",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r24-vbar-3",
+            "label": "AUDIO OUT",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "trs-eighth"
+          },
+          {
+            "id": "p-r24-vbar-4",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "p-r24-vbar-5",
+            "label": "DC",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "barrel-dc"
+          }
+        ],
+        "templateId": "c0a80101-0001-4000-8000-000000000001",
+        "manufacturer": "Jabra",
+        "modelNumber": "PanaCast 50"
+      },
+      "parentId": "node-75"
+    },
+    {
+      "id": "node-85",
+      "type": "device",
+      "position": {
+        "x": 250,
+        "y": 50
+      },
+      "data": {
+        "label": "Occupancy Sensor (CEN-ODT-C-POE)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r24-occ-0",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "CEN-ODT-C-POE"
+      },
+      "parentId": "node-76"
+    },
+    {
+      "id": "node-86",
+      "type": "device",
+      "position": {
+        "x": 30,
+        "y": 60
+      },
+      "data": {
+        "label": "Light Bar (T3R-770-LB)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r24-light-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "T3R-770-LB-B-S"
+      },
+      "parentId": "node-77"
+    },
+    {
+      "id": "node-87",
+      "type": "device",
+      "position": {
+        "x": 350,
+        "y": 60
+      },
+      "data": {
+        "label": "Room Booking (TSS-770)",
+        "deviceType": "control-processor",
+        "ports": [
+          {
+            "id": "p-r24-booking-0",
+            "label": "USB",
+            "signalType": "usb",
+            "direction": "input",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "p-r24-booking-1",
+            "label": "LAN",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          }
+        ],
+        "manufacturer": "Crestron",
+        "modelNumber": "TSS-770-B-S"
+      },
+      "parentId": "node-77"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "node-3",
+      "target": "node-4",
+      "sourceHandle": "p-arr-laptop-0",
+      "targetHandle": "p-arr-wp-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-2",
+      "source": "node-4",
+      "target": "node-6",
+      "sourceHandle": "p-arr-wp-1",
+      "targetHandle": "p-arr-tv-1",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-3",
+      "source": "node-5",
+      "target": "node-6",
+      "sourceHandle": "p-arr-sp-1",
+      "targetHandle": "p-arr-tv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-4",
+      "source": "node-14",
+      "target": "node-16",
+      "sourceHandle": "p-r07-laptop-0",
+      "targetHandle": "p-r07-hdconv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-5",
+      "source": "node-14",
+      "target": "node-16",
+      "sourceHandle": "p-r07-laptop-1",
+      "targetHandle": "p-r07-hdconv-1",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-6",
+      "source": "node-16",
+      "target": "node-17",
+      "sourceHandle": "p-r07-hdconv-3",
+      "targetHandle": "p-r07-ue-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-7",
+      "source": "node-17",
+      "target": "node-18",
+      "sourceHandle": "p-r07-ue-6",
+      "targetHandle": "p-r07-tv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-8",
+      "source": "node-17",
+      "target": "node-19",
+      "sourceHandle": "p-r07-ue-4",
+      "targetHandle": "p-r07-vbar-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-9",
+      "source": "node-21",
+      "target": "node-22",
+      "sourceHandle": "p-r07-light-0",
+      "targetHandle": "p-r07-booking-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-10",
+      "source": "node-30",
+      "target": "node-32",
+      "sourceHandle": "p-r14-laptop-0",
+      "targetHandle": "p-r14-hdconv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-11",
+      "source": "node-30",
+      "target": "node-32",
+      "sourceHandle": "p-r14-laptop-1",
+      "targetHandle": "p-r14-hdconv-1",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-12",
+      "source": "node-32",
+      "target": "node-33",
+      "sourceHandle": "p-r14-hdconv-3",
+      "targetHandle": "p-r14-ue-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-13",
+      "source": "node-33",
+      "target": "node-34",
+      "sourceHandle": "p-r14-ue-6",
+      "targetHandle": "p-r14-tv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-14",
+      "source": "node-33",
+      "target": "node-35",
+      "sourceHandle": "p-r14-ue-4",
+      "targetHandle": "p-r14-vbar-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-15",
+      "source": "node-37",
+      "target": "node-38",
+      "sourceHandle": "p-r14-light-0",
+      "targetHandle": "p-r14-booking-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-16",
+      "source": "node-46",
+      "target": "node-48",
+      "sourceHandle": "p-r16-laptop-0",
+      "targetHandle": "p-r16-hdconv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-17",
+      "source": "node-46",
+      "target": "node-48",
+      "sourceHandle": "p-r16-laptop-1",
+      "targetHandle": "p-r16-hdconv-1",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-18",
+      "source": "node-48",
+      "target": "node-49",
+      "sourceHandle": "p-r16-hdconv-3",
+      "targetHandle": "p-r16-ue-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-19",
+      "source": "node-49",
+      "target": "node-50",
+      "sourceHandle": "p-r16-ue-6",
+      "targetHandle": "p-r16-tv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-20",
+      "source": "node-49",
+      "target": "node-51",
+      "sourceHandle": "p-r16-ue-4",
+      "targetHandle": "p-r16-vbar-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-21",
+      "source": "node-53",
+      "target": "node-54",
+      "sourceHandle": "p-r16-light-0",
+      "targetHandle": "p-r16-booking-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-22",
+      "source": "node-62",
+      "target": "node-64",
+      "sourceHandle": "p-r23-laptop-0",
+      "targetHandle": "p-r23-hdconv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-23",
+      "source": "node-62",
+      "target": "node-64",
+      "sourceHandle": "p-r23-laptop-1",
+      "targetHandle": "p-r23-hdconv-1",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-24",
+      "source": "node-64",
+      "target": "node-65",
+      "sourceHandle": "p-r23-hdconv-3",
+      "targetHandle": "p-r23-ue-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-25",
+      "source": "node-65",
+      "target": "node-66",
+      "sourceHandle": "p-r23-ue-6",
+      "targetHandle": "p-r23-tv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-26",
+      "source": "node-65",
+      "target": "node-67",
+      "sourceHandle": "p-r23-ue-4",
+      "targetHandle": "p-r23-vbar-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-27",
+      "source": "node-69",
+      "target": "node-70",
+      "sourceHandle": "p-r23-light-0",
+      "targetHandle": "p-r23-booking-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-28",
+      "source": "node-78",
+      "target": "node-80",
+      "sourceHandle": "p-r24-laptop-0",
+      "targetHandle": "p-r24-hdconv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-29",
+      "source": "node-78",
+      "target": "node-80",
+      "sourceHandle": "p-r24-laptop-1",
+      "targetHandle": "p-r24-hdconv-1",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-30",
+      "source": "node-80",
+      "target": "node-81",
+      "sourceHandle": "p-r24-hdconv-3",
+      "targetHandle": "p-r24-ue-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-31",
+      "source": "node-81",
+      "target": "node-83",
+      "sourceHandle": "p-r24-ue-6",
+      "targetHandle": "p-r24-tv-0",
+      "data": {
+        "signalType": "hdmi"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-32",
+      "source": "node-81",
+      "target": "node-84",
+      "sourceHandle": "p-r24-ue-4",
+      "targetHandle": "p-r24-vbar-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "edge-33",
+      "source": "node-86",
+      "target": "node-87",
+      "sourceHandle": "p-r24-light-0",
+      "targetHandle": "p-r24-booking-0",
+      "data": {
+        "signalType": "usb"
+      },
+      "style": {
+        "stroke": "var(--color-usb)",
+        "strokeWidth": 2
+      }
+    }
+  ]
+}
