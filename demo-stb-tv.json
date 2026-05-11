@@ -1,0 +1,74 @@
+{
+  "version": 34,
+  "name": "Demo - Set-Top Box to TV",
+  "nodes": [
+    {
+      "id": "device-1",
+      "type": "device",
+      "position": { "x": 200, "y": 200 },
+      "data": {
+        "label": "BrightSign XD1035",
+        "deviceType": "media-player",
+        "templateId": "c0a80101-0034-4000-8000-000000000052",
+        "manufacturer": "BrightSign",
+        "modelNumber": "XD1035",
+        "model": "XD1035",
+        "referenceUrl": "https://docs.brightsign.biz/hardware/xd235-xd1035",
+        "powerDrawW": 15,
+        "heightMm": 19,
+        "widthMm": 206,
+        "depthMm": 186,
+        "weightKg": 0.6,
+        "ports": [
+          { "id": "p-stb-1", "label": "HDMI Out",      "signalType": "hdmi",          "direction": "output",        "connectorType": "hdmi",        "templatePortId": "port-1" },
+          { "id": "p-stb-2", "label": "Audio Out",     "signalType": "analog-audio",  "direction": "output",        "connectorType": "trs-eighth",  "templatePortId": "port-2" },
+          { "id": "p-stb-3", "label": "Ethernet",      "signalType": "ethernet",      "direction": "bidirectional", "connectorType": "rj45",        "templatePortId": "port-3" },
+          { "id": "p-stb-4", "label": "USB-A",         "signalType": "usb",           "direction": "bidirectional", "connectorType": "usb-a",       "templatePortId": "port-4" },
+          { "id": "p-stb-5", "label": "USB-C",         "signalType": "usb",           "direction": "bidirectional", "connectorType": "usb-c",       "templatePortId": "port-5" },
+          { "id": "p-stb-6", "label": "RS-232",        "signalType": "serial",        "direction": "bidirectional", "connectorType": "trs-eighth",  "templatePortId": "port-6" },
+          { "id": "p-stb-7", "label": "GPIO",          "signalType": "gpio",          "direction": "bidirectional", "connectorType": "phoenix",     "templatePortId": "port-7" },
+          { "id": "p-stb-8", "label": "AC Power",      "signalType": "power",         "direction": "input",         "connectorType": "iec",         "templatePortId": "port-8" }
+        ]
+      }
+    },
+    {
+      "id": "device-2",
+      "type": "device",
+      "position": { "x": 800, "y": 200 },
+      "data": {
+        "label": "Smart TV (55\")",
+        "deviceType": "tv",
+        "templateId": "c0a80101-0004-4000-8000-000000000004",
+        "manufacturer": "Samsung",
+        "modelNumber": "Generic 55\" 4K",
+        "powerDrawW": 150,
+        "ports": [
+          { "id": "p-tv-1", "label": "HDMI 1",        "signalType": "hdmi",         "direction": "input",  "connectorType": "hdmi" },
+          { "id": "p-tv-2", "label": "HDMI 2",        "signalType": "hdmi",         "direction": "input",  "connectorType": "hdmi" },
+          { "id": "p-tv-3", "label": "HDMI 3 (ARC)",  "signalType": "hdmi",         "direction": "input",  "connectorType": "hdmi" },
+          { "id": "p-tv-4", "label": "Optical Audio Out", "signalType": "spdif",    "direction": "output", "connectorType": "toslink" },
+          { "id": "p-tv-5", "label": "Ethernet",      "signalType": "ethernet",     "direction": "bidirectional", "connectorType": "rj45" },
+          { "id": "p-tv-6", "label": "USB",           "signalType": "usb",          "direction": "bidirectional", "connectorType": "usb-a" },
+          { "id": "p-tv-7", "label": "AC Power",      "signalType": "power",        "direction": "input",  "connectorType": "iec",         "templatePortId": "port-2" }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "device-1",
+      "target": "device-2",
+      "sourceHandle": "p-stb-1",
+      "targetHandle": "p-tv-1",
+      "data": {
+        "signalType": "hdmi",
+        "cableId": "HDMI-1"
+      },
+      "style": {
+        "stroke": "var(--color-hdmi)",
+        "strokeWidth": 2
+      }
+    }
+  ]
+}
