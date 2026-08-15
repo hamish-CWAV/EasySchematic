@@ -17,6 +17,9 @@ dist-ssr
 CLAUDE.md
 .claude/
 
+# Dropbox sync exclusions — local workflow, not part of the project
+.dropboxignore
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
