@@ -263,7 +263,12 @@ export default function MenuBar() {
         if (!session) return;
         const data = store.exportToJSON();
         updateSchematicInCloud(store.cloudSchematicId!, data)
-          .then((result) => store.setCloudSavedAt(result.updated_at))
+          .then((result) => {
+            store.setCloudSavedAt(result.updated_at);
+            // Work is durable in the cloud — safe to resume autosave if a failed
+            // hydrate had paused it (#240).
+            store.resumeAutosave();
+          })
           .catch((e: unknown) => {
             store.addToast(e instanceof Error ? e.message : "Cloud save failed", "error");
           });
@@ -274,6 +279,8 @@ export default function MenuBar() {
     if (store.fileHandle) {
       try {
         await writeToFileHandle(store.fileHandle);
+        // Write confirmed — resume autosave if a failed hydrate paused it (#240).
+        store.resumeAutosave();
         store.addToast("Saved", "success", 1500);
         return;
       } catch {
@@ -293,6 +300,10 @@ export default function MenuBar() {
       store.adoptLocalFile(handle);
       try {
         await writeToFileHandle(handle);
+        // Write confirmed — resume autosave if a failed hydrate paused it (#240).
+        // Deliberately AFTER the await: adoptLocalFile above runs before the write
+        // settles, so arming there would clobber the recoverable copy on failure.
+        store.resumeAutosave();
         store.addToast("Saved", "success", 1500);
       } catch (e: unknown) {
         store.addToast(e instanceof Error ? e.message : "Save failed", "error");
@@ -314,6 +325,10 @@ export default function MenuBar() {
       store.adoptLocalFile(handle);
       try {
         await writeToFileHandle(handle);
+        // Write confirmed — resume autosave if a failed hydrate paused it (#240).
+        // Deliberately AFTER the await: adoptLocalFile above runs before the write
+        // settles, so arming there would clobber the recoverable copy on failure.
+        store.resumeAutosave();
         store.addToast("Saved", "success", 1500);
       } catch (e: unknown) {
         store.addToast(e instanceof Error ? e.message : "Save failed", "error");

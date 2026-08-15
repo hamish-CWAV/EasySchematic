@@ -803,6 +803,8 @@ interface SchematicState {
 
   // Persistence
   saveToLocalStorage: () => void;
+  /** Re-arm autosave after a confirmed successful write (#240). */
+  resumeAutosave: () => void;
   loadFromLocalStorage: () => boolean;
   exportToJSON: () => SchematicFile;
   importFromJSON: (data: SchematicFile) => void;
@@ -5122,6 +5124,22 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       : state.nodes;
 
     set({ pages: updatedPages, nodes: updatedNodes, undoSize: undoStack.length, redoSize: 0 });
+    get().saveToLocalStorage();
+  },
+
+  /** Re-arm autosave after a CONFIRMED successful write to durable storage.
+   *  A failed initial hydrate leaves `hydrated` false so autosave can't clobber
+   *  the still-recoverable saved copy (#240). Once the user's work is safely on
+   *  disk or in the cloud that protection has done its job, so persistence
+   *  resumes and the unreadable blob is replaced with current state.
+   *
+   *  Call this ONLY after the write resolves — never optimistically alongside
+   *  `adoptLocalFile`, which MenuBar invokes BEFORE `writeToFileHandle` settles
+   *  and even when `importFromJSON` just threw. Arming there would overwrite the
+   *  recoverable copy on a failed write, which is the exact loss this prevents. */
+  resumeAutosave: () => {
+    if (hydrated) return;      // normal case — keep the hot save path cheap
+    hydrated = true;
     get().saveToLocalStorage();
   },
 

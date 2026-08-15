@@ -512,8 +512,13 @@ function SchematicCanvas() {
   // Snap guide lines shown during drag
   const [snapGuides, setSnapGuides] = useState<GuideLine[]>([]);
 
-  // Load saved state on mount
+  // Load saved state on mount. Ref-guarded because StrictMode double-invokes mount
+  // effects in dev, which loaded twice — harmless while the load succeeded, but once
+  // a failed load surfaced a toast (#240) it showed the error twice, stacked.
+  const didHydrateRef = useRef(false);
   useEffect(() => {
+    if (didHydrateRef.current) return;
+    didHydrateRef.current = true;
     loadFromLocalStorage();
   }, [loadFromLocalStorage]);
 

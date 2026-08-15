@@ -165,3 +165,60 @@ describe("loadFromLocalStorage — data-loss guard", () => {
     expect(ls.setItem).toHaveBeenCalled();
   });
 });
+
+/**
+ * The explicit-save gap left open by the original fix (#240-7 in the 2026-08-15
+ * test report). After a failed hydrate the save paths still ran under a false
+ * `hydrated`, so Save / Save As / cloud save persisted nothing to localStorage.
+ * `resumeAutosave` closes it, but only when called AFTER a confirmed write —
+ * MenuBar calls `adoptLocalFile` before `writeToFileHandle` settles, so arming
+ * there would overwrite the recoverable copy on a failed write.
+ */
+describe("resumeAutosave — explicit-save re-arm", () => {
+  it("re-arms autosave and persists after a failed hydrate", async () => {
+    const corrupt = "{ this is not valid json";
+    const ls = makeLocalStorage({ [STORAGE_KEY]: corrupt });
+    vi.stubGlobal("localStorage", ls);
+
+    const { useSchematicStore } = await import("../store");
+    expect(useSchematicStore.getState().loadFromLocalStorage()).toBe(false);
+
+    // Still disarmed: the corrupt copy survives an edit.
+    useSchematicStore.getState().saveToLocalStorage();
+    expect(ls.backing[STORAGE_KEY]).toBe(corrupt);
+
+    // A confirmed write happened — the user's work is durable elsewhere, so
+    // autosave resumes and replaces the unreadable blob with current state.
+    useSchematicStore.getState().resumeAutosave();
+    expect(ls.backing[STORAGE_KEY]).not.toBe(corrupt);
+
+    ls.setItem.mockClear();
+    useSchematicStore.getState().saveToLocalStorage();
+    expect(ls.setItem).toHaveBeenCalled();
+  });
+
+  it("is a no-op on the normal path, leaving a healthy session untouched", async () => {
+    const blob = JSON.stringify({
+      version: CURRENT_SCHEMA_VERSION,
+      name: "Healthy",
+      nodes: [] as SchematicNode[],
+      edges: [],
+    } satisfies Partial<SchematicFile>);
+    const ls = makeLocalStorage({ [STORAGE_KEY]: blob });
+    vi.stubGlobal("localStorage", ls);
+
+    const { useSchematicStore } = await import("../store");
+    expect(useSchematicStore.getState().loadFromLocalStorage()).toBe(true);
+
+    // Already armed — resumeAutosave must not write, so a normal Save doesn't
+    // pay for a redundant serialize on every keystroke-triggered save.
+    ls.setItem.mockClear();
+    useSchematicStore.getState().resumeAutosave();
+    expect(ls.setItem).not.toHaveBeenCalled();
+
+    // ...and normal autosave still works.
+    useSchematicStore.getState().saveToLocalStorage();
+    expect(ls.setItem).toHaveBeenCalled();
+    expect(useSchematicStore.getState().schematicName).toBe("Healthy");
+  });
+});
