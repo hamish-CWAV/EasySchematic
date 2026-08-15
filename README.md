@@ -16,7 +16,7 @@
   </a>
 </p>
 
-<p align="center"><sub><b>Individual supporters</b><br/>Sean Curtis</sub></p>
+<p align="center"><sub><b>Individual supporters</b><br/>Sean Curtis · HI-T3C</sub></p>
 
 ## Features
 
@@ -314,12 +314,6 @@ The installed app opens in its own window without browser chrome, works fully of
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, architecture notes, and guidelines.
-
-### Community Contributors
-
-The device library grows through community submissions — see the full [Contributors hall of fame](https://devices.easyschematic.live/contributors). Special thanks to:
-
-- **HI-T3C** — Alfatron and Atlona device templates (PTZ camera, HDBaseT switchers, touch panel)
 
 ## License
 
