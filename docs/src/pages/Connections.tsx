@@ -181,7 +181,12 @@ export default function ConnectionsPage() {
       <h2>Adapters</h2>
       <p>
         When you connect ports with incompatible signal types or different connector types, EasySchematic
-        can automatically insert an <strong>adapter</strong> device between them.
+        can automatically insert an <strong>adapter</strong> device between them. There is no separate
+        "add adapter" action — just draw the connection between the two mismatched ports, and if the
+        device library has a matching adapter it's inserted for you (or offered in a dialog when
+        several match). For example, connecting a
+        laptop's <strong>USB-A</strong> port to an <strong>RJ45</strong> port on a network switch
+        automatically inserts a <strong>USB-A (M) → RJ45 (F) Adapter</strong>, wired to both devices.
       </p>
 
       <h3>Connection preview colors</h3>
@@ -196,9 +201,27 @@ export default function ConnectionsPage() {
       <p>When you complete an incompatible connection:</p>
       <ul>
         <li>If exactly <strong>one</strong> adapter template matches, it's inserted automatically between the two devices</li>
-        <li>If <strong>multiple</strong> adapters match, a dialog lets you choose which one to insert</li>
-        <li>You can also click <strong>Connect Anyway</strong> to force the connection without an adapter</li>
+        <li>
+          If <strong>multiple</strong> adapters match, a dialog lets you choose which one to insert —
+          <strong> Connect Anyway</strong> is also available there to skip the adapter
+        </li>
+        <li>
+          If <strong>no</strong> adapter matches, the dialog tells you no matching adapters were found —
+          you can <strong>Cancel</strong>, or click <strong>Connect Anyway</strong> to force the
+          connection without an adapter
+        </li>
       </ul>
+      <p>
+        Matching works in <strong>either drag direction</strong> — a USB-A → RJ45 dongle is found whether
+        you start the connection from the USB-A port or from the RJ45 port.
+      </p>
+      <p>
+        Auto-insertion matches against the adapters <strong>built into the app</strong>, plus any{" "}
+        <strong>custom adapter devices</strong> you've created yourself. Adapters from the online
+        community library don't auto-insert until they're bundled into an app update — but you can
+        always place one manually from the <strong>device library</strong> and connect through it
+        like any other device.
+      </p>
 
       <h3>Adapters vs converters</h3>
       <ul>
