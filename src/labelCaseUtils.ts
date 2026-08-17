@@ -113,6 +113,13 @@ export function withRawLabels<T>(fn: () => T): T {
   }
 }
 
+/** True while withRawLabels is active. For export code that must choose a
+ *  machine-parseable form over the display one — not just skip the case
+ *  transform — e.g. room-path separators in the cable-schedule CSV (#324). */
+export function labelsAreRaw(): boolean {
+  return rawLabels;
+}
+
 /** Non-component helper — reads current preference from the store and transforms.
  *  Use inside report/export functions that run outside React. */
 export function transformLabelNow(text: string | null | undefined): string {

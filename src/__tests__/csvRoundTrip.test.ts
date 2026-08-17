@@ -32,6 +32,27 @@ function scene(): { nodes: SchematicNode[]; edges: ConnectionEdge[] } {
   return { nodes: [room, src, tgt], edges: [edge] };
 }
 
+/** Same cable, but the target sits in a subroom: "FOH mix" nested inside
+ *  "main Sanctuary". Pins the room-path round trip (#324) — the CSV must carry
+ *  the " > " path syntax csvImport parses, not the on-screen " - " join. */
+function nestedScene(): { nodes: SchematicNode[]; edges: ConnectionEdge[] } {
+  const sanctuary = {
+    id: "r1", type: "room", position: { x: 0, y: 0 }, data: { label: "main Sanctuary" },
+  } as unknown as SchematicNode;
+  const foh = {
+    id: "r2", type: "room", position: { x: 0, y: 0 }, parentId: "r1", data: { label: "FOH mix" },
+  } as unknown as SchematicNode;
+  const out = makePort("hdmi out 1", "hdmi", "output");
+  const inp = makePort("hdmi in A", "hdmi", "input");
+  const src = makeDevice({ id: "d1", label: "cam ONE", x: 0, y: 0, ports: [out], parentId: "r1" });
+  const tgt = makeDevice({ id: "d2", label: "Vision MIXER", x: 700, y: 0, ports: [inp], parentId: "r2" });
+  const edge = makeEdge({
+    id: "e1", source: "d1", sourceHandle: out.id, target: "d2", targetHandle: inp.id,
+    signalType: "hdmi",
+  });
+  return { nodes: [sanctuary, foh, src, tgt], edges: [edge] };
+}
+
 /** Map the export's own header names explicitly, as a user does in the import wizard.
  *  (Auto-detection is detectColumns's concern, not this round trip's.) */
 function mappingFor(headers: string[]): ColumnMapping {
@@ -93,6 +114,36 @@ describe("cable-schedule CSV round trip (#309)", () => {
     }
   });
 
+  it("exports subroom paths in the importer's ' > ' syntax, not the display join (#324)", () => {
+    const { nodes, edges } = nestedScene();
+    for (const mode of ["as-typed", ...NON_AS_TYPED] as LabelCaseMode[]) {
+      useSchematicStore.setState({ labelCase: mode });
+      const csv = buildCableScheduleCsv(computeCableScheduleForCsv(nodes, edges), "Round Trip", "2026-01-01");
+      expect(csv).toContain("main Sanctuary > FOH mix");
+      expect(csv).not.toContain("main Sanctuary - FOH mix");
+    }
+  });
+
+  it("re-importing an export recreates the subroom nesting with names intact", () => {
+    const { nodes, edges } = nestedScene();
+    for (const mode of ["as-typed", ...NON_AS_TYPED] as LabelCaseMode[]) {
+      useSchematicStore.setState({ labelCase: mode });
+      const result = roundTrip(nodes, edges);
+
+      const rooms = result.nodes.filter((n) => n.type === "room");
+      expect(rooms.map((r) => (r.data as RoomData).label).sort()).toEqual(["FOH mix", "main Sanctuary"]);
+
+      const sanctuary = rooms.find((r) => (r.data as RoomData).label === "main Sanctuary")!;
+      const foh = rooms.find((r) => (r.data as RoomData).label === "FOH mix")!;
+      expect(sanctuary.parentId).toBeUndefined();
+      expect(foh.parentId).toBe(sanctuary.id);
+
+      const devices = result.nodes.filter((n) => n.type === "device") as DeviceNode[];
+      expect(devices.find((d) => d.data.label === "cam ONE")!.parentId).toBe(sanctuary.id);
+      expect(devices.find((d) => d.data.label === "Vision MIXER")!.parentId).toBe(foh.id);
+    }
+  });
+
   it("the on-screen rows still follow the display case — only the CSV goes raw", () => {
     const { nodes, edges } = scene();
     useSchematicStore.setState({ labelCase: "uppercase" });
@@ -100,6 +151,11 @@ describe("cable-schedule CSV round trip (#309)", () => {
     expect(row.sourceDevice).toBe("CAM ONE");
     expect(row.sourceRoom).toBe("MAIN HALL");
     expect(row.sourcePort).toBe("HDMI OUT 1");
+
+    useSchematicStore.setState({ labelCase: "as-typed" });
+    const sub = nestedScene();
+    const [nested] = computeCableSchedule(sub.nodes, sub.edges);
+    expect(nested.targetRoom).toBe("main Sanctuary - FOH mix");
   });
 
   it("withRawLabels restores the transform afterwards, even on throw", () => {

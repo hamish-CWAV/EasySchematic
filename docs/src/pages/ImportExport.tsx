@@ -128,6 +128,8 @@ export default function ImportExportPage() {
         <li>Whitespace around the <code>&gt;</code> is ignored — <code>Sanctuary&gt;FOH</code> and <code>Sanctuary &gt; FOH</code> are the same subroom — and empty path segments are skipped</li>
         <li>Paths can nest to any depth, e.g. <code>Campus &gt; Sanctuary &gt; FOH</code></li>
         <li>Every room along the path is created automatically, even if no device sits directly in it</li>
+        <li>The cable schedule CSV export writes its Src Room / Tgt Room columns in this same path syntax, so an exported schedule re-imports with its subroom nesting intact</li>
+        <li>The separator cannot be escaped: a room whose name literally contains <code>&gt;</code> (e.g. <code>A &gt; B</code>) re-imports as a subroom "B" nested inside "A"</li>
       </ul>
 
       <h2>PNG / SVG (image export)</h2>

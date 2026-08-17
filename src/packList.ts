@@ -8,7 +8,7 @@ import type {
 } from "./types";
 import { SIGNAL_LABELS, RACK_TYPE_LABELS } from "./types";
 import { getCableType } from "./cableTypes";
-import { transformLabelNow } from "./labelCaseUtils";
+import { transformLabelNow, labelsAreRaw } from "./labelCaseUtils";
 import type { ReportLayout } from "./reportLayout";
 import type { ReportTableData } from "./reportPdf";
 
@@ -233,7 +233,12 @@ export function getRoomLabel(
     parts.unshift(label ? transformLabelNow(label) : "Unnamed");
     currentId = node.parentId as string | undefined;
   }
-  return parts.join(" - ");
+  // On screen the path joins with " - ". Under withRawLabels — the re-importable
+  // cable-schedule CSV (#309) — it joins with " > " instead, the room-path syntax
+  // csvImport parses back into nesting (#324), so subrooms survive a round trip.
+  // The separator is not escapable: a room literally named "A > B" re-imports as
+  // a subroom "B" inside "A".
+  return parts.join(labelsAreRaw() ? " > " : " - ");
 }
 
 export function resolvePortLabel(
