@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { showPathEditHint } from "../pathEditHint";
+import { showPathEditHint, soleSelectedCableId } from "../pathEditHint";
+import type { ConnectionEdge, SchematicNode } from "../types";
+
+const nodes = (...selected: boolean[]) =>
+  selected.map((sel, i) => ({ id: `dev-${i}`, selected: sel })) as SchematicNode[];
+const edges = (...selected: boolean[]) =>
+  selected.map((sel, i) => ({ id: `cable-${i}`, selected: sel })) as ConnectionEdge[];
 
 const base = {
   soleSelected: true,
@@ -27,5 +33,27 @@ describe("showPathEditHint", () => {
 
   it("hides on direct-attach edges (no cable run to shape)", () => {
     expect(showPathEditHint({ ...base, directAttach: true })).toBe(false);
+  });
+});
+
+describe("soleSelectedCableId", () => {
+  it("returns the id of the single selected cable", () => {
+    expect(soleSelectedCableId(nodes(false, false), edges(false, true, false))).toBe("cable-1");
+  });
+
+  it("returns null when nothing is selected", () => {
+    expect(soleSelectedCableId(nodes(false), edges(false, false))).toBe(null);
+  });
+
+  it("returns null when more than one cable is selected", () => {
+    expect(soleSelectedCableId(nodes(false), edges(true, true))).toBe(null);
+  });
+
+  it("returns null when any device is selected alongside a lone cable (marquee bulk move)", () => {
+    expect(soleSelectedCableId(nodes(true, false), edges(true))).toBe(null);
+  });
+
+  it("returns null for a devices-only selection", () => {
+    expect(soleSelectedCableId(nodes(true, true), edges(false))).toBe(null);
   });
 });

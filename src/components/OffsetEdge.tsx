@@ -9,7 +9,7 @@ import { LINE_STYLE_DASHARRAY, type ConnectionEdge, type LineStyle, type DeviceD
 import { usbcPowerShortfallW } from "../connectorTypes";
 import { midCustomLabelPlacement } from "../stubPlacement";
 import { computeEdgeLengthEstimate, resolveCableLengthLabel } from "../cableLengthLabel";
-import { showPathEditHint } from "../pathEditHint";
+import { showPathEditHint, soleSelectedCableId } from "../pathEditHint";
 
 function OffsetEdgeComponent({
   id,
@@ -216,8 +216,18 @@ function OffsetEdgeComponent({
 
   const isManual = manualWpStr.length > 0;
 
-  // User-placed handles of any kind — manual waypoints or stub-leg waypoints
-  const hasOwnWaypoints = useSchematicStore((s) => {
+  // Whether this cable is the sole selection (for the path-edit hint, #275).
+  // soleSelectedCableId scans nodes+edges once per store commit (shared cache),
+  // so each edge instance only compares its own id.
+  const isSoleSelectedCable = useSchematicStore(
+    (s) => soleSelectedCableId(s.nodes, s.edges) === id,
+  );
+
+  // User-placed handles of any kind — manual waypoints or stub-leg waypoints.
+  // Hint-scoped: false for every cable except the sole selection, so only the
+  // one hint-eligible cable pays for the lookup.
+  const hintCableHasOwnWaypoints = useSchematicStore((s) => {
+    if (soleSelectedCableId(s.nodes, s.edges) !== id) return false;
     const edge = s.edges.find((e) => e.id === id);
     return !!(
       edge?.data?.manualWaypoints?.length ||
@@ -225,11 +235,6 @@ function OffsetEdgeComponent({
       edge?.data?.stubTargetWaypoints?.length
     );
   });
-
-  // Whether this edge is the only selected edge (for the path-edit hint, #275)
-  const soleSelection = useSchematicStore(
-    (s) => s.edges.filter((e) => e.selected).length === 1,
-  );
 
   let edgePath: string;
   let lx: number;
@@ -689,9 +694,9 @@ function OffsetEdgeComponent({
   // Path-edit discoverability hint (#275) — a lone selected cable with no handles yet
   // points at the right-click menu where Add Handle lives.
   const pathEditHint = showPathEditHint({
-    soleSelected: !!selected && soleSelection,
+    soleSelected: !!selected && isSoleSelectedCable,
     hasRoute: !!routeStr,
-    hasOwnWaypoints,
+    hasOwnWaypoints: hintCableHasOwnWaypoints,
     directAttach,
   }) ? (
     <div
