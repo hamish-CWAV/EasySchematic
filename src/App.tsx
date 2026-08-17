@@ -1885,6 +1885,13 @@ export default function App() {
 
       // Normalize letter keys so shortcuts still fire with Caps Lock on (#179).
       const k = normalizeShortcutKey(e.key);
+      // While the port-edit conflict dialog is open, undo/redo would swap the state
+      // out from under the staged conflicts — resolve or close the dialog first (#306).
+      if ((e.ctrlKey || e.metaKey) && (k === "z" || k === "y") &&
+          useSchematicStore.getState().pendingPortEditConflicts) {
+        e.preventDefault();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && k === "z") {
         e.preventDefault();
         redo();

@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { findAdaptersForConnectorBridge } from "../connectorTypes";
 import { DEVICE_TEMPLATES } from "../deviceLibrary";
+import type { PortEditConflict } from "../store";
 import type { ConnectionEdge, ConnectorType, DeviceData, DeviceNode, DeviceTemplate, Port, SchematicNode } from "../types";
 
 class MemStorage {
@@ -193,6 +194,50 @@ describe("findInvalidatedConnections", () => {
     const edited = withEditedPort([pp, display], "pp", "p1", { rearConnectorType: "bnc" });
     expect(findInvalidatedConnections(edited, edges, "pp", oldPorts)).toEqual([]);
   });
+
+  it("detects a direction flip and reports it as incompatible, not a signal mismatch", () => {
+    // Dragging a connected input port into the Outputs section leaves output→output —
+    // connect time would refuse it, so the edit must surface a conflict too.
+    const { nodes, edges } = baseSchematic();
+    const oldPorts = (nodes[1] as DeviceNode).data.ports;
+    const edited = withEditedPort(nodes, "n2", "in1", { direction: "output" });
+    const conflicts = findInvalidatedConnections(edited, edges, "n2", oldPorts);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].edgeId).toBe("e1");
+    expect(conflicts[0].reason).toBe("incompatible");
+  });
+
+  it("detects revoking multi-connect on a port carrying two cables", () => {
+    const player = device("n1", [port("out1"), port("out2")]);
+    const hub = device("n2", [port("in1", { direction: "input", multiConnect: true })], 400);
+    const edges = [
+      edge("e1", "n1", "out1", "n2", "in1"),
+      edge("e2", "n1", "out2", "n2", "in1"),
+    ];
+    const oldPorts = hub.data.ports;
+    const edited = withEditedPort([player, hub], "n2", "in1", { multiConnect: false });
+    const conflicts = findInvalidatedConnections(edited, edges, "n2", oldPorts);
+    expect(conflicts.map((c) => c.edgeId)).toEqual(["e1", "e2"]);
+    expect(conflicts.every((c) => c.reason === "incompatible")).toBe(true);
+  });
+
+  it("reports nothing when multi-connect is revoked on a port with a single cable", () => {
+    const player = device("n1", [port("out1")]);
+    const hub = device("n2", [port("in1", { direction: "input", multiConnect: true })], 400);
+    const edges = [edge("e1", "n1", "out1", "n2", "in1")];
+    const oldPorts = hub.data.ports;
+    const edited = withEditedPort([player, hub], "n2", "in1", { multiConnect: false });
+    expect(findInvalidatedConnections(edited, edges, "n2", oldPorts)).toEqual([]);
+  });
+
+  it("detects a multicore toggle on one end", () => {
+    const { nodes, edges } = baseSchematic();
+    const oldPorts = (nodes[1] as DeviceNode).data.ports;
+    const edited = withEditedPort(nodes, "n2", "in1", { isMulticable: true });
+    const conflicts = findInvalidatedConnections(edited, edges, "n2", oldPorts);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].reason).toBe("incompatible");
+  });
 });
 
 describe("updateDevice port-edit revalidation flow", () => {
@@ -202,6 +247,7 @@ describe("updateDevice port-edit revalidation flow", () => {
       edges: [],
       pendingPortEditConflicts: null,
       pendingIncompatibleConnection: null,
+      templatePresets: {},
     });
   });
 
@@ -308,7 +354,7 @@ describe("updateDevice port-edit revalidation flow", () => {
       deviceType: "adapter",
       label: "BNC to HDMI Bridge",
       ports: [
-        { id: "a-in", label: "In", signalType: "hdmi", direction: "input", connectorType: "bnc" },
+        { id: "a1", label: "In", signalType: "hdmi", direction: "input", connectorType: "bnc" },
         { id: "a-out", label: "Out", signalType: "hdmi", direction: "output", connectorType: "hdmi" },
       ],
     };
@@ -353,6 +399,74 @@ describe("updateDevice port-edit revalidation flow", () => {
     expect(displayLeg?.data?.connectorMismatch).toBeUndefined();
   });
 
+  it("stages an incompatible conflict when a port's direction flips", () => {
+    loadBase();
+    editDisplayPort({ direction: "output" });
+    const conflicts = useSchematicStore.getState().pendingPortEditConflicts;
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts![0].reason).toBe("incompatible");
+  });
+
+  it("keeps the cable and the conflict when the chosen adapter cannot bridge it", () => {
+    // A project preset can reshape an adapter's ports out from under the template the
+    // dialog matched against — the replace must then be a no-op, not a deleted cable.
+    const src = device("n1", [port("out1", { signalType: "usb", connectorType: "usb-a" })]);
+    const tgt = device("n2", [port("in1", { direction: "input", signalType: "usb", connectorType: "usb-a" })], 400);
+    useSchematicStore.setState({
+      nodes: [src, tgt],
+      edges: [edge("e1", "n1", "out1", "n2", "in1", { signalType: "usb" })],
+    });
+    const state = useSchematicStore.getState();
+    const display = state.nodes.find((n) => n.id === "n2") as DeviceNode;
+    state.updateDevice("n2", {
+      ...display.data,
+      ports: display.data.ports.map((p) => (p.id === "in1" ? { ...p, connectorType: "usb-c" as const } : p)),
+    });
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toHaveLength(1);
+
+    const adapter: DeviceTemplate = {
+      id: "adp-x",
+      deviceType: "adapter",
+      label: "USB-A to USB-C",
+      ports: [
+        { id: "a1", label: "In", signalType: "usb", direction: "input", connectorType: "usb-a" },
+        { id: "a-out", label: "Out", signalType: "usb", direction: "output", connectorType: "usb-c" },
+      ],
+    };
+    useSchematicStore.setState({
+      templatePresets: {
+        "adp-x": { ports: [{ id: "p1", label: "P1", signalType: "analog-audio", direction: "input", connectorType: "xlr-3" }] },
+      },
+    });
+
+    useSchematicStore.getState().resolvePortEditConflict("e1", "adapter", adapter);
+    const after = useSchematicStore.getState();
+    expect(after.edges.find((e) => e.id === "e1")).toBeDefined();
+    expect(after.edges).toHaveLength(1);
+    expect(after.nodes).toHaveLength(2);
+    expect(after.pendingIncompatibleConnection).toBeNull();
+    expect(after.pendingPortEditConflicts).toHaveLength(1);
+    expect(after.pendingPortEditConflicts![0].edgeId).toBe("e1");
+    expect(after.pendingPortEditConflicts![0].adapterFailed).toBe(true);
+  });
+
+  it("undo and redo clear staged conflicts so they cannot act on restored cables", () => {
+    loadBase();
+    editDisplayPort({ signalType: "analog-audio", connectorType: "xlr-3" });
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toHaveLength(1);
+
+    useSchematicStore.getState().undo();
+    const undone = useSchematicStore.getState();
+    expect(undone.pendingPortEditConflicts).toBeNull();
+    // The restored cable is intact and its port is back to HDMI.
+    expect(undone.edges.find((e) => e.id === "e1")).toBeDefined();
+    const restored = undone.nodes.find((n) => n.id === "n2") as DeviceNode;
+    expect(restored.data.ports[0].signalType).toBe("hdmi");
+
+    useSchematicStore.getState().redo();
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
+  });
+
   it("resolveAll keep flags every conflicted connection at once", () => {
     const player = device("n1", [port("out1"), port("out2")]);
     const display = device("n2", [port("in1", { direction: "input" }), port("in2", { direction: "input" })], 400);
@@ -374,5 +488,156 @@ describe("updateDevice port-edit revalidation flow", () => {
     const after = useSchematicStore.getState();
     expect(after.pendingPortEditConflicts).toBeNull();
     expect(after.edges.every((e) => e.data?.connectorMismatch === true)).toBe(true);
+  });
+});
+
+describe("propagateTemplateToInstances revalidation", () => {
+  beforeEach(() => {
+    useSchematicStore.setState({
+      nodes: [],
+      edges: [],
+      pendingPortEditConflicts: null,
+      pendingIncompatibleConnection: null,
+      templatePresets: {},
+    });
+  });
+
+  /** Instance of user template "tpl": one HDMI input linked to template port t-in. */
+  function instance(id: string, portId: string): DeviceNode {
+    return {
+      id,
+      type: "device",
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        deviceType: "source",
+        templateId: "tpl",
+        templateVersion: 1,
+        ports: [{ id: portId, label: "In", signalType: "hdmi", direction: "input", connectorType: "hdmi", templatePortId: "t-in" }],
+      },
+    } as DeviceNode;
+  }
+
+  /** Template "tpl" v2 whose t-in port carries the given patch over the HDMI baseline. */
+  function editedTemplate(patch: Partial<Port>): DeviceTemplate {
+    return {
+      id: "tpl",
+      deviceType: "source",
+      label: "Tpl",
+      version: 2,
+      ports: [{ id: "t-in", label: "In", signalType: "hdmi", direction: "input", connectorType: "hdmi", ...patch }],
+    };
+  }
+
+  it("stages conflicts for the other instances' cables the propagated edit invalidates", () => {
+    const src = device("s1", [port("out1"), port("out2")]);
+    useSchematicStore.setState({
+      nodes: [src, instance("A", "a1"), instance("B", "b1"), instance("C", "c1")],
+      edges: [
+        edge("e-b", "s1", "out1", "B", "b1"),
+        edge("e-c", "s1", "out2", "C", "c1"),
+      ],
+    });
+
+    // The editor updates A itself, then propagates to B and C.
+    const result = useSchematicStore.getState().propagateTemplateToInstances(
+      "tpl",
+      editedTemplate({ signalType: "analog-audio", connectorType: "xlr-3" }),
+      "A",
+    );
+    expect(result.updated).toBe(2);
+
+    const conflicts = useSchematicStore.getState().pendingPortEditConflicts;
+    expect(conflicts?.map((c) => c.edgeId).sort()).toEqual(["e-b", "e-c"]);
+    expect(conflicts?.every((c) => c.reason === "signal-mismatch")).toBe(true);
+  });
+
+  it("folds propagated conflicts into ones the edited instance already staged", () => {
+    const src = device("s1", [port("out1"), port("out2")]);
+    useSchematicStore.setState({
+      nodes: [src, instance("A", "a1"), instance("B", "b1")],
+      edges: [
+        edge("e-a", "s1", "out1", "A", "a1"),
+        edge("e-b", "s1", "out2", "B", "b1"),
+      ],
+    });
+
+    // Mirror the editor's flow: updateDevice on A stages its conflict first...
+    const state = useSchematicStore.getState();
+    const a = state.nodes.find((n) => n.id === "A") as DeviceNode;
+    state.updateDevice("A", {
+      ...a.data,
+      templateVersion: 2,
+      ports: a.data.ports.map((p) => ({ ...p, signalType: "analog-audio" as const, connectorType: "xlr-3" as const })),
+    });
+    expect(useSchematicStore.getState().pendingPortEditConflicts?.map((c) => c.edgeId)).toEqual(["e-a"]);
+
+    // ...then propagation adds B's, and one dialog covers both.
+    useSchematicStore.getState().propagateTemplateToInstances(
+      "tpl",
+      editedTemplate({ signalType: "analog-audio", connectorType: "xlr-3" }),
+      "A",
+    );
+    const conflicts = useSchematicStore.getState().pendingPortEditConflicts;
+    expect(conflicts?.map((c) => c.edgeId).sort()).toEqual(["e-a", "e-b"]);
+    const staged: PortEditConflict = conflicts![1];
+    expect(staged.sourceSignal).toBe("hdmi");
+    expect(staged.targetSignal).toBe("analog-audio");
+  });
+
+  it("stages one conflict for a cable daisy-chained between two updated instances", () => {
+    // The cable touches a changed port on each end, so B's revalidation and C's both
+    // find it — it must still surface as a single conflict.
+    const chain = (id: string): DeviceNode =>
+      ({
+        id,
+        type: "device",
+        position: { x: 0, y: 0 },
+        data: {
+          label: id,
+          deviceType: "source",
+          templateId: "tpl",
+          templateVersion: 1,
+          ports: [
+            { id: `${id}o`, label: "Out", signalType: "hdmi", direction: "output", connectorType: "hdmi", templatePortId: "t-out" },
+            { id: `${id}i`, label: "In", signalType: "hdmi", direction: "input", connectorType: "hdmi", templatePortId: "t-in" },
+          ],
+        },
+      }) as DeviceNode;
+    useSchematicStore.setState({
+      nodes: [chain("A"), chain("B"), chain("C")],
+      edges: [edge("e-bc", "B", "Bo", "C", "Ci")],
+    });
+
+    const result = useSchematicStore.getState().propagateTemplateToInstances(
+      "tpl",
+      {
+        id: "tpl",
+        deviceType: "source",
+        label: "Tpl",
+        version: 2,
+        ports: [
+          { id: "t-out", label: "Out", signalType: "sdi", direction: "output", connectorType: "bnc" },
+          { id: "t-in", label: "In", signalType: "analog-audio", direction: "input", connectorType: "xlr-3" },
+        ],
+      },
+      "A",
+    );
+    expect(result.updated).toBe(2);
+    expect(useSchematicStore.getState().pendingPortEditConflicts?.map((c) => c.edgeId)).toEqual(["e-bc"]);
+  });
+
+  it("stages nothing when the propagated edit keeps every cable valid", () => {
+    const src = device("s1", [port("out1")]);
+    useSchematicStore.setState({
+      nodes: [src, instance("A", "a1"), instance("B", "b1")],
+      edges: [edge("e-b", "s1", "out1", "B", "b1")],
+    });
+    useSchematicStore.getState().propagateTemplateToInstances(
+      "tpl",
+      editedTemplate({ label: "Renamed In" }),
+      "A",
+    );
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
   });
 });

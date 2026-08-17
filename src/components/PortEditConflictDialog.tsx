@@ -23,8 +23,8 @@ export default function PortEditConflictDialog() {
     const map = new Map<string, DeviceTemplate[]>();
     for (const c of conflicts) {
       // Match on the effective face connectors/signals the cable actually uses.
-      // A signal-mismatch with equal signals means the failure is something no
-      // adapter can fix (direction, duplicate handle, …) — offer none.
+      // An "incompatible" conflict is something no adapter can fix (direction,
+      // multi-connect, multicore) — offer none.
       const found =
         c.reason === "connector-mismatch" && c.sourceConnector && c.targetConnector
           ? findAdaptersForConnectorBridge(c.sourceConnector, c.targetConnector, c.sourceSignal, allTemplates)
@@ -46,6 +46,9 @@ export default function PortEditConflictDialog() {
   const portSummary = (c: PortEditConflict) => {
     const srcConn = c.sourceConnector ? CONNECTOR_LABELS[c.sourceConnector] : "";
     const tgtConn = c.targetConnector ? CONNECTOR_LABELS[c.targetConnector] : "";
+    if (c.reason === "incompatible") {
+      return `${SIGNAL_LABELS[c.sourceSignal]} — the edited port's direction or connection rules no longer allow this cable`;
+    }
     return c.reason === "connector-mismatch"
       ? `${srcConn || "?"} → ${tgtConn || "?"} (${SIGNAL_LABELS[c.sourceSignal]})`
       : `${SIGNAL_LABELS[c.sourceSignal]}${srcConn ? ` (${srcConn})` : ""} → ${SIGNAL_LABELS[c.targetSignal]}${tgtConn ? ` (${tgtConn})` : ""}`;
@@ -92,6 +95,11 @@ export default function PortEditConflictDialog() {
                     {deviceLabel(c.source)} &middot; {c.sourcePort.label} &rarr; {deviceLabel(c.target)} &middot; {c.targetPort.label}
                   </span>
                   <span className="text-xs text-[var(--color-text-muted)]">{portSummary(c)}</span>
+                  {c.adapterFailed && (
+                    <span className="text-xs text-red-600">
+                      The adapter could not bridge this cable — choose another resolution.
+                    </span>
+                  )}
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       onClick={() => resolve(c.edgeId, "disconnect")}

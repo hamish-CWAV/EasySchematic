@@ -321,7 +321,12 @@ export interface PortEditConflict {
   /** Effective signal at each end (resolves inherited passthrough signals). */
   sourceSignal: SignalType;
   targetSignal: SignalType;
-  reason: "signal-mismatch" | "connector-mismatch";
+  /** "incompatible" covers failures no adapter can bridge — a direction flip,
+   *  a revoked multi-connect, a multicore toggle on one end. */
+  reason: "signal-mismatch" | "connector-mismatch" | "incompatible";
+  /** Set when an attempted adapter insertion could not bridge this cable, so the
+   *  dialog can say so and offer the remaining resolutions. */
+  adapterFailed?: boolean;
 }
 
 interface SchematicState {
@@ -676,7 +681,9 @@ interface SchematicState {
   } | null;
   dismissIncompatibleDialog: () => void;
   forceIncompatibleConnection: () => void;
-  insertAdapterBetween: (template: DeviceTemplate) => void;
+  /** Returns false when a replace-mode insertion could not resolve both adapter
+   *  legs, in which case nothing was committed (#306). */
+  insertAdapterBetween: (template: DeviceTemplate) => boolean;
 
   // Port-edit revalidation dialog (#306): connections a port edit made invalid
   pendingPortEditConflicts: PortEditConflict[] | null;
@@ -1551,7 +1558,8 @@ function faceConnector(port: Port, handle: string | null | undefined): Connector
 }
 
 /** After a device's ports are edited, find connections on that device that the new
- *  connector/signal types make invalid, using the same rules as connect time (#306).
+ *  port properties make invalid — connector/signal types, but also direction,
+ *  multi-connect, and multicore — using the same rules as connect time (#306).
  *  Connections the user already accepted as mismatched (connectorMismatch /
  *  allowIncompatible) are skipped. Pure so it can be unit-tested. */
 export function findInvalidatedConnections(
@@ -1571,7 +1579,10 @@ export function findInvalidatedConnections(
       old.connectorType !== p.connectorType ||
       old.signalType !== p.signalType ||
       old.frontConnectorType !== p.frontConnectorType ||
-      old.rearConnectorType !== p.rearConnectorType
+      old.rearConnectorType !== p.rearConnectorType ||
+      old.direction !== p.direction ||
+      (old.multiConnect ?? false) !== (p.multiConnect ?? false) ||
+      (old.isMulticable ?? false) !== (p.isMulticable ?? false)
     ) {
       changed.add(p.id);
     }
@@ -1632,7 +1643,13 @@ export function findInvalidatedConnections(
       const connectorsBad =
         !!sourceConnector && !!targetConnector &&
         !areConnectorsCompatible(sourceConnector, targetConnector);
-      push(connectorsBad && sourceSignal === targetSignal ? "connector-mismatch" : "signal-mismatch");
+      // Matching connectors and signals that still fail validation mean a cause no
+      // adapter can bridge (direction, multi-connect, multicore) — say so honestly.
+      push(
+        connectorsBad && sourceSignal === targetSignal ? "connector-mismatch"
+          : sourceSignal !== targetSignal ? "signal-mismatch"
+          : "incompatible",
+      );
       continue;
     }
 
@@ -2827,9 +2844,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     // device-side port IDs stable (so live edges stay attached), adds new template ports,
     // preserves per-instance overrides, and only orphans removed ports — never touching the
     // edge list. Re-point templateId/version so a forked built-in now tracks the user copy.
+    const oldPortsByNodeId = new Map<string, Port[]>();
     const newNodes = state.nodes.map((n) => {
       if (!targetIds.has(n.id) || n.type !== "device") return n;
       const dn = n as DeviceNode;
+      oldPortsByNodeId.set(n.id, dn.data.ports);
       const { updatedData } = syncDeviceWithTemplate(dn.data, newTemplate, n.id, state.edges);
       return {
         ...dn,
@@ -2842,6 +2861,28 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     });
 
     set({ nodes: newNodes });
+
+    // The propagated port changes can strand these instances' connections exactly like a
+    // direct edit, so run the same revalidation over every updated instance and fold the
+    // failures into the pending list — the editor's updateDevice may already have staged
+    // the edited instance's conflicts, and one dialog should cover them all (#306).
+    const propagated: PortEditConflict[] = [];
+    for (const [id, oldPorts] of oldPortsByNodeId) {
+      propagated.push(...findInvalidatedConnections(get().nodes, get().edges, id, oldPorts));
+    }
+    if (propagated.length > 0) {
+      // A cable between two updated instances is found once from each end — dedupe
+      // across the merged list so each edge stages a single conflict.
+      const existing = get().pendingPortEditConflicts ?? [];
+      const seen = new Set(existing.map((c) => c.edgeId));
+      const fresh = propagated.filter((c) => {
+        if (seen.has(c.edgeId)) return false;
+        seen.add(c.edgeId);
+        return true;
+      });
+      if (fresh.length > 0) set({ pendingPortEditConflicts: [...existing, ...fresh] });
+    }
+
     get().saveToLocalStorage();
     return { updated: targetIds.size };
   },
@@ -3742,7 +3783,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     redoStack.push(structuredClone({ nodes: state.nodes, edges: state.edges, pages: state.pages, bundles: state.bundles, autoRoute: state.autoRoute }));
     const edges = prev.edges.map(({ zIndex: _, selected: _s, ...rest }) => ({ ...rest, zIndex: 0 })) as typeof prev.edges;
     const restoreAutoRoute = prev.autoRoute !== undefined ? { autoRoute: prev.autoRoute } : {};
-    set({ nodes: prev.nodes, edges, pages: prev.pages ?? state.pages, bundles: prev.bundles ?? state.bundles, ...restoreAutoRoute, undoSize: undoStack.length, redoSize: redoStack.length });
+    // Staged port-edit conflicts describe cables in the state being replaced — acting on
+    // them against the restored state would disconnect or flag valid cables (#306).
+    set({ nodes: prev.nodes, edges, pages: prev.pages ?? state.pages, bundles: prev.bundles ?? state.bundles, ...restoreAutoRoute, pendingPortEditConflicts: null, undoSize: undoStack.length, redoSize: redoStack.length });
     get().saveToLocalStorage();
   },
 
@@ -3753,7 +3796,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     undoStack.push(structuredClone({ nodes: state.nodes, edges: state.edges, pages: state.pages, bundles: state.bundles, autoRoute: state.autoRoute }));
     const edges = next.edges.map(({ zIndex: _, selected: _s, ...rest }) => ({ ...rest, zIndex: 0 })) as typeof next.edges;
     const restoreAutoRoute = next.autoRoute !== undefined ? { autoRoute: next.autoRoute } : {};
-    set({ nodes: next.nodes, edges, pages: next.pages ?? state.pages, bundles: next.bundles ?? state.bundles, ...restoreAutoRoute, undoSize: undoStack.length, redoSize: redoStack.length });
+    set({ nodes: next.nodes, edges, pages: next.pages ?? state.pages, bundles: next.bundles ?? state.bundles, ...restoreAutoRoute, pendingPortEditConflicts: null, undoSize: undoStack.length, redoSize: redoStack.length });
     get().saveToLocalStorage();
   },
 
@@ -3996,15 +4039,16 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   insertAdapterBetween: (template) => {
     const state = get();
     const pending = state.pendingIncompatibleConnection;
-    if (!pending) return;
+    if (!pending) return false;
     pushUndo({ nodes: state.nodes, edges: state.edges });
 
     // Resolve source and target device absolute positions for midpoint
     const sourceNode = state.nodes.find((n) => n.id === pending.connection.source);
     const targetNode = state.nodes.find((n) => n.id === pending.connection.target);
     if (!sourceNode || !targetNode) {
-      set({ pendingIncompatibleConnection: null });
-      return;
+      undoStack.pop();
+      set({ pendingIncompatibleConnection: null, undoSize: undoStack.length });
+      return false;
     }
 
     // Compute absolute positions, walking the full parent chain so devices
@@ -4156,6 +4200,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       (p) => (p.direction === "output" || p.direction === "bidirectional") && p.signalType === pending.targetPort.signalType,
     );
 
+    // Replacing an existing cable must be atomic (#306): a project preset can reshape
+    // the adapter's ports out from under the template the dialog matched against, and
+    // committing with an unresolved leg would silently delete the user's cable. Leave
+    // the cable and state untouched and report failure so the caller can re-offer the
+    // remaining resolutions.
+    if (pending.replaceEdgeId && (!adapterInput || !adapterOutput)) {
+      undoStack.pop();
+      set({ pendingIncompatibleConnection: null, undoSize: undoStack.length });
+      return false;
+    }
+
     // Cosmetic only: an adapter matched in reverse has its source-side port on the
     // declared right and its target-side port on the declared left, so the two legs
     // approach from mirrored sides and read as crossed. Flipping every port mirrors
@@ -4239,6 +4294,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       pendingIncompatibleConnection: null,
     });
     get().saveToLocalStorage();
+    return true;
   },
 
   resolvePortEditConflict: (edgeId, action, adapterTemplate) => {
@@ -4250,7 +4306,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const rest = remaining.length > 0 ? remaining : null;
 
     if (action === "adapter") {
-      if (!adapterTemplate) return;
+      if (!adapterTemplate || conflict.reason === "incompatible") return;
       // Reuse the adapter auto-insert machinery: stage the pair as a pending
       // connection that replaces the invalid cable (insertAdapterBetween pushes undo).
       // insertAdapterBetween reads connectorType/signalType off the pending ports for
@@ -4258,7 +4314,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       // connector and signal — a passthrough Port's own connectorType is not the
       // connector this cable mates with.
       set({
-        pendingPortEditConflicts: rest,
         pendingIncompatibleConnection: {
           connection: {
             source: conflict.source,
@@ -4272,7 +4327,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           replaceEdgeId: conflict.edgeId,
         },
       });
-      get().insertAdapterBetween(adapterTemplate);
+      // The replace path is atomic: on failure the cable is untouched, so keep the
+      // conflict listed — marked, so the dialog can say the adapter didn't fit.
+      if (get().insertAdapterBetween(adapterTemplate)) {
+        set({ pendingPortEditConflicts: rest });
+      } else {
+        set({
+          pendingPortEditConflicts: conflicts!.map((c) =>
+            c.edgeId === edgeId ? { ...c, adapterFailed: true } : c,
+          ),
+        });
+      }
       return;
     }
 
