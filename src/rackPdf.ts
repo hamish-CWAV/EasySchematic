@@ -19,6 +19,7 @@ import {
   PX_PER_MM as RACK_PX_PER_MM,
 } from "./rackUtils";
 import { computeRackStats, formatStatsLine } from "./rackStats";
+import { contrastingTextColor, CONTRAST_BLACK } from "./colorContrast";
 import { wrapLabel } from "./components/rackFaceConstants";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "./displayName";
 
@@ -87,6 +88,17 @@ export function setFillHex(doc: jsPDF, hex: string | undefined, fallback: [numbe
   const m = (hex ?? "").match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
   if (m) doc.setFillColor(parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16));
   else doc.setFillColor(...fallback);
+}
+
+/** Black or white, as setTextColor RGB, legible over the fill setFillHex would
+ *  produce for the same inputs — same hex parsing, same fallback (#301). */
+export function contrastingTextRgb(
+  hex: string | undefined,
+  fallback: [number, number, number],
+): [number, number, number] {
+  const m = (hex ?? "").match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  const bg = m ? (hex as string) : `rgb(${fallback[0]}, ${fallback[1]}, ${fallback[2]})`;
+  return contrastingTextColor(bg) === CONTRAST_BLACK ? [0, 0, 0] : [255, 255, 255];
 }
 
 // ─── Title bar ───
@@ -373,9 +385,10 @@ export function drawElevation(
     const lines = wrapLabel(resolved.text, maxChars, maxLines);
     const lineH_svg = fs_svg * 1.35;
     const baseY_svg = h_svg / 2 - ((lines.length - 1) * lineH_svg) / 2;
+    const labelRgb = contrastingTextRgb(dd.headerColor ?? dd.color, [74, 144, 217]);
     doc.setFont("Inter", "bold");
     doc.setFontSize(fs_pt);
-    doc.setTextColor(255, 255, 255);
+    doc.setTextColor(...labelRgb);
     for (let i = 0; i < lines.length; i++) {
       doc.text(lines[i], dx + dw / 2, dy + (baseY_svg + i * lineH_svg) * s, { align: "center", baseline: "middle" });
     }
@@ -383,7 +396,9 @@ export function drawElevation(
     // hU badge in top-right corner (>1U devices) — SVG renders at fontSize=7, alpha 0.7.
     if (heightU > 1) {
       doc.setFontSize(7 * ptPerSvg);
-      doc.setTextColor(220, 220, 220); // approximates rgba(255,255,255,0.7) over a colored bg
+      // Approximates the SVG's 0.7-alpha label composited over the device color.
+      if (labelRgb[0] === 0) doc.setTextColor(77, 77, 77);
+      else doc.setTextColor(220, 220, 220);
       doc.text(`${heightU}U`, dx + dw - 4 * s, dy + 8 * s, { align: "right" });
     }
   }
@@ -421,7 +436,7 @@ export function drawElevation(
       const fs_pt = Math.max(2.5, fs_svg * ptPerSvg);
       doc.setFont("Inter", "normal");
       doc.setFontSize(fs_pt);
-      doc.setTextColor(255, 255, 255);
+      doc.setTextColor(...contrastingTextRgb(dd.headerColor ?? dd.color, [74, 144, 217]));
       const effectiveSvgPx = occ.rotated ? hSvgPx : wSvgPx;
       const resolvedOcc = resolveDeviceLabel(dd, schematicDefaults);
       const labelTrim = Math.max(4, Math.floor(effectiveSvgPx / 5));

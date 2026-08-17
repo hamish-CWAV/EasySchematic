@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState, type WheelEvent, type MouseEven
 import { useSchematicStore } from "../store";
 import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage } from "../types";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
+import { contrastingTextColor, CONTRAST_BLACK } from "../colorContrast";
 import { RACK_ACCESSORY_LABELS, RACK_TYPE_LABELS } from "../types";
 import {
   inferRackHeightU,
@@ -243,6 +244,8 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
   const label = resolved.text;
   const heightU = inferRackHeightU(deviceData);
   const color = deviceData.headerColor ?? deviceData.color;
+  const textColor = contrastingTextColor(color ?? "#4a90d9");
+  const textAlpha = (a: number) => textColor === CONTRAST_BLACK ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
   const y = uToY(placement.uPosition + heightU - 1, rack.heightU);
   const h = heightU * PX_PER_U - 1;
   const isHalf = !!placement.halfRackSide;
@@ -305,7 +308,7 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
           const lbl = label.length > maxC ? label.slice(0, maxC - 1) + "…" : label;
           return (
             <text x={cx} y={ly} textAnchor="middle" dominantBaseline="central"
-              fontSize={fs} fill="#fff" fontWeight={600} style={{ pointerEvents: "none" }}>
+              fontSize={fs} fill={textColor} fontWeight={600} style={{ pointerEvents: "none" }}>
               {lbl}
             </text>
           );
@@ -319,7 +322,7 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
           ? y + 5
           : y + h / 2 - ((lines.length - 1) * lineH) / 2;
         return (
-          <text x={cx} textAnchor="middle" fontSize={fs} fill="#fff"
+          <text x={cx} textAnchor="middle" fontSize={fs} fill={textColor}
             fontWeight={600} style={{ pointerEvents: "none" }}>
             {lines.map((line, i) => (
               <tspan key={i} x={cx} y={baseY + i * lineH}
@@ -333,7 +336,7 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
 
       {/* U height indicator */}
       {heightU > 1 && !showConnectors && (
-        <text x={x + w - 4} y={y + 8} textAnchor="end" fontSize={7} fill="rgba(255,255,255,0.7)" style={{ pointerEvents: "none" }}>{heightU}U</text>
+        <text x={x + w - 4} y={y + 8} textAnchor="end" fontSize={7} fill={textAlpha(0.7)} style={{ pointerEvents: "none" }}>{heightU}U</text>
       )}
 
       {/* Connector icons */}
@@ -358,7 +361,7 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
                 y={cy + (getConnectorSpec(lp.connectorType).heightMm * PX_PER_MM) / 2 + 3}
                 textAnchor="middle"
                 fontSize={4}
-                fill="rgba(255,255,255,0.8)"
+                fill={textAlpha(0.8)}
               >
                 {lp.label.length > 8 ? lp.label.slice(0, 7) + "…" : lp.label}
               </text>
@@ -380,7 +383,7 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
             dominantBaseline="central"
             fontSize={3.5}
             fontWeight={700}
-            fill="rgba(255,255,255,0.6)"
+            fill={textAlpha(0.6)}
             letterSpacing={0.5}
             style={{ pointerEvents: "none", textTransform: "uppercase" }}
           >
@@ -490,6 +493,7 @@ function AccessoryBlock({
           const resolved = resolveDeviceLabel(dd, schematicDefaults);
           const labelTrim = Math.max(4, Math.floor(effectiveWidthPx / 5));
           const lbl = resolved.text.length > labelTrim ? resolved.text.slice(0, Math.max(1, labelTrim - 1)) + "…" : resolved.text;
+          const occColor = dd.headerColor ?? dd.color ?? "#4a90d9";
           const previewInvalid = isOccDragging && draggingOccupantPreview && !draggingOccupantPreview.valid;
           return (
             <g
@@ -509,7 +513,7 @@ function AccessoryBlock({
                 y={topY}
                 width={wPx}
                 height={hPx}
-                fill={dd.headerColor ?? dd.color ?? "#4a90d9"}
+                fill={occColor}
                 stroke={previewInvalid ? "#ef4444" : (overflowsAbove ? "#dc2626" : "#333")}
                 strokeWidth={previewInvalid || overflowsAbove ? 1 : 0.5}
                 strokeDasharray={previewInvalid || overflowsAbove ? "3 2" : undefined}
@@ -521,7 +525,7 @@ function AccessoryBlock({
                 textAnchor="middle"
                 dominantBaseline="central"
                 fontSize={Math.min(7, hPx * 0.4)}
-                fill="#fff"
+                fill={contrastingTextColor(occColor)}
                 style={{ pointerEvents: "none" }}
                 transform={p.rotated ? `rotate(-90 ${xPx + wPx / 2} ${topY + hPx / 2})` : undefined}
               >
@@ -558,7 +562,7 @@ function AccessoryBlock({
               x={xPx + wPx / 2} y={topY + hPx / 2}
               textAnchor="middle" dominantBaseline="central"
               fontSize={Math.min(7, hPx * 0.4)}
-              fill="#fff"
+              fill={contrastingTextColor(color)}
               transform={rotated ? `rotate(-90 ${xPx + wPx / 2} ${topY + hPx / 2})` : undefined}
             >{lbl}</text>
           </g>
@@ -629,7 +633,7 @@ function DragGhost({ x, y, width, height, label, color }: { x: number; y: number
   return (
     <g style={{ pointerEvents: "none" }} opacity={0.7}>
       <rect x={x} y={y} width={width} height={height} fill={color} stroke="#2563eb" strokeWidth={1.5} rx={1} />
-      <text x={x + width / 2} y={y + height / 2} textAnchor="middle" dominantBaseline="central" fontSize={height > 20 ? 10 : 8} fill="#fff" fontWeight={500}>{label}</text>
+      <text x={x + width / 2} y={y + height / 2} textAnchor="middle" dominantBaseline="central" fontSize={height > 20 ? 10 : 8} fill={contrastingTextColor(color)} fontWeight={500}>{label}</text>
     </g>
   );
 }
@@ -733,6 +737,7 @@ function SideViewRack({
           const resolvedShelf = resolveDeviceLabel(dd, schematicDefaults);
           const labelTrim = Math.max(3, Math.floor(dDepth / 5));
           const lbl = resolvedShelf.text.length > labelTrim ? resolvedShelf.text.slice(0, Math.max(1, labelTrim - 1)) + "…" : resolvedShelf.text;
+          const shelfColor = dd.headerColor ?? dd.color ?? "#4a90d9";
           return (
             <g key={pl.id} style={{ opacity: isDragging ? 0.3 : 1 }}>
               <rect
@@ -740,7 +745,7 @@ function SideViewRack({
                 y={dy}
                 width={dDepth}
                 height={dh}
-                fill={dd.headerColor ?? dd.color ?? "#4a90d9"}
+                fill={shelfColor}
                 stroke={overflowsAbove ? "#dc2626" : "#333"}
                 strokeWidth={overflowsAbove ? 1 : 0.5}
                 strokeDasharray={overflowsAbove ? "3 2" : undefined}
@@ -753,7 +758,7 @@ function SideViewRack({
                 textAnchor="middle"
                 dominantBaseline="central"
                 fontSize={Math.min(7, Math.max(4, dh * 0.5))}
-                fill="#fff"
+                fill={contrastingTextColor(shelfColor)}
                 style={{ pointerEvents: "none" }}
               >
                 {lbl}
@@ -766,6 +771,7 @@ function SideViewRack({
         const deviceDepth = (dd.depthMm ?? rack.depthMm * 0.6) * depthScale;
         // 2-post: everything hangs from the front post
         const x = (is2Post || pl.face === "front") ? 4 : SIDE_VIEW_WIDTH - 4 - deviceDepth;
+        const sideColor = dd.headerColor ?? dd.color ?? "#4a90d9";
         return (
           <g
             key={pl.id}
@@ -780,7 +786,7 @@ function SideViewRack({
               }
             }}
           >
-            <rect x={x} y={y} width={deviceDepth} height={h} fill={dd.headerColor ?? dd.color ?? "#4a90d9"} stroke={isSelected ? "#2563eb" : "#333"} strokeWidth={isSelected ? 1.5 : 0.5} rx={1} opacity={0.85} />
+            <rect x={x} y={y} width={deviceDepth} height={h} fill={sideColor} stroke={isSelected ? "#2563eb" : "#333"} strokeWidth={isSelected ? 1.5 : 0.5} rx={1} opacity={0.85} />
             <clipPath id={`side-clip-${pl.id}`}><rect x={x} y={y} width={deviceDepth} height={h} rx={1} /></clipPath>
             <g clipPath={`url(#side-clip-${pl.id})`}>
               {(() => {
@@ -792,7 +798,7 @@ function SideViewRack({
                 const lineH = fs * 1.35;
                 const baseY = y + h / 2 - ((lines.length - 1) * lineH) / 2;
                 return (
-                  <text x={x + deviceDepth / 2} textAnchor="middle" fontSize={fs} fill="#fff" fontWeight={500} style={{ pointerEvents: "none" }}>
+                  <text x={x + deviceDepth / 2} textAnchor="middle" fontSize={fs} fill={contrastingTextColor(sideColor)} fontWeight={500} style={{ pointerEvents: "none" }}>
                     {lines.map((line, i) => (
                       <tspan key={i} x={x + deviceDepth / 2} y={baseY + i * lineH} dominantBaseline="central">{line}</tspan>
                     ))}

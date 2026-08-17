@@ -6,6 +6,7 @@ import {
   uToY, sideW, ACC_COLORS, wrapLabel,
 } from "./rackFaceConstants";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
+import { contrastingTextColor, CONTRAST_BLACK } from "../colorContrast";
 
 export interface RackFaceSVGProps {
   rack: RackData;
@@ -92,11 +93,12 @@ export default function RackFaceSVG({
             const resolved = resolveDeviceLabel(dd, defaults);
             const labelTrim = Math.max(3, Math.floor(dDepth / 5));
             const lbl = resolved.text.length > labelTrim ? resolved.text.slice(0, Math.max(1, labelTrim - 1)) + "…" : resolved.text;
+            const shelfColor = dd.headerColor ?? dd.color ?? "#4a90d9";
             return (
               <g key={pl.id}>
-                <rect x={dx} y={dy} width={dDepth} height={dh} fill={dd.headerColor ?? dd.color ?? "#4a90d9"} stroke="#333" strokeWidth={0.5} rx={1} opacity={0.85} />
+                <rect x={dx} y={dy} width={dDepth} height={dh} fill={shelfColor} stroke="#333" strokeWidth={0.5} rx={1} opacity={0.85} />
                 <text x={dx + dDepth / 2} y={dy + dh / 2} textAnchor="middle" dominantBaseline="central"
-                  fontSize={Math.min(7, Math.max(4, dh * 0.5))} fill="#fff" style={{ pointerEvents: "none" }}>
+                  fontSize={Math.min(7, Math.max(4, dh * 0.5))} fill={contrastingTextColor(shelfColor)} style={{ pointerEvents: "none" }}>
                   {lbl}
                 </text>
               </g>
@@ -114,12 +116,13 @@ export default function RackFaceSVG({
           const lineH = fs * 1.35;
           const baseY = y + h / 2 - ((lines.length - 1) * lineH) / 2;
           const clipId = `rfsvg-side-clip-${rack.id}-${pl.id}`;
+          const sideColor = dd.headerColor ?? dd.color ?? "#4a90d9";
           return (
             <g key={pl.id}>
-              <rect x={x} y={y} width={deviceDepth} height={h} fill={dd.headerColor ?? dd.color ?? "#4a90d9"} stroke="#333" strokeWidth={0.5} opacity={0.85} />
+              <rect x={x} y={y} width={deviceDepth} height={h} fill={sideColor} stroke="#333" strokeWidth={0.5} opacity={0.85} />
               <clipPath id={clipId}><rect x={x} y={y} width={deviceDepth} height={h} /></clipPath>
               <g clipPath={`url(#${clipId})`}>
-                <text x={x + deviceDepth / 2} textAnchor="middle" fontSize={fs} fill="#fff" fontWeight={500} style={{ pointerEvents: "none" }}>
+                <text x={x + deviceDepth / 2} textAnchor="middle" fontSize={fs} fill={contrastingTextColor(sideColor)} fontWeight={500} style={{ pointerEvents: "none" }}>
                   {lines.map((line, i) => (
                     <tspan key={i} x={x + deviceDepth / 2} y={baseY + i * lineH} dominantBaseline="central">{line}</tspan>
                   ))}
@@ -245,14 +248,15 @@ export default function RackFaceSVG({
                 const resolved = resolveDeviceLabel(dd, defaults);
                 const labelTrim = Math.max(4, Math.floor(effectiveWidthPx / 5));
                 const lbl = resolved.text.length > labelTrim ? resolved.text.slice(0, Math.max(1, labelTrim - 1)) + "…" : resolved.text;
+                const occColor = dd.headerColor ?? dd.color ?? "#4a90d9";
                 return (
                   <g key={p.id}>
                     <rect x={xPx} y={topY} width={wPx} height={hPx}
-                      fill={dd.headerColor ?? dd.color ?? "#4a90d9"} stroke="#333" strokeWidth={0.5} rx={1} />
+                      fill={occColor} stroke="#333" strokeWidth={0.5} rx={1} />
                     <text
                       x={xPx + wPx / 2} y={topY + hPx / 2}
                       textAnchor="middle" dominantBaseline="central"
-                      fontSize={Math.min(7, hPx * 0.4)} fill="#fff"
+                      fontSize={Math.min(7, hPx * 0.4)} fill={contrastingTextColor(occColor)}
                       style={{ pointerEvents: "none" }}
                       transform={p.rotated ? `rotate(-90 ${xPx + wPx / 2} ${topY + hPx / 2})` : undefined}
                     >
@@ -283,18 +287,19 @@ export default function RackFaceSVG({
         const lines = wrapLabel(resolved.text, maxChars, maxLines);
         const lineH = fs * 1.35;
         const baseY = y + h / 2 - ((lines.length - 1) * lineH) / 2;
+        const textColor = contrastingTextColor(color);
         return (
           <g key={p.id}>
             <clipPath id={`rfsvg-clip-${p.id}`}><rect x={x} y={y} width={w} height={h} rx={1} /></clipPath>
             <rect x={x} y={y} width={w} height={h} fill={color} stroke="#333" strokeWidth={0.75} rx={1} />
             <g clipPath={`url(#rfsvg-clip-${p.id})`}>
-              <text x={x + w / 2} textAnchor="middle" fontSize={fs} fill="#fff" fontWeight={600} style={{ pointerEvents: "none" }}>
+              <text x={x + w / 2} textAnchor="middle" fontSize={fs} fill={textColor} fontWeight={600} style={{ pointerEvents: "none" }}>
                 {lines.map((line, i) => (
                   <tspan key={i} x={x + w / 2} y={baseY + i * lineH} dominantBaseline="central">{line}</tspan>
                 ))}
               </text>
               {hU > 1 && (
-                <text x={x + w - 4} y={y + 8} textAnchor="end" fontSize={7} fill="rgba(255,255,255,0.7)" style={{ pointerEvents: "none" }}>{hU}U</text>
+                <text x={x + w - 4} y={y + 8} textAnchor="end" fontSize={7} fill={textColor === CONTRAST_BLACK ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.7)"} style={{ pointerEvents: "none" }}>{hU}U</text>
               )}
             </g>
           </g>
