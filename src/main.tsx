@@ -15,6 +15,9 @@ function shouldShowLanding(): boolean {
   const path = window.location.pathname;
   // Shared schematic links, or any non-root path — go straight to editor
   if (path !== "/") return false;
+  // Seeding the test fixture (#307) means going straight to the editor, or the
+  // landing page would swallow the request for a first-time visitor.
+  if (new URLSearchParams(window.location.search).get("fixture") === "test") return false;
   // Returning user who opted to skip the landing page
   if (localStorage.getItem("easyschematic-skip-landing")) return false;
   return true;

@@ -581,6 +581,18 @@ export default function MenuBar() {
     newSchematic();
   }, [isLoggedIn, isOnline, newSchematic]);
 
+  /** Seed the test fixture (#307). Dev builds only — see src/testSchematic/load.ts. */
+  const handleLoadTestSchematic = useCallback(async () => {
+    const store = useSchematicStore.getState();
+    try {
+      const { loadTestSchematic } = await import("../testSchematic/load");
+      // False means the overwrite prompt was declined — nothing changed, so no toast.
+      if (await loadTestSchematic()) store.addToast("Test schematic loaded", "success", 2000);
+    } catch (e) {
+      store.addToast(e instanceof Error ? e.message : "Could not load the test schematic", "error");
+    }
+  }, []);
+
   const closeMenu = () => setOpenMenu(null);
 
   const menus: Record<string, MenuEntry[]> = {
@@ -599,6 +611,19 @@ export default function MenuBar() {
       { type: "item", label: "Import Cable Schedule...", onClick: () => setShowCsvImport(true) },
       { type: "separator" },
       { type: "item", label: "Preferences...", onClick: () => setShowPreferences(true) },
+      // Test scaffolding (#307) — dev builds only. Deployed builds seed the same
+      // fixture with ?fixture=test, so this never reaches the shipped menu.
+      ...(import.meta.env.DEV
+        ? ([
+            { type: "separator" },
+            {
+              type: "item",
+              label: "Load Test Schematic",
+              title: "Replace the current schematic with the seeded test fixture",
+              onClick: handleLoadTestSchematic,
+            },
+          ] as MenuEntry[])
+        : []),
     ],
     Edit: [
       { type: "item", label: "Undo", shortcut: "Ctrl+Z", disabled: undoSize === 0, onClick: undo },

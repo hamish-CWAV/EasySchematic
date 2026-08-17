@@ -42,6 +42,8 @@
     "reports:report": "npx tsx src/reportsHarness/run.ts",
     "reports:check": "npx tsx src/reportsHarness/run.ts --check",
     "reports:baseline": "npx tsx src/reportsHarness/run.ts --update-baselines",
+    "fixture:build": "npx tsx src/testSchematic/run.ts",
+    "fixture:check": "npx tsx src/testSchematic/run.ts --check",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium"
   },

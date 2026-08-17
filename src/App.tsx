@@ -62,6 +62,7 @@ import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, Schemat
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
 import { loadSharedSchematic, checkSession } from "./templateApi";
+import { loadTestSchematicFromUrl } from "./testSchematic/load";
 import { refreshCloudCache } from "./cloudSync";
 import { useTheme } from "./hooks/useTheme";
 
@@ -1855,6 +1856,12 @@ export default function App() {
         window.history.replaceState(null, "", "/");
       });
     }
+  }, []);
+
+  // Seed the test fixture from ?fixture=test (#307), so a test pass can start
+  // from a known scene on a deployed build as well as in dev.
+  useEffect(() => {
+    loadTestSchematicFromUrl();
   }, []);
 
   // Global keyboard shortcuts that should work on every page (schematic, rack, print sheet).
