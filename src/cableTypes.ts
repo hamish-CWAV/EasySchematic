@@ -4,6 +4,10 @@ import {
   CONNECTOR_TO_CABLE,
   CONNECTOR_ACCEPTS,
   HYBRID_CABLE_FAMILY,
+  BARE_WIRE_CONNECTORS,
+  BARE_WIRE_HYBRID_PARTNERS,
+  FIELD_TERMINATED_CONNECTORS,
+  TERMINABLE_BARE_WIRE_CONNECTORS,
   matesNatively,
   needsAdapter,
   resolvePortGender,
@@ -122,6 +126,48 @@ export function hybridCableLabel(
 }
 
 /**
+ * Cable label for a run with a bare-wire end. Bare wire is compatible with every
+ * connector, so these runs used to fall through to the source-connector default and the
+ * same two endpoints packed under different names depending on drag direction.
+ *
+ * Returns undefined unless exactly the bare-wire cases apply; every label produced is
+ * independent of argument order.
+ *
+ * - Field-terminated end (solder cup, punch-down, IDC): there is no connector — the part
+ *   packed is bulk cable, named for the far end's family ("Bulk Cat6") or plain
+ *   "Bulk Cable" when the far end is bare too.
+ * - Screw-terminal end (Phoenix, terminal block) against a real connector: one cable with
+ *   a plug on one end and a screw-terminal tail on the other, but only pairings that exist
+ *   as a physical part (BARE_WIRE_HYBRID_PARTNERS) get the combined label. Implausible
+ *   pairings like hdmi↔phoenix keep the far end's own cable label — conservative, since
+ *   compatibility waves bare wire through against everything.
+ */
+export function bareWireCableLabel(
+  a: ConnectorType | undefined,
+  b: ConnectorType | undefined,
+): string | undefined {
+  if (!a || !b || a === b) return undefined;
+  if (!BARE_WIRE_CONNECTORS.has(a) && !BARE_WIRE_CONNECTORS.has(b)) return undefined;
+
+  if (FIELD_TERMINATED_CONNECTORS.has(a) || FIELD_TERMINATED_CONNECTORS.has(b)) {
+    const far = FIELD_TERMINATED_CONNECTORS.has(a) ? b : a;
+    const cable = BARE_WIRE_CONNECTORS.has(far) ? "" : CONNECTOR_TO_CABLE[far];
+    return cable ? `Bulk ${cable}` : "Bulk Cable";
+  }
+
+  const bare = TERMINABLE_BARE_WIRE_CONNECTORS.has(a) ? a : b;
+  const far = bare === a ? b : a;
+  if (TERMINABLE_BARE_WIRE_CONNECTORS.has(far)) {
+    // Screw terminals on both ends: plain wire either way; name it deterministically.
+    return CONNECTOR_TO_CABLE[[a, b].sort()[0]];
+  }
+  if (BARE_WIRE_HYBRID_PARTNERS.has(far)) {
+    return `${CONNECTOR_TO_CABLE[far]} to ${CONNECTOR_TO_CABLE[bare]}`;
+  }
+  return CONNECTOR_TO_CABLE[far] || CONNECTOR_TO_CABLE[bare];
+}
+
+/**
  * Derive cable type from ports and signal type.
  * Prefers connector-based lookup; falls back to signal-based for legacy data.
  */
@@ -154,6 +200,9 @@ export function getCableType(
     // Natively-mating ends that terminate differently: one hybrid cord, both ends named.
     const hybrid = hybridCableLabel(src, tgt);
     if (hybrid) return hybrid;
+    // Bare-wire end: direction-independent bulk or screw-terminal label.
+    const bareWire = bareWireCableLabel(src, tgt);
+    if (bareWire) return bareWire;
     // Native combo: prefer the more specific (accepted) connector for cable label
     if (CONNECTOR_ACCEPTS[src]?.native?.includes(tgt)) {
       return CONNECTOR_TO_CABLE[tgt] || SIGNAL_TO_CABLE[signalType];

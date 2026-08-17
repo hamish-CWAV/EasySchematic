@@ -126,10 +126,35 @@ export const CONNECTOR_ACCEPTS: Partial<Record<ConnectorType, ConnectorAcceptanc
   "edison":        { adapter: ["iec", "iec-c5", "iec-c7", "iec-c15", "iec-c20", "powercon", "l5-20", "l6-20", "l6-30", "l21-30"] },
 };
 
+/** Bare-wire connectors that are still a REAL termination — a screw-terminal block the
+ *  stripped conductors land in. One cable can carry a moulded plug on one end and a
+ *  screw-terminal tail on the other (DSP euroblock out → amplifier XLR in), so these may
+ *  headline a combined pack-list label. */
+export const TERMINABLE_BARE_WIRE_CONNECTORS: Set<ConnectorType> = new Set([
+  "phoenix", "terminal-block",
+]);
+
+/** Bare-wire terminations with NO connector at all — the cable is cut from a spool and
+ *  soldered or punched down in the field. Whatever the far end is, the part packed is
+ *  bulk cable, so these must never appear in a combined label. */
+export const FIELD_TERMINATED_CONNECTORS: Set<ConnectorType> = new Set([
+  "solder-cup", "punch-down-110", "punch-down-66", "krone-idc",
+]);
+
 /** Bare-wire connectors (no physical connector — cable goes straight in) are compatible with anything */
 export const BARE_WIRE_CONNECTORS: Set<ConnectorType> = new Set([
-  "phoenix", "terminal-block",
-  "solder-cup", "punch-down-110", "punch-down-66", "krone-idc",
+  ...TERMINABLE_BARE_WIRE_CONNECTORS,
+  ...FIELD_TERMINATED_CONNECTORS,
+]);
+
+/** Real connectors that plausibly share one cable with a screw-terminal end. Bare wire is
+ *  *compatible* with everything (the block doesn't care what the far end carries), but a
+ *  combined label is only minted for pairings that exist as a physical part — the
+ *  analog/speaker audio runs like XLR↔Phoenix. hdmi↔phoenix passes the compatibility
+ *  check yet no such cable exists, so pairings outside this set keep the far end's own
+ *  cable label instead of inventing a hybrid. */
+export const BARE_WIRE_HYBRID_PARTNERS: Set<ConnectorType> = new Set([
+  "xlr-3", "mini-xlr", "combo-xlr-trs", "trs-quarter", "ts-quarter", "trs-eighth", "rca", "speakon",
 ]);
 
 /** Signal pairs that physically share a connector and are interchangeable when both ports use it.

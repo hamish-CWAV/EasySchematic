@@ -11,7 +11,14 @@
 
 import { describe, it, expect } from "vitest";
 import { getCableType, hybridCableLabel } from "../cableTypes";
-import { needsAdapter, HYBRID_CABLE_FAMILY } from "../connectorTypes";
+import {
+  needsAdapter,
+  HYBRID_CABLE_FAMILY,
+  BARE_WIRE_CONNECTORS,
+  BARE_WIRE_HYBRID_PARTNERS,
+  FIELD_TERMINATED_CONNECTORS,
+  TERMINABLE_BARE_WIRE_CONNECTORS,
+} from "../connectorTypes";
 import type { ConnectorType, Port, SignalType } from "../types";
 
 const FIBER: ConnectorType[] = ["lc", "sc", "st", "opticalcon"];
@@ -117,6 +124,67 @@ describe("pairs that must NOT get a combined label", () => {
     expect(hybridCableLabel("lc", "lc")).toBeUndefined();
     expect(hybridCableLabel("lc", undefined)).toBeUndefined();
     expect(hybridCableLabel(undefined, "sc")).toBeUndefined();
+  });
+});
+
+// Bare wire is compatible with EVERY connector, so a mismatched pair used to fall through
+// to the source-connector default: a DSP euroblock out → speaker XLR in packed as
+// "Phoenix", the identical run drawn the other way packed as "XLR" (#308).
+describe("bare-wire ends label independently of drag direction", () => {
+  it("labels a screw-terminal end against a plausible partner with both ends, either way", () => {
+    expect(cable("phoenix", "xlr-3", "analog-audio")).toBe("XLR to Phoenix");
+    expect(cable("xlr-3", "phoenix", "analog-audio")).toBe("XLR to Phoenix");
+    expect(cable("terminal-block", "trs-quarter", "analog-audio")).toBe('1/4" TRS to Terminal Block');
+    expect(cable("speakon", "phoenix", "speaker-level")).toBe("speakON to Phoenix");
+  });
+
+  it("labels a field-terminated end as bulk cable of the far end's family, either way", () => {
+    expect(cable("punch-down-110", "rj45", "ethernet")).toBe("Bulk Cat6");
+    expect(cable("rj45", "punch-down-110", "ethernet")).toBe("Bulk Cat6");
+    expect(cable("krone-idc", "rj45", "ethernet")).toBe("Bulk Cat6");
+    expect(cable("solder-cup", "xlr-3", "analog-audio")).toBe("Bulk XLR");
+    // Even against a plausible screw-terminal partner: no connector means bulk, not hybrid.
+    expect(cable("punch-down-66", "phoenix", "analog-audio")).toBe("Bulk Cable");
+    expect(cable("solder-cup", "punch-down-110", "analog-audio")).toBe("Bulk Cable");
+  });
+
+  it("keeps an implausible screw-terminal pairing on the far end's own label", () => {
+    // hdmi↔phoenix passes the compatibility check but no such cable exists — no
+    // "HDMI to Phoenix" hybrid may be minted, and no direction dependence either.
+    expect(cable("hdmi", "phoenix", "hdmi")).toBe("HDMI");
+    expect(cable("phoenix", "hdmi", "hdmi")).toBe("HDMI");
+    expect(cable("db9", "terminal-block", "serial")).toBe("DB9");
+    expect(BARE_WIRE_HYBRID_PARTNERS.has("hdmi")).toBe(false);
+  });
+
+  it("keeps matched bare ends on their single-end labels", () => {
+    expect(cable("phoenix", "phoenix", "analog-audio")).toBe("Phoenix");
+    expect(cable("phoenix", "terminal-block", "analog-audio")).toBe("Phoenix");
+    expect(cable("terminal-block", "phoenix", "analog-audio")).toBe("Phoenix");
+    expect(cable("punch-down-110", "punch-down-110", "ethernet")).toBe("Bulk Cable");
+  });
+
+  it("gives the same label in both drag directions for every bare-wire pairing", () => {
+    const partners: ConnectorType[] = ["xlr-3", "trs-quarter", "rca", "speakon", "rj45", "hdmi", "db9", "bnc"];
+    for (const bare of BARE_WIRE_CONNECTORS) {
+      for (const other of [...partners, ...BARE_WIRE_CONNECTORS]) {
+        expect(cable(bare, other), `${bare} ↔ ${other}`).toBe(cable(other, bare));
+      }
+    }
+  });
+
+  it("splits the bare-wire class exactly in two", () => {
+    // areConnectorsCompatible/needsAdapter still wave the whole class through; only the
+    // pack-list label distinguishes a screw terminal from a field termination.
+    for (const c of BARE_WIRE_CONNECTORS) {
+      expect(
+        TERMINABLE_BARE_WIRE_CONNECTORS.has(c) !== FIELD_TERMINATED_CONNECTORS.has(c),
+        c,
+      ).toBe(true);
+    }
+    expect(BARE_WIRE_CONNECTORS.size).toBe(
+      TERMINABLE_BARE_WIRE_CONNECTORS.size + FIELD_TERMINATED_CONNECTORS.size,
+    );
   });
 });
 
