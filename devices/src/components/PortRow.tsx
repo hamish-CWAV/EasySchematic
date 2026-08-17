@@ -95,6 +95,13 @@ export default function PortRow({ port, index, direction, isLast, mime, isDraggi
 
   const selectClass = "px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[100px]";
 
+  // Passthrough rows carry two labelled connector groups ("Rear:" / "Front:").
+  // Each one is its own flex item so the whole group moves to the next line
+  // together — the label leads its controls instead of trailing the group
+  // before it. flex-wrap lets a group fold internally rather than overflow
+  // when even one group is wider than the row.
+  const faceGroupClass = "flex flex-wrap items-center gap-2 min-w-0";
+
   return (
     <>
       {showIndicatorBefore && <div className="h-0.5 bg-blue-500 rounded-full my-0.5" />}
@@ -130,7 +137,7 @@ export default function PortRow({ port, index, direction, isLast, mime, isDraggi
           type="text"
           value={port.label}
           onChange={(e) => onChange({ label: e.target.value })}
-          className="w-full sm:flex-1 sm:w-auto min-w-0 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full sm:flex-1 sm:w-auto min-w-0 sm:min-w-[144px] px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="Label"
         />
 
@@ -155,34 +162,39 @@ export default function PortRow({ port, index, direction, isLast, mime, isDraggi
                 className={selectClass}
               />
             )}
-            {/* Rear connector + gender */}
-            <span className="text-xs text-slate-400 dark:text-slate-500">Rear:</span>
-            <SearchableSelect<ConnectorType>
-              value={(port.rearConnectorType ?? "none") as ConnectorType}
-              onChange={(v) => onChange({ rearConnectorType: v === "none" ? undefined : v })}
-              groups={CONNECTOR_GROUPS}
-              labels={CONNECTOR_LABELS}
-              className={selectClass}
-            />
-            <GenderSelect
-              connectorType={port.rearConnectorType}
-              value={port.rearGender}
-              onChange={(g) => onChange({ rearGender: g })}
-            />
+            {/* Rear connector + gender — kept in one group so "Rear:" never
+                trails the previous group when the row wraps at narrow widths. */}
+            <div className={faceGroupClass}>
+              <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">Rear:</span>
+              <SearchableSelect<ConnectorType>
+                value={(port.rearConnectorType ?? "none") as ConnectorType}
+                onChange={(v) => onChange({ rearConnectorType: v === "none" ? undefined : v })}
+                groups={CONNECTOR_GROUPS}
+                labels={CONNECTOR_LABELS}
+                className={selectClass}
+              />
+              <GenderSelect
+                connectorType={port.rearConnectorType}
+                value={port.rearGender}
+                onChange={(g) => onChange({ rearGender: g })}
+              />
+            </div>
             {/* Front connector + gender */}
-            <span className="text-xs text-slate-400 dark:text-slate-500">Front:</span>
-            <SearchableSelect<ConnectorType>
-              value={(port.frontConnectorType ?? "none") as ConnectorType}
-              onChange={(v) => onChange({ frontConnectorType: v === "none" ? undefined : v })}
-              groups={CONNECTOR_GROUPS}
-              labels={CONNECTOR_LABELS}
-              className={selectClass}
-            />
-            <GenderSelect
-              connectorType={port.frontConnectorType}
-              value={port.frontGender}
-              onChange={(g) => onChange({ frontGender: g })}
-            />
+            <div className={faceGroupClass}>
+              <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">Front:</span>
+              <SearchableSelect<ConnectorType>
+                value={(port.frontConnectorType ?? "none") as ConnectorType}
+                onChange={(v) => onChange({ frontConnectorType: v === "none" ? undefined : v })}
+                groups={CONNECTOR_GROUPS}
+                labels={CONNECTOR_LABELS}
+                className={selectClass}
+              />
+              <GenderSelect
+                connectorType={port.frontConnectorType}
+                value={port.frontGender}
+                onChange={(g) => onChange({ frontGender: g })}
+              />
+            </div>
           </>
         ) : (
           <>
