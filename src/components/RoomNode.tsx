@@ -3,6 +3,7 @@ import { NodeResizer, type NodeProps } from "@xyflow/react";
 import type { RoomNode as RoomNodeType, SchematicNode } from "../types";
 import { useSchematicStore } from "../store";
 import { computeResizeSnap } from "../snapUtils";
+import { useDisplayLabel } from "../labelCaseUtils";
 
 function RackIcon() {
   return (
@@ -43,6 +44,13 @@ function RoomNodeComponent({ id, data, selected }: NodeProps<RoomNodeType>) {
   const isSubroom = useSchematicStore((s) => !!s.nodes.find((n) => n.id === id)?.parentId);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(data.label);
+
+  // Room names honor the display-case preference and nothing else (#294). The header used
+  // to carry a decorative `uppercase` class, which made "As-typed" render as all-caps and
+  // left rooms looking unlike device and port labels, which have never been force-cased.
+  // The edit <input> below binds to raw `data.label`, so double-clicking a room still
+  // reveals the stored casing whatever the preference.
+  const displayLabel = useDisplayLabel();
 
   const locked = data.locked ?? false;
 
@@ -142,12 +150,12 @@ function RoomNodeComponent({ id, data, selected }: NodeProps<RoomNodeType>) {
             />
           ) : (
             <span
-              className="font-semibold uppercase tracking-wide cursor-text select-none flex items-center gap-1"
+              className="font-semibold tracking-wide cursor-text select-none flex items-center gap-1"
               style={{ fontSize, color: borderColorVal || (isRack ? "#374151" : "var(--color-text-muted)") }}
               onDoubleClick={() => { setValue(data.label); setEditing(true); }}
             >
               {isRack && <RackIcon />}
-              {data.label}
+              {displayLabel(data.label)}
             </span>
           )}
         </div>

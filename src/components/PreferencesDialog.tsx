@@ -358,7 +358,7 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                   </select>
                 </div>
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-                  Display style for device, port, slot, and card labels on the canvas and in exports. Doesn't modify your data — switch back to As-typed any time to see original casing.
+                  Display style for device, port, room, slot, and card labels on the canvas and in exports. Doesn't modify your data — switch back to As-typed any time to see original casing.
                 </p>
                 <div className="flex items-center justify-between py-1 mt-2">
                   <span className="text-xs text-[var(--color-text)]">Use short device names</span>

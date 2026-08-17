@@ -686,8 +686,8 @@
         "cableType": "Cam-Lok",
         "signalType": "L1 (Phase A)",
         "cableLength": "",
-        "sourceRoom": "Unassigned",
-        "targetRoom": "Unassigned",
+        "sourceRoom": "",
+        "targetRoom": "",
         "multicableLabel": "",
         "bundle": "",
         "gaugeAwg": "",
@@ -707,8 +707,8 @@
         "cableType": "Cam-Lok",
         "signalType": "L2 (Phase B)",
         "cableLength": "",
-        "sourceRoom": "Unassigned",
-        "targetRoom": "Unassigned",
+        "sourceRoom": "",
+        "targetRoom": "",
         "multicableLabel": "",
         "bundle": "",
         "gaugeAwg": "",
@@ -728,8 +728,8 @@
         "cableType": "Cam-Lok",
         "signalType": "L3 (Phase C)",
         "cableLength": "",
-        "sourceRoom": "Unassigned",
-        "targetRoom": "Unassigned",
+        "sourceRoom": "",
+        "targetRoom": "",
         "multicableLabel": "",
         "bundle": "",
         "gaugeAwg": "",
@@ -749,8 +749,8 @@
         "cableType": "Cam-Lok",
         "signalType": "Neutral",
         "cableLength": "",
-        "sourceRoom": "Unassigned",
-        "targetRoom": "Unassigned",
+        "sourceRoom": "",
+        "targetRoom": "",
         "multicableLabel": "",
         "bundle": "",
         "gaugeAwg": "",
@@ -770,8 +770,8 @@
         "cableType": "Cam-Lok",
         "signalType": "Ground",
         "cableLength": "",
-        "sourceRoom": "Unassigned",
-        "targetRoom": "Unassigned",
+        "sourceRoom": "",
+        "targetRoom": "",
         "multicableLabel": "",
         "bundle": "",
         "gaugeAwg": "",
@@ -791,7 +791,7 @@
         "cableType": "L5-20",
         "signalType": "Power",
         "cableLength": "",
-        "sourceRoom": "Unassigned",
+        "sourceRoom": "",
         "targetRoom": "Booth",
         "multicableLabel": "",
         "bundle": "",
@@ -822,7 +822,7 @@
         "cableUse": ""
       }
     ],
-    "csv": "﻿Cable Schedule — defaultSchematic\nGenerated 2026-01-01\n\nCable ID,Source,Src Port,Src Conn,Target,Tgt Port,Tgt Conn,Cable Type,Signal,Length,Est. Length,Gauge (AWG),Alias,Tested,Use,Src Room,Tgt Room,Snake,Bundle\nC001,Datapath FX4 SDI 1,SDI Out 1,BNC,BMD SDI→HDMI 1,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC002,Datapath FX4 SDI 1,SDI Out 2,BNC,BMD SDI→HDMI 2,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC003,Datapath FX4 SDI 1,SDI Out 3,BNC,BMD SDI→HDMI 3,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC004,Datapath FX4 SDI 1,SDI Out 4,BNC,BMD SDI→HDMI 4,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC005,Datapath FX4 SDI 2,SDI Out 1,BNC,BMD SDI→HDMI 5,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC006,BMD SDI→HDMI 1,HDMI Out,HDMI,TV 1,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC007,BMD SDI→HDMI 2,HDMI Out,HDMI,TV 2,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC008,BMD SDI→HDMI 3,HDMI Out,HDMI,TV 3,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC009,BMD SDI→HDMI 4,HDMI Out,HDMI,TV 4,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC010,BMD SDI→HDMI 5,HDMI Out,HDMI,TV 5,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC011,BMD SDI→HDMI 6,HDMI Out,HDMI,TV 6,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC012,BMD SDI→HDMI 7,HDMI Out,HDMI,TV 7,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC013,BMD SDI→HDMI 8,HDMI Out,HDMI,TV 8,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC014,Ethernet Switch (8-port),Port 7,RJ45,PTZOptics Move SE 2,Ethernet,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Stage,,\nC015,Ethernet Switch (8-port),Port 5,RJ45,Panasonic DZ13K,LAN,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Stage,,\nC016,Ethernet Switch (8-port),Port 8,RJ45,Ethernet Switch (4-port),Port 1,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,TECH TABLE,,\nC017,Associate Computer,Ethernet,RJ45,Ethernet Switch (4-port),Port 4,RJ45,Cat6 M-M,Ethernet,,,,,,,TECH TABLE,TECH TABLE,,\nC018,Mouse,USB-A,USB-A,Mac Studio (M4),USB-A 1,USB-A,USB M-M,USB,,,,,,,Booth,Booth,,\nC019,Datapath FX4 SDI 2,SDI Out 2,BNC,BMD SDI→HDMI 6,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC020,Datapath FX4 SDI 2,SDI Out 3,BNC,BMD SDI→HDMI 7,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC021,Datapath FX4 SDI 2,SDI Out 4,BNC,BMD SDI→HDMI 8,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC022,BMD HDMI→SDI,SDI Out,BNC,Panasonic DZ13K,SDI In 1,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC023,Designer Computer,HDMI Out,HDMI,1920x1080 Monitor,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,TECH TABLE,TECH TABLE,,\nC024,Associate Computer,HDMI Out,HDMI,1920x1080 Monitor,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,TECH TABLE,TECH TABLE,,\nC025,Keyboard,USB-A,USB-A,Mac Studio (M4),USB-A 2,USB-A,USB M-M,USB,,,,,,,Booth,Booth,,\nC026,Ethernet Switch (8-port),Port 6,RJ45,PTZOptics Move SE 1,Ethernet,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Stage,,\nC027,Designer Computer,Ethernet,RJ45,Ethernet Switch (4-port),Port 2,RJ45,Cat6 M-M,Ethernet,,,,,,,TECH TABLE,TECH TABLE,,\nC028,Mac Studio (M4),HDMI Out,HDMI,1920x1080 Monitor,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC029,Mac Studio (M4),Ethernet,RJ45,Ethernet Switch (8-port),Port 4,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Booth,,\nC030,TB (M) → HDMI (F) Adapter 1,HDMI Out,HDMI,Datapath FX4 SDI 1,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC031,TB (M) → HDMI (F) Adapter 2,HDMI Out,HDMI,BMD HDMI→SDI,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC032,TB (M) → HDMI (F) Adapter 1,HDMI Out,HDMI,Datapath FX4 SDI 2,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC033,Company Switch 400A 3-Phase,Feed 1 L1,Cam-Lok,Lex DB-100,Cam-Lok In L1,Cam-Lok,Cam-Lok,L1 (Phase A),,,,,,,Unassigned,Unassigned,,\nC034,Company Switch 400A 3-Phase,Feed 1 L2,Cam-Lok,Lex DB-100,Cam-Lok In L2,Cam-Lok,Cam-Lok,L2 (Phase B),,,,,,,Unassigned,Unassigned,,\nC035,Company Switch 400A 3-Phase,Feed 1 L3,Cam-Lok,Lex DB-100,Cam-Lok In L3,Cam-Lok,Cam-Lok,L3 (Phase C),,,,,,,Unassigned,Unassigned,,\nC036,Company Switch 400A 3-Phase,Feed 1 N,Cam-Lok,Lex DB-100,Cam-Lok In N,Cam-Lok,Cam-Lok,Neutral,,,,,,,Unassigned,Unassigned,,\nC037,Company Switch 400A 3-Phase,Feed 1 G,Cam-Lok,Lex DB-100,Cam-Lok In G,Cam-Lok,Cam-Lok,Ground,,,,,,,Unassigned,Unassigned,,\nC038,Lex DB-100,L5-20 Out 1,NEMA L5-20,L5-20 (M) → Edison (F) Adapter,L5-20 In,NEMA L5-20,L5-20,Power,,,,,,,Unassigned,Booth,,\nC039,L5-20 (M) → Edison (F) Adapter,Edison Out,Edison,Mac Studio (M4),AC Power,IEC C13/C14,Edison to IEC C13/C14 Adapter,Power,,,,,,,Booth,Booth,,",
+    "csv": "﻿Cable Schedule — defaultSchematic\nGenerated 2026-01-01\n\nCable ID,Source,Src Port,Src Conn,Target,Tgt Port,Tgt Conn,Cable Type,Signal,Length,Est. Length,Gauge (AWG),Alias,Tested,Use,Src Room,Tgt Room,Snake,Bundle\nC001,Datapath FX4 SDI 1,SDI Out 1,BNC,BMD SDI→HDMI 1,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC002,Datapath FX4 SDI 1,SDI Out 2,BNC,BMD SDI→HDMI 2,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC003,Datapath FX4 SDI 1,SDI Out 3,BNC,BMD SDI→HDMI 3,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC004,Datapath FX4 SDI 1,SDI Out 4,BNC,BMD SDI→HDMI 4,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC005,Datapath FX4 SDI 2,SDI Out 1,BNC,BMD SDI→HDMI 5,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC006,BMD SDI→HDMI 1,HDMI Out,HDMI,TV 1,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC007,BMD SDI→HDMI 2,HDMI Out,HDMI,TV 2,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC008,BMD SDI→HDMI 3,HDMI Out,HDMI,TV 3,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC009,BMD SDI→HDMI 4,HDMI Out,HDMI,TV 4,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC010,BMD SDI→HDMI 5,HDMI Out,HDMI,TV 5,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC011,BMD SDI→HDMI 6,HDMI Out,HDMI,TV 6,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC012,BMD SDI→HDMI 7,HDMI Out,HDMI,TV 7,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC013,BMD SDI→HDMI 8,HDMI Out,HDMI,TV 8,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Stage,Stage,,\nC014,Ethernet Switch (8-port),Port 7,RJ45,PTZOptics Move SE 2,Ethernet,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Stage,,\nC015,Ethernet Switch (8-port),Port 5,RJ45,Panasonic DZ13K,LAN,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Stage,,\nC016,Ethernet Switch (8-port),Port 8,RJ45,Ethernet Switch (4-port),Port 1,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,TECH TABLE,,\nC017,Associate Computer,Ethernet,RJ45,Ethernet Switch (4-port),Port 4,RJ45,Cat6 M-M,Ethernet,,,,,,,TECH TABLE,TECH TABLE,,\nC018,Mouse,USB-A,USB-A,Mac Studio (M4),USB-A 1,USB-A,USB M-M,USB,,,,,,,Booth,Booth,,\nC019,Datapath FX4 SDI 2,SDI Out 2,BNC,BMD SDI→HDMI 6,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC020,Datapath FX4 SDI 2,SDI Out 3,BNC,BMD SDI→HDMI 7,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC021,Datapath FX4 SDI 2,SDI Out 4,BNC,BMD SDI→HDMI 8,SDI In,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC022,BMD HDMI→SDI,SDI Out,BNC,Panasonic DZ13K,SDI In 1,BNC,BNC M-M,SDI,,,,,,,Booth,Stage,,\nC023,Designer Computer,HDMI Out,HDMI,1920x1080 Monitor,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,TECH TABLE,TECH TABLE,,\nC024,Associate Computer,HDMI Out,HDMI,1920x1080 Monitor,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,TECH TABLE,TECH TABLE,,\nC025,Keyboard,USB-A,USB-A,Mac Studio (M4),USB-A 2,USB-A,USB M-M,USB,,,,,,,Booth,Booth,,\nC026,Ethernet Switch (8-port),Port 6,RJ45,PTZOptics Move SE 1,Ethernet,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Stage,,\nC027,Designer Computer,Ethernet,RJ45,Ethernet Switch (4-port),Port 2,RJ45,Cat6 M-M,Ethernet,,,,,,,TECH TABLE,TECH TABLE,,\nC028,Mac Studio (M4),HDMI Out,HDMI,1920x1080 Monitor,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC029,Mac Studio (M4),Ethernet,RJ45,Ethernet Switch (8-port),Port 4,RJ45,Cat6 M-M,Ethernet,,,,,,,Booth,Booth,,\nC030,TB (M) → HDMI (F) Adapter 1,HDMI Out,HDMI,Datapath FX4 SDI 1,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC031,TB (M) → HDMI (F) Adapter 2,HDMI Out,HDMI,BMD HDMI→SDI,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC032,TB (M) → HDMI (F) Adapter 1,HDMI Out,HDMI,Datapath FX4 SDI 2,HDMI In,HDMI,HDMI M-M,HDMI,,,,,,,Booth,Booth,,\nC033,Company Switch 400A 3-Phase,Feed 1 L1,Cam-Lok,Lex DB-100,Cam-Lok In L1,Cam-Lok,Cam-Lok,L1 (Phase A),,,,,,,,,,\nC034,Company Switch 400A 3-Phase,Feed 1 L2,Cam-Lok,Lex DB-100,Cam-Lok In L2,Cam-Lok,Cam-Lok,L2 (Phase B),,,,,,,,,,\nC035,Company Switch 400A 3-Phase,Feed 1 L3,Cam-Lok,Lex DB-100,Cam-Lok In L3,Cam-Lok,Cam-Lok,L3 (Phase C),,,,,,,,,,\nC036,Company Switch 400A 3-Phase,Feed 1 N,Cam-Lok,Lex DB-100,Cam-Lok In N,Cam-Lok,Cam-Lok,Neutral,,,,,,,,,,\nC037,Company Switch 400A 3-Phase,Feed 1 G,Cam-Lok,Lex DB-100,Cam-Lok In G,Cam-Lok,Cam-Lok,Ground,,,,,,,,,,\nC038,Lex DB-100,L5-20 Out 1,NEMA L5-20,L5-20 (M) → Edison (F) Adapter,L5-20 In,NEMA L5-20,L5-20,Power,,,,,,,,Booth,,\nC039,L5-20 (M) → Edison (F) Adapter,Edison Out,Edison,Mac Studio (M4),AC Power,IEC C13/C14,Edison to IEC C13/C14 Adapter,Power,,,,,,,Booth,Booth,,",
     "printTables": [
       {
         "id": "cableSchedule",
@@ -1515,8 +1515,8 @@
             "cableAlias": "",
             "tested": "",
             "cableUse": "",
-            "sourceRoom": "Unassigned",
-            "targetRoom": "Unassigned",
+            "sourceRoom": "",
+            "targetRoom": "",
             "multicableLabel": "",
             "bundle": ""
           },
@@ -1536,8 +1536,8 @@
             "cableAlias": "",
             "tested": "",
             "cableUse": "",
-            "sourceRoom": "Unassigned",
-            "targetRoom": "Unassigned",
+            "sourceRoom": "",
+            "targetRoom": "",
             "multicableLabel": "",
             "bundle": ""
           },
@@ -1557,8 +1557,8 @@
             "cableAlias": "",
             "tested": "",
             "cableUse": "",
-            "sourceRoom": "Unassigned",
-            "targetRoom": "Unassigned",
+            "sourceRoom": "",
+            "targetRoom": "",
             "multicableLabel": "",
             "bundle": ""
           },
@@ -1578,8 +1578,8 @@
             "cableAlias": "",
             "tested": "",
             "cableUse": "",
-            "sourceRoom": "Unassigned",
-            "targetRoom": "Unassigned",
+            "sourceRoom": "",
+            "targetRoom": "",
             "multicableLabel": "",
             "bundle": ""
           },
@@ -1599,8 +1599,8 @@
             "cableAlias": "",
             "tested": "",
             "cableUse": "",
-            "sourceRoom": "Unassigned",
-            "targetRoom": "Unassigned",
+            "sourceRoom": "",
+            "targetRoom": "",
             "multicableLabel": "",
             "bundle": ""
           },
@@ -1620,7 +1620,7 @@
             "cableAlias": "",
             "tested": "",
             "cableUse": "",
-            "sourceRoom": "Unassigned",
+            "sourceRoom": "",
             "targetRoom": "Booth",
             "multicableLabel": "",
             "bundle": ""
@@ -1653,6 +1653,20 @@
   "packList": {
     "data": {
       "devices": [
+        {
+          "model": "Lex DB-100",
+          "deviceType": "power-distribution",
+          "room": "",
+          "count": 1,
+          "manufacturer": "Lex Products",
+          "modelNumber": "DB-100",
+          "cards": [],
+          "powerDrawW": 0,
+          "unitCost": 0,
+          "serialNumbers": [],
+          "notes": [],
+          "spareCount": 0
+        },
         {
           "model": "1920x1080 Monitor",
           "deviceType": "monitor",
@@ -1862,20 +1876,6 @@
           "serialNumbers": [],
           "notes": [],
           "spareCount": 0
-        },
-        {
-          "model": "Lex DB-100",
-          "deviceType": "power-distribution",
-          "room": "Unassigned",
-          "count": 1,
-          "manufacturer": "Lex Products",
-          "modelNumber": "DB-100",
-          "cards": [],
-          "powerDrawW": 0,
-          "unitCost": 0,
-          "serialNumbers": [],
-          "notes": [],
-          "spareCount": 0
         }
       ],
       "cables": [
@@ -1984,10 +1984,10 @@
           "cableLength": "",
           "sourceDevice": "Company Switch 400A 3-Phase",
           "sourcePort": "Feed 1 G",
-          "sourceRoom": "Unassigned",
+          "sourceRoom": "",
           "targetDevice": "Lex DB-100",
           "targetPort": "Cam-Lok In G",
-          "targetRoom": "Unassigned"
+          "targetRoom": ""
         },
         {
           "cableType": "Cam-Lok",
@@ -1995,10 +1995,10 @@
           "cableLength": "",
           "sourceDevice": "Company Switch 400A 3-Phase",
           "sourcePort": "Feed 1 L1",
-          "sourceRoom": "Unassigned",
+          "sourceRoom": "",
           "targetDevice": "Lex DB-100",
           "targetPort": "Cam-Lok In L1",
-          "targetRoom": "Unassigned"
+          "targetRoom": ""
         },
         {
           "cableType": "Cam-Lok",
@@ -2006,10 +2006,10 @@
           "cableLength": "",
           "sourceDevice": "Company Switch 400A 3-Phase",
           "sourcePort": "Feed 1 L2",
-          "sourceRoom": "Unassigned",
+          "sourceRoom": "",
           "targetDevice": "Lex DB-100",
           "targetPort": "Cam-Lok In L2",
-          "targetRoom": "Unassigned"
+          "targetRoom": ""
         },
         {
           "cableType": "Cam-Lok",
@@ -2017,10 +2017,10 @@
           "cableLength": "",
           "sourceDevice": "Company Switch 400A 3-Phase",
           "sourcePort": "Feed 1 L3",
-          "sourceRoom": "Unassigned",
+          "sourceRoom": "",
           "targetDevice": "Lex DB-100",
           "targetPort": "Cam-Lok In L3",
-          "targetRoom": "Unassigned"
+          "targetRoom": ""
         },
         {
           "cableType": "Cam-Lok",
@@ -2028,10 +2028,10 @@
           "cableLength": "",
           "sourceDevice": "Company Switch 400A 3-Phase",
           "sourcePort": "Feed 1 N",
-          "sourceRoom": "Unassigned",
+          "sourceRoom": "",
           "targetDevice": "Lex DB-100",
           "targetPort": "Cam-Lok In N",
-          "targetRoom": "Unassigned"
+          "targetRoom": ""
         },
         {
           "cableType": "Cat6 M-M",
@@ -2281,7 +2281,7 @@
           "cableLength": "",
           "sourceDevice": "Lex DB-100",
           "sourcePort": "L5-20 Out 1",
-          "sourceRoom": "Unassigned",
+          "sourceRoom": "",
           "targetDevice": "L5-20 (M) → Edison (F) Adapter",
           "targetPort": "L5-20 In",
           "targetRoom": "Booth"
@@ -2363,35 +2363,35 @@
           "cableType": "Cam-Lok",
           "signalType": "Ground",
           "cableLength": "",
-          "route": "Within Unassigned",
+          "route": "",
           "count": 1
         },
         {
           "cableType": "Cam-Lok",
           "signalType": "L1 (Phase A)",
           "cableLength": "",
-          "route": "Within Unassigned",
+          "route": "",
           "count": 1
         },
         {
           "cableType": "Cam-Lok",
           "signalType": "L2 (Phase B)",
           "cableLength": "",
-          "route": "Within Unassigned",
+          "route": "",
           "count": 1
         },
         {
           "cableType": "Cam-Lok",
           "signalType": "L3 (Phase C)",
           "cableLength": "",
-          "route": "Within Unassigned",
+          "route": "",
           "count": 1
         },
         {
           "cableType": "Cam-Lok",
           "signalType": "Neutral",
           "cableLength": "",
-          "route": "Within Unassigned",
+          "route": "",
           "count": 1
         },
         {
@@ -2419,7 +2419,7 @@
           "cableType": "L5-20",
           "signalType": "Power",
           "cableLength": "",
-          "route": "Unassigned > Booth",
+          "route": " > Booth",
           "count": 1
         }
       ],
@@ -2450,11 +2450,25 @@
       "racks": []
     },
     "documentSummary": "This document contains 40 devices, 42 connections and 3 rooms.",
-    "csv": "﻿Pack List — defaultSchematic\nGenerated 2026-01-01\nThis document contains 40 devices, 42 connections and 3 rooms.\n\nDEVICE LIST\nQty,Device,Manufacturer,Model #,Type,Room,Unit Cost,Extended Cost,Serial #,Spare,Note\n2,1920x1080 Monitor,,,monitor,Booth,,,,,\n1,BMD HDMI→SDI,Blackmagic Design,Micro Converter HDMI to SDI 3G,converter,Booth,,,,,\n2,Datapath FX4 SDI,Datapath,FX4 SDI,video-wall-controller,Booth,,,,,\n1,Ethernet Switch (8-port),,,network-switch,Booth,,,,,\n1,Keyboard,,,keyboard,Booth,,,,,\n2,Mac Studio (M4),Apple,Mac Studio (M4),computer,Booth,,,,,\n1,Mouse,,,mouse,Booth,,,,,\n8,BMD SDI→HDMI,Blackmagic Design,Micro Converter SDI to HDMI 3G,converter,Stage,,,,,\n1,Panasonic DZ13K,Panasonic,PT-DZ13K,projector,Stage,,,,,\n2,PTZOptics Move SE,PTZOptics,Move SE,ptz-camera,Stage,,,,,\n8,TV,,,tv,Stage,,,,,\n2,1920x1080 Monitor,,,monitor,TECH TABLE,,,,,\n1,Associate Computer,,,computer,TECH TABLE,,,,,\n1,Designer Computer,,,computer,TECH TABLE,,,,,\n1,Ethernet Switch (4-port),,,network-switch,TECH TABLE,,,,,\n1,Lex DB-100,Lex Products,DB-100,power-distribution,Unassigned,,,,,\n\nADAPTERS\nQty,Adapter,Manufacturer,Model #,Room\n1,L5-20 (M) → Edison (F) Adapter,,,Booth\n2,TB (M) → HDMI (F) Adapter,,,Booth\n1,TB (M) → HDMI (F) Adapter 1,,,Booth\n\nCABLE LIST\nQty,Cable Type,Signal,Length,Route,Unit Cost,Extended Cost\n9,BNC M-M,SDI,,Booth > Stage,,\n8,HDMI M-M,HDMI,,Within Stage,,\n4,HDMI M-M,HDMI,,Within Booth,,\n3,Cat6 M-M,Ethernet,,Booth > Stage,,\n2,Cat6 M-M,Ethernet,,Within TECH TABLE,,\n2,HDMI M-M,HDMI,,Within TECH TABLE,,\n2,USB M-M,USB,,Within Booth,,\n1,Cam-Lok,Ground,,Within Unassigned,,\n1,Cam-Lok,L1 (Phase A),,Within Unassigned,,\n1,Cam-Lok,L2 (Phase B),,Within Unassigned,,\n1,Cam-Lok,L3 (Phase C),,Within Unassigned,,\n1,Cam-Lok,Neutral,,Within Unassigned,,\n1,Cat6 M-M,Ethernet,,Booth > TECH TABLE,,\n1,Cat6 M-M,Ethernet,,Within Booth,,\n1,Edison to IEC C13/C14 Adapter,Power,,Within Booth,,\n1,L5-20,Power,,Unassigned > Booth,,",
+    "csv": "﻿Pack List — defaultSchematic\nGenerated 2026-01-01\nThis document contains 40 devices, 42 connections and 3 rooms.\n\nDEVICE LIST\nQty,Device,Manufacturer,Model #,Type,Room,Unit Cost,Extended Cost,Serial #,Spare,Note\n1,Lex DB-100,Lex Products,DB-100,power-distribution,,,,,,\n2,1920x1080 Monitor,,,monitor,Booth,,,,,\n1,BMD HDMI→SDI,Blackmagic Design,Micro Converter HDMI to SDI 3G,converter,Booth,,,,,\n2,Datapath FX4 SDI,Datapath,FX4 SDI,video-wall-controller,Booth,,,,,\n1,Ethernet Switch (8-port),,,network-switch,Booth,,,,,\n1,Keyboard,,,keyboard,Booth,,,,,\n2,Mac Studio (M4),Apple,Mac Studio (M4),computer,Booth,,,,,\n1,Mouse,,,mouse,Booth,,,,,\n8,BMD SDI→HDMI,Blackmagic Design,Micro Converter SDI to HDMI 3G,converter,Stage,,,,,\n1,Panasonic DZ13K,Panasonic,PT-DZ13K,projector,Stage,,,,,\n2,PTZOptics Move SE,PTZOptics,Move SE,ptz-camera,Stage,,,,,\n8,TV,,,tv,Stage,,,,,\n2,1920x1080 Monitor,,,monitor,TECH TABLE,,,,,\n1,Associate Computer,,,computer,TECH TABLE,,,,,\n1,Designer Computer,,,computer,TECH TABLE,,,,,\n1,Ethernet Switch (4-port),,,network-switch,TECH TABLE,,,,,\n\nADAPTERS\nQty,Adapter,Manufacturer,Model #,Room\n1,L5-20 (M) → Edison (F) Adapter,,,Booth\n2,TB (M) → HDMI (F) Adapter,,,Booth\n1,TB (M) → HDMI (F) Adapter 1,,,Booth\n\nCABLE LIST\nQty,Cable Type,Signal,Length,Route,Unit Cost,Extended Cost\n9,BNC M-M,SDI,,Booth > Stage,,\n8,HDMI M-M,HDMI,,Within Stage,,\n4,HDMI M-M,HDMI,,Within Booth,,\n3,Cat6 M-M,Ethernet,,Booth > Stage,,\n2,Cat6 M-M,Ethernet,,Within TECH TABLE,,\n2,HDMI M-M,HDMI,,Within TECH TABLE,,\n2,USB M-M,USB,,Within Booth,,\n1,Cam-Lok,Ground,,,,\n1,Cam-Lok,L1 (Phase A),,,,\n1,Cam-Lok,L2 (Phase B),,,,\n1,Cam-Lok,L3 (Phase C),,,,\n1,Cam-Lok,Neutral,,,,\n1,Cat6 M-M,Ethernet,,Booth > TECH TABLE,,\n1,Cat6 M-M,Ethernet,,Within Booth,,\n1,Edison to IEC C13/C14 Adapter,Power,,Within Booth,,\n1,L5-20,Power,, > Booth,,",
     "printTables": [
       {
         "id": "devices",
         "rows": [
+          {
+            "count": "1x",
+            "model": "Lex DB-100",
+            "manufacturer": "Lex Products",
+            "modelNumber": "DB-100",
+            "deviceType": "power-distribution",
+            "room": "",
+            "powerDrawW": "",
+            "unitCost": "",
+            "extCost": "",
+            "serialNumber": "",
+            "note": "",
+            "spare": ""
+          },
           {
             "count": "2x",
             "model": "1920x1080 Monitor",
@@ -2664,20 +2678,6 @@
             "serialNumber": "",
             "note": "",
             "spare": ""
-          },
-          {
-            "count": "1x",
-            "model": "Lex DB-100",
-            "manufacturer": "Lex Products",
-            "modelNumber": "DB-100",
-            "deviceType": "power-distribution",
-            "room": "Unassigned",
-            "powerDrawW": "",
-            "unitCost": "",
-            "extCost": "",
-            "serialNumber": "",
-            "note": "",
-            "spare": ""
           }
         ]
       },
@@ -2752,7 +2752,7 @@
             "cableType": "Cam-Lok",
             "signalType": "Ground",
             "cableLength": "",
-            "route": "Within Unassigned",
+            "route": "",
             "unitCost": "",
             "extCost": ""
           },
@@ -2761,7 +2761,7 @@
             "cableType": "Cam-Lok",
             "signalType": "L1 (Phase A)",
             "cableLength": "",
-            "route": "Within Unassigned",
+            "route": "",
             "unitCost": "",
             "extCost": ""
           },
@@ -2770,7 +2770,7 @@
             "cableType": "Cam-Lok",
             "signalType": "L2 (Phase B)",
             "cableLength": "",
-            "route": "Within Unassigned",
+            "route": "",
             "unitCost": "",
             "extCost": ""
           },
@@ -2779,7 +2779,7 @@
             "cableType": "Cam-Lok",
             "signalType": "L3 (Phase C)",
             "cableLength": "",
-            "route": "Within Unassigned",
+            "route": "",
             "unitCost": "",
             "extCost": ""
           },
@@ -2788,7 +2788,7 @@
             "cableType": "Cam-Lok",
             "signalType": "Neutral",
             "cableLength": "",
-            "route": "Within Unassigned",
+            "route": "",
             "unitCost": "",
             "extCost": ""
           },
@@ -2824,7 +2824,7 @@
             "cableType": "L5-20",
             "signalType": "Power",
             "cableLength": "",
-            "route": "Unassigned > Booth",
+            "route": " > Booth",
             "unitCost": "",
             "extCost": ""
           },
@@ -3289,6 +3289,28 @@
     "data": {
       "devices": [
         {
+          "nodeId": "device-79",
+          "model": "Lex DB-100",
+          "deviceType": "power-distribution",
+          "room": "",
+          "powerDrawW": 0,
+          "thermalBtuh": 0,
+          "thermalDerived": false,
+          "voltage": "208V",
+          "count": 1
+        },
+        {
+          "nodeId": "device-83",
+          "model": "Company Switch 400A 3-Phase",
+          "deviceType": "company-switch",
+          "room": "",
+          "powerDrawW": 0,
+          "thermalBtuh": 0,
+          "thermalDerived": false,
+          "voltage": "208V 3-Phase",
+          "count": 1
+        },
+        {
           "nodeId": "device-33",
           "model": "Mac Studio (M4)",
           "deviceType": "computer",
@@ -3485,35 +3507,13 @@
           "thermalDerived": false,
           "voltage": "",
           "count": 2
-        },
-        {
-          "nodeId": "device-79",
-          "model": "Lex DB-100",
-          "deviceType": "power-distribution",
-          "room": "Unassigned",
-          "powerDrawW": 0,
-          "thermalBtuh": 0,
-          "thermalDerived": false,
-          "voltage": "208V",
-          "count": 1
-        },
-        {
-          "nodeId": "device-83",
-          "model": "Company Switch 400A 3-Phase",
-          "deviceType": "company-switch",
-          "room": "Unassigned",
-          "powerDrawW": 0,
-          "thermalBtuh": 0,
-          "thermalDerived": false,
-          "voltage": "208V 3-Phase",
-          "count": 1
         }
       ],
       "distros": [
         {
           "nodeId": "device-79",
           "label": "Lex DB-100",
-          "room": "Unassigned",
+          "room": "",
           "capacityW": 20800,
           "loadW": 150,
           "loadPercent": 1,
@@ -3522,7 +3522,7 @@
         {
           "nodeId": "device-83",
           "label": "Company Switch 400A 3-Phase",
-          "room": "Unassigned",
+          "room": "",
           "capacityW": 144000,
           "loadW": 150,
           "loadPercent": 0,
@@ -3534,11 +3534,33 @@
       "unconnectedPowerW": 2528,
       "unconnectedThermalBtuh": 8627
     },
-    "csv": "﻿Power Report — defaultSchematic\nGenerated 2026-01-01\n\nDEVICE POWER DRAW\nQty,Device,Type,Room,Power (W),Thermal (BTU/h),Total Thermal (BTU/h),Voltage\n2,Mac Studio (M4),computer,Booth,150,~512,~1024,\n2,Datapath FX4 SDI,video-wall-controller,Booth,35,~119,~238,\n1,Ethernet Switch (8-port),network-switch,Booth,25,~85,~85,\n1,BMD HDMI→SDI,converter,Booth,2,~7,~7,\n2,1920x1080 Monitor,monitor,Booth,0,,,\n1,Mouse,mouse,Booth,0,,,\n1,Keyboard,keyboard,Booth,0,,,\n1,TB (M) → HDMI (F) Adapter 1,adapter,Booth,0,,,\n2,TB (M) → HDMI (F) Adapter,adapter,Booth,0,,,\n1,L5-20 (M) → Edison (F) Adapter,adapter,Booth,0,,,\n8,TV,tv,Stage,150,~512,~4096,\n1,Panasonic DZ13K,projector,Stage,1000,~3412,~3412,\n2,PTZOptics Move SE,ptz-camera,Stage,25,~85,~170,\n8,BMD SDI→HDMI,converter,Stage,2,~7,~56,\n1,Ethernet Switch (4-port),network-switch,TECH TABLE,15,~51,~51,\n1,Designer Computer,computer,TECH TABLE,0,,,\n1,Associate Computer,computer,TECH TABLE,0,,,\n2,1920x1080 Monitor,monitor,TECH TABLE,0,,,\n1,Lex DB-100,power-distribution,Unassigned,0,,,208V\n1,Company Switch 400A 3-Phase,company-switch,Unassigned,0,,,208V 3-Phase\n\nTotal System Power,2678W,22.3A @120V,12.9A @208V\nTotal System Thermal,9139 BTU/h,≈ 0.8 ton AC\nUnconnected Power,2528W,8627 BTU/h\n\nDISTRIBUTION LOADING\nDistro,Room,Capacity (W),Load (W),Load %,Status\nLex DB-100,Unassigned,20800,150,1%,OK\nCompany Switch 400A 3-Phase,Unassigned,144000,150,0%,OK",
+    "csv": "﻿Power Report — defaultSchematic\nGenerated 2026-01-01\n\nDEVICE POWER DRAW\nQty,Device,Type,Room,Power (W),Thermal (BTU/h),Total Thermal (BTU/h),Voltage\n1,Lex DB-100,power-distribution,,0,,,208V\n1,Company Switch 400A 3-Phase,company-switch,,0,,,208V 3-Phase\n2,Mac Studio (M4),computer,Booth,150,~512,~1024,\n2,Datapath FX4 SDI,video-wall-controller,Booth,35,~119,~238,\n1,Ethernet Switch (8-port),network-switch,Booth,25,~85,~85,\n1,BMD HDMI→SDI,converter,Booth,2,~7,~7,\n2,1920x1080 Monitor,monitor,Booth,0,,,\n1,Mouse,mouse,Booth,0,,,\n1,Keyboard,keyboard,Booth,0,,,\n1,TB (M) → HDMI (F) Adapter 1,adapter,Booth,0,,,\n2,TB (M) → HDMI (F) Adapter,adapter,Booth,0,,,\n1,L5-20 (M) → Edison (F) Adapter,adapter,Booth,0,,,\n8,TV,tv,Stage,150,~512,~4096,\n1,Panasonic DZ13K,projector,Stage,1000,~3412,~3412,\n2,PTZOptics Move SE,ptz-camera,Stage,25,~85,~170,\n8,BMD SDI→HDMI,converter,Stage,2,~7,~56,\n1,Ethernet Switch (4-port),network-switch,TECH TABLE,15,~51,~51,\n1,Designer Computer,computer,TECH TABLE,0,,,\n1,Associate Computer,computer,TECH TABLE,0,,,\n2,1920x1080 Monitor,monitor,TECH TABLE,0,,,\n\nTotal System Power,2678W,22.3A @120V,12.9A @208V\nTotal System Thermal,9139 BTU/h,≈ 0.8 ton AC\nUnconnected Power,2528W,8627 BTU/h\n\nDISTRIBUTION LOADING\nDistro,Room,Capacity (W),Load (W),Load %,Status\nLex DB-100,,20800,150,1%,OK\nCompany Switch 400A 3-Phase,,144000,150,0%,OK",
     "printTables": [
       {
         "id": "powerDevices",
         "rows": [
+          {
+            "count": "1x",
+            "model": "Lex DB-100",
+            "deviceType": "power-distribution",
+            "room": "",
+            "powerDrawW": "—",
+            "totalPowerW": "—",
+            "thermalBtuh": "—",
+            "totalThermalBtuh": "—",
+            "voltage": "208V"
+          },
+          {
+            "count": "1x",
+            "model": "Company Switch 400A 3-Phase",
+            "deviceType": "company-switch",
+            "room": "",
+            "powerDrawW": "—",
+            "totalPowerW": "—",
+            "thermalBtuh": "—",
+            "totalThermalBtuh": "—",
+            "voltage": "208V 3-Phase"
+          },
           {
             "count": "2x",
             "model": "Mac Studio (M4)",
@@ -3738,28 +3760,6 @@
             "voltage": "—"
           },
           {
-            "count": "1x",
-            "model": "Lex DB-100",
-            "deviceType": "power-distribution",
-            "room": "Unassigned",
-            "powerDrawW": "—",
-            "totalPowerW": "—",
-            "thermalBtuh": "—",
-            "totalThermalBtuh": "—",
-            "voltage": "208V"
-          },
-          {
-            "count": "1x",
-            "model": "Company Switch 400A 3-Phase",
-            "deviceType": "company-switch",
-            "room": "Unassigned",
-            "powerDrawW": "—",
-            "totalPowerW": "—",
-            "thermalBtuh": "—",
-            "totalThermalBtuh": "—",
-            "voltage": "208V 3-Phase"
-          },
-          {
             "count": "",
             "model": "TOTAL",
             "deviceType": "",
@@ -3778,7 +3778,7 @@
         "rows": [
           {
             "label": "Lex DB-100",
-            "room": "Unassigned",
+            "room": "",
             "capacityW": "20800",
             "loadW": "150",
             "loadPercent": "1%",
@@ -3786,7 +3786,7 @@
           },
           {
             "label": "Company Switch 400A 3-Phase",
-            "room": "Unassigned",
+            "room": "",
             "capacityW": "144000",
             "loadW": "150",
             "loadPercent": "0%",

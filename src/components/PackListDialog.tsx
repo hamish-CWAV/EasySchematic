@@ -6,6 +6,7 @@ import {
   mergeCablesByType,
   exportPackListCsv,
   getPackListTableData,
+  routeRoomKey,
   type PackListDevice,
   type PackListSummaryRow,
   type PackListAdapter,
@@ -287,10 +288,7 @@ function CablesTab({
   );
 
   if (groupByPath) {
-    const groups = groupBy(summary, (s) => {
-      const match = s.route.match(/^Within (.+)$|^(.+?) >/);
-      return match?.[1] ?? match?.[2] ?? "Unassigned";
-    });
+    const groups = groupBy(summary, (s) => routeRoomKey(s.route));
 
     return (
       <table className="w-full border-collapse">

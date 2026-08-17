@@ -214,16 +214,26 @@ export function getRoomLabel(
   nodes: SchematicNode[],
   parentId: string | undefined,
 ): string {
-  if (!parentId) return "Unassigned";
+  // A device that sits in no room reports a blank room, not an "Unassigned" sentinel —
+  // the reports read as a form with an empty field rather than asserting a room name
+  // that doesn't exist. Every other site that has to name the no-room case blanks it
+  // too (the rack rollup below, the cables-by-path group key, the network report), so
+  // the value and the group heading it lands under never disagree.
+  if (!parentId) return "";
   const parts: string[] = [];
   let currentId: string | undefined = parentId;
   while (currentId) {
     const node = nodes.find((n) => n.id === currentId);
     if (!node || node.type !== "room") break;
-    parts.unshift((node.data as RoomData).label || "Unnamed");
+    // Room names follow the display-case preference, same as device and port names (#294).
+    // Applied per path segment rather than to the joined string so the " - " separator is
+    // never in play. The "Unnamed" sentinel is deliberately NOT transformed: it isn't a
+    // user label, and transforming it would split a single report group into two.
+    const label = (node.data as RoomData).label;
+    parts.unshift(label ? transformLabelNow(label) : "Unnamed");
     currentId = node.parentId as string | undefined;
   }
-  return parts.length > 0 ? parts.join(" - ") : "Unassigned";
+  return parts.join(" - ");
 }
 
 export function resolvePortLabel(
@@ -434,9 +444,15 @@ export function computePackList(
   // Summary — group by (cableType, signalType, cableLength, route)
   const summaryMap = new Map<string, PackListSummaryRow>();
   for (const c of cables) {
+    // A run that stays inside one room reads "Within Booth"; with no room to name there
+    // is nothing to say, so the route is blank rather than a dangling "Within ".
+    // A run that CROSSES the boundary keeps both halves even when one is blank —
+    // " > Booth" still carries that the cable leaves an unassigned area for Booth.
     const route =
       c.sourceRoom === c.targetRoom
-        ? `Within ${c.sourceRoom}`
+        ? c.sourceRoom
+          ? `Within ${c.sourceRoom}`
+          : ""
         : `${c.sourceRoom} > ${c.targetRoom}`;
     const key = `${c.cableType}|${c.signalType}|${c.cableLength}|${route}`;
     const existing = summaryMap.get(key);
@@ -464,7 +480,10 @@ export function computePackList(
   for (const page of pages) {
     if (page.type !== "rack-elevation") continue;
     for (const rack of page.racks ?? []) {
-      const room = rack.linkedRoomId ? getRoomLabel(nodes, rack.linkedRoomId) : "Unassigned";
+      // Blank, matching getRoomLabel — this rollup emits the no-room value directly
+      // rather than going through it, so the two have to stay in step or one report
+      // group splits into two rows.
+      const room = rack.linkedRoomId ? getRoomLabel(nodes, rack.linkedRoomId) : "";
       const label = transformLabelNow(rack.label || "Rack");
       const rackType = RACK_TYPE_LABELS[rack.rackType] ?? rack.rackType;
       const key = `${label}|${rack.rackType}|${rack.heightU}|${room}|${rack.unitCost ?? 0}`;
@@ -689,6 +708,20 @@ export function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, 
   return map;
 }
 
+/**
+ * Group key for the cables-by-path view: the originating room of a summary row's route
+ * ("Within Booth" and "Booth > Stage" both key on "Booth").
+ *
+ * Falls back to a blank key, not an "Unassigned" sentinel — a run out of a device that
+ * sits in no room has a route of "Within " or " > Stage", which no longer parses, and a
+ * bucket labelled "Unassigned" here would contradict the blank Room shown on the rows
+ * inside it.
+ */
+export function routeRoomKey(route: string): string {
+  const match = route.match(/^Within (.+)$|^(.+?) >/);
+  return match?.[1] ?? match?.[2] ?? "";
+}
+
 /** Transform PackListData into the generic ReportTableData[] format for ReportPreviewDialog */
 export function getPackListTableData(
   data: PackListData,
@@ -774,10 +807,9 @@ export function getPackListTableData(
 
   let cableGroupedRows: Map<string, Record<string, string>[]> | undefined;
   if (cabGroupBy === "path") {
-    cableGroupedRows = groupBy(cableRows.filter((r) => r.signalType !== ""), (r) => {
-      const match = r.route.match(/^Within (.+)$|^(.+?) >/);
-      return match?.[1] ?? match?.[2] ?? "Unassigned";
-    });
+    cableGroupedRows = groupBy(cableRows.filter((r) => r.signalType !== ""), (r) =>
+      routeRoomKey(r.route),
+    );
     if (adapterCableRows.length > 0) cableGroupedRows.set("Adapters", adapterCableRows);
   } else if (cabGroupBy === "category") {
     // Group by cable category in the defined order (Video, Audio, Control, Data, Power, Custom)
@@ -833,10 +865,9 @@ export function getPackListTableData(
 
   let sortedCableGrouped = cableGroupedRows;
   if (cabGroupBy === "path" && cablesTableDef?.sortBy) {
-    sortedCableGrouped = groupBy(sortedCableRows.filter((r) => r.signalType !== ""), (r) => {
-      const match = r.route.match(/^Within (.+)$|^(.+?) >/);
-      return match?.[1] ?? match?.[2] ?? "Unassigned";
-    });
+    sortedCableGrouped = groupBy(sortedCableRows.filter((r) => r.signalType !== ""), (r) =>
+      routeRoomKey(r.route),
+    );
     if (adapterCableRows.length > 0) sortedCableGrouped.set("Adapters", adapterCableRows);
   } else if (cabGroupBy === "category" && cablesTableDef?.sortBy) {
     // Re-group sorted rows by category, preserving category order

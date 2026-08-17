@@ -364,7 +364,10 @@ function computePdfCrossingLabels(
     let room: string | undefined;
     if (n.parentId) {
       const parent = nodes.find((p) => p.id === n.parentId);
-      if (parent) room = (parent.data as { label?: string }).label;
+      // The room rides along in the cross-page indicator as "Device (Room)", so it takes
+      // the display-case preference just like the device label beneath it (#294).
+      const parentLabel = parent ? (parent.data as { label?: string }).label : undefined;
+      if (parentLabel) room = transformLabelNow(parentLabel);
     }
     nodeInfo.set(n.id, { label: transformLabelNow(data.label), room });
   }

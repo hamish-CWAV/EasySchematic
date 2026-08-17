@@ -244,7 +244,9 @@ export function getNetworkReportTableData(
   if (groupBy === "room") {
     groupedRows = new Map();
     for (const row of sorted) {
-      const key = row.room || "Unassigned";
+      // Blank, matching getRoomLabel — a bucket labelled "Unassigned" would contradict
+      // the blank Room shown on the rows inside it.
+      const key = row.room;
       const arr = groupedRows.get(key) ?? [];
       arr.push(row);
       groupedRows.set(key, arr);
