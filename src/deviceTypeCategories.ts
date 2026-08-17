@@ -90,6 +90,7 @@ export const DEVICE_TYPE_TO_CATEGORY: Record<string, string> = {
   "external-storage": "Storage",
   "storage-media": "Storage Media",
   "lighting-processor": "Lighting",
+  "lighting-relay": "Lighting",
   "network-wifi": "Networking",
   "access-point": "Networking",
   "intercom-transceiver": "Intercom",
