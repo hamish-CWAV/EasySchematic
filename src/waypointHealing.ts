@@ -18,6 +18,7 @@
  */
 
 import type { SchematicNode, ConnectionEdge } from "./types";
+import { parentOffsetFromMap } from "./snapUtils";
 
 /** Waypoints more than this far outside the endpoints' bounding box are stranded. */
 const STRAND_MARGIN_PX = 250;
@@ -28,17 +29,8 @@ function buildAbsPos(nodes: SchematicNode[]) {
   return (id: string): { x: number; y: number } | null => {
     const node = map.get(id);
     if (!node) return null;
-    let x = node.position.x;
-    let y = node.position.y;
-    let parentId = node.parentId;
-    while (parentId) {
-      const parent = map.get(parentId);
-      if (!parent) break;
-      x += parent.position.x;
-      y += parent.position.y;
-      parentId = parent.parentId;
-    }
-    return { x, y };
+    const { dx, dy } = parentOffsetFromMap(node, map);
+    return { x: node.position.x + dx, y: node.position.y + dy };
   };
 }
 

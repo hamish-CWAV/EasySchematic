@@ -79,19 +79,27 @@ function nodeRect(node: SchematicNode): Rect {
 }
 
 /** Absolute canvas offset contributed by a node's parent chain ({0,0} if top-level).
- *  Walks the full chain so nested parents (e.g. rack-in-room) compose correctly. */
-function parentOffsetFromMap(
+ *  Walks the full chain so nested parents (e.g. rack-in-room) compose correctly.
+ *  `positionOverride` supplies pending positions for parents mid-update (room
+ *  child re-snap). A corrupt save (hand-merged Dropbox conflict) can carry a
+ *  cyclic parentId chain — a revisited id ends the walk instead of hanging. */
+export function parentOffsetFromMap(
   node: SchematicNode,
   nodeMap: Map<string, SchematicNode>,
+  positionOverride?: ReadonlyMap<string, { x: number; y: number }>,
 ): { dx: number; dy: number } {
   let dx = 0;
   let dy = 0;
   let parentId = node.parentId;
-  while (parentId) {
+  if (!parentId) return { dx, dy };
+  const seen = new Set<string>();
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
     const parent = nodeMap.get(parentId);
     if (!parent) break;
-    dx += parent.position.x;
-    dy += parent.position.y;
+    const pos = positionOverride?.get(parentId) ?? parent.position;
+    dx += pos.x;
+    dy += pos.y;
     parentId = parent.parentId;
   }
   return { dx, dy };
@@ -102,17 +110,8 @@ function absoluteNodePos(
   node: SchematicNode,
   nodeMap: Map<string, SchematicNode>,
 ): { x: number; y: number } {
-  let x = node.position.x;
-  let y = node.position.y;
-  let parentId = node.parentId;
-  while (parentId) {
-    const parent = nodeMap.get(parentId);
-    if (!parent) break;
-    x += parent.position.x;
-    y += parent.position.y;
-    parentId = parent.parentId;
-  }
-  return { x, y };
+  const { dx, dy } = parentOffsetFromMap(node, nodeMap);
+  return { x: node.position.x + dx, y: node.position.y + dy };
 }
 
 /** Node rect in absolute world coords. Single allocation per call (parent
@@ -1081,18 +1080,40 @@ export function enforceMinSpacing(
   // ports off the grid its unsectioned peers snap to (#322).
   let offX = 0;
   let offY = 0;
-  let pid = draggedNode.parentId;
-  while (pid) {
-    const parent = allNodes.find((n) => n.id === pid);
-    if (!parent) break;
-    offX += parent.position.x;
-    offY += parent.position.y;
-    pid = parent.parentId;
+  if (draggedNode.parentId) {
+    const nodeMap = new Map<string, SchematicNode>();
+    for (const n of allNodes) nodeMap.set(n.id, n);
+    const off = parentOffsetFromMap(draggedNode, nodeMap);
+    offX = off.dx;
+    offY = off.dy;
   }
   newX = Math.round((newX + offX) / GRID_SIZE) * GRID_SIZE - offX;
   newY = Math.round((newY + offY) / GRID_SIZE) * GRID_SIZE - offY;
 
   return { x: newX, y: newY };
+}
+
+/**
+ * Final drag-stop correction for a parented node (#322). An axis that neither
+ * computeSnap aligned nor enforceMinSpacing corrected rests where React Flow's
+ * snapGrid left it — grid-rounded in room-RELATIVE coords. When the room origin
+ * sits off-grid (edge-aligned resize), that puts the node's ports off the
+ * absolute routing grid, so round the untouched axes in ABSOLUTE space. Axes
+ * that did snap are left alone: alignment is deliberate (possibly flush to an
+ * off-grid room edge) and enforceMinSpacing already rounds absolutely. Stubs
+ * keep their port-centred sub-grid position, as everywhere else.
+ */
+export function snapParentedRestPosition(
+  node: SchematicNode,
+  final: { x: number; y: number },
+  nodeMap: Map<string, SchematicNode>,
+): { x: number; y: number } {
+  if (!node.parentId || node.type === "stub-label" || node.type === "text-stub") return final;
+  const { dx, dy } = parentOffsetFromMap(node, nodeMap);
+  let { x, y } = final;
+  if (x === node.position.x) x = Math.round((x + dx) / GRID_SIZE) * GRID_SIZE - dx;
+  if (y === node.position.y) y = Math.round((y + dy) / GRID_SIZE) * GRID_SIZE - dy;
+  return { x, y };
 }
 
 /**

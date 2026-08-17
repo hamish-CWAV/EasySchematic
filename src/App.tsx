@@ -58,7 +58,7 @@ import PageTabs from "./components/PageTabs";
 import RackPage from "./components/RackPage";
 import PatchPanelPage from "./components/PatchPanelPage";
 import PrintSheetPage from "./components/PrintSheetPage";
-import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, type GuideLine } from "./snapUtils";
+import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, parentOffsetFromMap, snapParentedRestPosition, type GuideLine } from "./snapUtils";
 import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, SchematicNode, StubLabelData, TextStubData } from "./types";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
@@ -1337,17 +1337,12 @@ function SchematicCanvas() {
           if (dn.parentId && draggedIds.has(dn.parentId as string)) continue;
           const node = nodeById.get(dn.id);
           if (!node) continue;
-          let absX = node.position.x;
-          let absY = node.position.y;
-          let parentId: string | undefined = node.parentId as string | undefined;
-          while (parentId) {
-            const parent = nodeById.get(parentId);
-            if (!parent) break;
-            absX += parent.position.x;
-            absY += parent.position.y;
-            parentId = parent.parentId as string | undefined;
-          }
-          reparentNode(dn.id, { x: absX, y: absY }, { skipUndo: true });
+          const off = parentOffsetFromMap(node, nodeById);
+          reparentNode(
+            dn.id,
+            { x: node.position.x + off.dx, y: node.position.y + off.dy },
+            { skipUndo: true },
+          );
           if (dn.type === "room") anyRoomMoved = true;
         }
         if (anyRoomMoved) {
@@ -1391,6 +1386,18 @@ function SchematicCanvas() {
         }
       }
 
+      // A device that merely rested inside its room got grid-rounded in room-
+      // RELATIVE coords by React Flow's snapGrid — off the absolute routing grid
+      // when the room origin sits off-grid. Round the untouched axes in absolute
+      // space so its ports meet cables from unsectioned devices cleanly (#322).
+      const nodeById = new Map<string, SchematicNode>();
+      for (const n of state.nodes) nodeById.set(n.id, n);
+      ({ x: finalX, y: finalY } = snapParentedRestPosition(
+        draggedNode as SchematicNode,
+        { x: finalX, y: finalY },
+        nodeById,
+      ));
+
       if (finalX !== draggedNode.position.x || finalY !== draggedNode.position.y) {
         const updated = state.nodes.map((n) =>
           n.id === draggedNode.id ? { ...n, position: { x: finalX, y: finalY } } : n,
@@ -1407,17 +1414,12 @@ function SchematicCanvas() {
       }
 
       // Compute absolute position by walking the full parent chain
-      let absX = finalX;
-      let absY = finalY;
-      let parentId: string | undefined = draggedNode.parentId as string | undefined;
-      while (parentId) {
-        const parent = state.nodes.find((n) => n.id === parentId);
-        if (!parent) break;
-        absX += parent.position.x;
-        absY += parent.position.y;
-        parentId = parent.parentId as string | undefined;
-      }
-      reparentNode(draggedNode.id, { x: absX, y: absY }, { skipUndo: true });
+      const dragOff = parentOffsetFromMap(draggedNode as SchematicNode, nodeById);
+      reparentNode(
+        draggedNode.id,
+        { x: finalX + dragOff.dx, y: finalY + dragOff.dy },
+        { skipUndo: true },
+      );
       // When a room is moved, re-evaluate every device: ones that now fall
       // inside the moved room become its children, ones that fell out get
       // unparented. Children of the moved room itself already travelled with

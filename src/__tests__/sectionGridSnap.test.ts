@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { CURRENT_SCHEMA_VERSION } from "../migrations";
 import { GRID_SIZE } from "../gridConstants";
-import { enforceMinSpacing } from "../snapUtils";
+import { computeSnap, enforceMinSpacing, snapParentedRestPosition } from "../snapUtils";
 import type { SchematicFile, SchematicNode } from "../types";
 
 /**
@@ -206,5 +206,106 @@ describe("enforceMinSpacing rounds in absolute space (#322)", () => {
 
     expect(corrected).not.toBeNull();
     expectOnGrid(corrected!);
+  });
+});
+
+describe("drag-stop rest position inside an off-grid room (#322)", () => {
+  it("rounds a plain drag with no alignment and no neighbor onto the ABSOLUTE grid", () => {
+    // The scenario computeSnap/enforceMinSpacing both pass through untouched:
+    // React Flow's snapGrid grid-rounded the RELATIVE coords, the room origin is
+    // off-grid, and there is nothing nearby to align with or push against.
+    const roomNode = room("room-1", 103, 57);
+    const dev = device("dev-1", 64, 32, "room-1");
+    const all = [roomNode, dev];
+
+    const snap = computeSnap(dev, all);
+    expect({ x: snap.x, y: snap.y }).toEqual({ x: 64, y: 32 }); // identity
+    expect(enforceMinSpacing(dev, all, undefined, snap)).toBeNull(); // no overlap
+
+    const nodeMap = new Map(all.map((n) => [n.id, n]));
+    const rest = snapParentedRestPosition(dev, { x: snap.x, y: snap.y }, nodeMap);
+    expectOnGrid({ x: rest.x + 103, y: rest.y + 57 });
+  });
+
+  it("leaves an axis the snap engine moved alone — alignment can be deliberately off-grid", () => {
+    const roomNode = room("room-1", 103, 57);
+    const dev = device("dev-1", 64, 32, "room-1");
+    const nodeMap = new Map([roomNode, dev].map((n) => [n.id as string, n]));
+
+    // x differs from the rest position (an alignment snap fired), y did not.
+    const rest = snapParentedRestPosition(dev, { x: 61, y: 32 }, nodeMap);
+    expect(rest.x).toBe(61);
+    expect(Math.abs((rest.y + 57) % GRID_SIZE)).toBe(0);
+  });
+
+  it("is a no-op for top-level devices and stubs", () => {
+    const dev = device("dev-1", 61, 39);
+    const nodeMap = new Map<string, SchematicNode>([[dev.id, dev]]);
+    expect(snapParentedRestPosition(dev, { x: 61, y: 39 }, nodeMap)).toEqual({ x: 61, y: 39 });
+
+    const roomNode = room("room-1", 103, 57);
+    const stub = {
+      ...device("stub-1", 64, 30.5, "room-1"),
+      type: "stub-label",
+    } as SchematicNode;
+    const map2 = new Map([roomNode, stub].map((n) => [n.id as string, n]));
+    expect(snapParentedRestPosition(stub, { x: 64, y: 30.5 }, map2)).toEqual({ x: 64, y: 30.5 });
+  });
+});
+
+describe("cyclic parentId chains (corrupt saves) terminate (#322)", () => {
+  function cyclicNodes(): SchematicNode[] {
+    return [
+      room("room-a", 103, 57, "room-b"),
+      room("room-b", 50, 50, "room-a"),
+      device("dev-1", 61, 39, "room-a"),
+    ];
+  }
+
+  it("loads a file whose rooms parent each other without hanging", () => {
+    const file: SchematicFile = {
+      version: CURRENT_SCHEMA_VERSION,
+      name: "cyclic",
+      nodes: cyclicNodes(),
+      edges: [],
+    };
+    useSchematicStore.getState().importFromJSON(file);
+    const nodes = useSchematicStore.getState().nodes;
+    expect(nodes).toHaveLength(3);
+    // Import must BREAK the cycle, not just survive it — React Flow's own
+    // parent resolution and the edge router walk parentId unguarded, so a
+    // cycle that reaches the canvas still hangs the tab at first render.
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const n of nodes) {
+      const seen = new Set<string>();
+      let cur = n as SchematicNode | undefined;
+      while (cur?.parentId) {
+        expect(seen.has(cur.id)).toBe(false);
+        seen.add(cur.id);
+        cur = byId.get(cur.parentId);
+      }
+    }
+  });
+
+  it("snapRoomChildrenToGrid terminates and still snaps the child", () => {
+    useSchematicStore.setState({ nodes: cyclicNodes() });
+    useSchematicStore.getState().snapRoomChildrenToGrid("room-a");
+    const dev = useSchematicStore.getState().nodes.find((n) => n.id === "dev-1")!;
+    expect(Number.isFinite(dev.position.x)).toBe(true);
+    expect(Number.isFinite(dev.position.y)).toBe(true);
+  });
+
+  it("onRoomResizeEnd terminates on a cycle", () => {
+    useSchematicStore.setState({ nodes: cyclicNodes() });
+    useSchematicStore.getState().onRoomResizeEnd("room-a");
+    expect(useSchematicStore.getState().nodes).toHaveLength(3);
+  });
+
+  it("enforceMinSpacing terminates when the dragged node's chain is cyclic", () => {
+    const [roomA, roomB] = cyclicNodes();
+    const dragged = device("dev-1", 32, 32, "room-a");
+    const neighbor = device("dev-2", 40, 40, "room-a");
+    const corrected = enforceMinSpacing(dragged, [roomA, roomB, dragged, neighbor]);
+    expect(corrected).not.toBeNull();
   });
 });

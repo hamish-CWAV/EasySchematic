@@ -39,7 +39,7 @@ import type {
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
 import { defaultStubPlacement, healStubPortAlignment, STUB_W_EST } from "./stubPlacement";
-import { getPortAbsolutePositions } from "./snapUtils";
+import { getPortAbsolutePositions, parentOffsetFromMap } from "./snapUtils";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, portSide } from "./types";
 import { pairKey } from "./roomDistance";
@@ -236,39 +236,45 @@ function applyWaypointHeal(nodes: SchematicNode[], edges: ConnectionEdge[]): Con
   return healedEdges;
 }
 
+/** A corrupt save (hand-merged Dropbox conflict) can carry a cyclic parentId
+ *  chain. The store's own walks are cycle-guarded, but React Flow's parent
+ *  resolution and the edge router are not — detach the node that closes each
+ *  cycle so the schematic can actually render (#322). */
+function breakParentCycles(nodes: SchematicNode[]): SchematicNode[] {
+  const byId = new Map<string, SchematicNode>();
+  for (const n of nodes) byId.set(n.id, n);
+  for (const n of nodes) {
+    const seen = new Set<string>();
+    let cur: SchematicNode | undefined = n;
+    while (cur?.parentId) {
+      if (seen.has(cur.id)) {
+        cur.parentId = undefined;
+        break;
+      }
+      seen.add(cur.id);
+      cur = byId.get(cur.parentId);
+    }
+  }
+  return nodes;
+}
+
 function snapNodesToGrid(nodes: SchematicNode[]): SchematicNode[] {
-  const nodeMap = new Map<string, SchematicNode>();
-  for (const n of nodes) nodeMap.set(n.id, n);
-  const done = new Set<string>();
-  const snapOne = (n: SchematicNode): void => {
-    if (done.has(n.id)) return;
-    done.add(n.id);
+  for (const n of nodes) {
     // Stub labels are healed against their REAL partner port at routing time
     // (healStubPortAlignment in recomputeRoutes) — DOM-measured ports can sit a few px
     // off the model grid, so snapping the stub to the abstract grid here would BREAK
     // colinearity with such ports (kink at the label). Leave their stored Y alone.
     // Text stubs (#196) store the same sub-grid, port-centred Y for the same reason.
-    if (n.type === "stub-label" || n.type === "text-stub") return;
-    // Snap in ABSOLUTE space: a parented device stores room-relative coords, and
-    // the room origin itself can sit off-grid (edge-aligned resize, older saves).
-    // Rounding the relative coords would leave the device's absolute position —
-    // and its ports — off the grid that unparented devices snap to (#322).
-    // Parents snap first so the child's offset sums their final positions.
-    let dx = 0;
-    let dy = 0;
-    let pid = n.parentId;
-    while (pid) {
-      const p = nodeMap.get(pid);
-      if (!p) break;
-      snapOne(p);
-      dx += p.position.x;
-      dy += p.position.y;
-      pid = p.parentId;
-    }
-    n.position.x = Math.round((n.position.x + dx) / GRID_SIZE) * GRID_SIZE - dx;
-    n.position.y = Math.round((n.position.y + dy) / GRID_SIZE) * GRID_SIZE - dy;
-  };
-  for (const n of nodes) snapOne(n);
+    if (n.type === "stub-label" || n.type === "text-stub") continue;
+    // Rounding RELATIVE coords is safe here even for parented nodes: this pass
+    // snaps every ancestor room too, so each ancestor origin lands on a grid
+    // multiple and the child's absolute position comes out grid-aligned. Room
+    // origins only go off-grid through LATER geometry edits (edge-aligned
+    // resizes) — snapRoomChildrenToGrid re-snaps children in absolute space
+    // when that happens (#322).
+    n.position.x = Math.round(n.position.x / GRID_SIZE) * GRID_SIZE;
+    n.position.y = Math.round(n.position.y / GRID_SIZE) * GRID_SIZE;
+  }
   return nodes;
 }
 
@@ -1250,8 +1256,10 @@ function sortNodesParentFirst(nodes: SchematicNode[]): SchematicNode[] {
 
   function visit(n: SchematicNode) {
     if (visited.has(n.id)) return;
-    if (n.parentId && nodeMap.has(n.parentId)) visit(nodeMap.get(n.parentId)!);
+    // Mark on entry so a cyclic parentId chain (corrupt save) terminates
+    // instead of recursing forever; ordering is unchanged for acyclic input.
     visited.add(n.id);
+    if (n.parentId && nodeMap.has(n.parentId)) visit(nodeMap.get(n.parentId)!);
     result.push(n);
   }
 
@@ -1269,18 +1277,22 @@ function getAbsolutePosition(
   const n = nodeMap.get(nodeId);
   if (!n) return { x: 0, y: 0 };
   if (!n.parentId) return n.position;
-  const p = getAbsolutePosition(n.parentId, nodeMap);
-  return { x: n.position.x + p.x, y: n.position.y + p.y };
+  const { dx, dy } = parentOffsetFromMap(n, nodeMap);
+  return { x: n.position.x + dx, y: n.position.y + dy };
 }
 
-/** True if ancestorId is an ancestor of childId (prevents circular nesting). */
+/** True if ancestorId is an ancestor of childId (prevents circular nesting).
+ *  Tolerates cyclic parentId chains from corrupt saves — a revisited id ends
+ *  the walk instead of hanging. */
 function isAncestorOf(
   ancestorId: string,
   childId: string,
   nodeMap: Map<string, SchematicNode>,
 ): boolean {
+  const seen = new Set<string>();
   let cur = nodeMap.get(childId);
-  while (cur?.parentId) {
+  while (cur?.parentId && !seen.has(cur.id)) {
+    seen.add(cur.id);
     if (cur.parentId === ancestorId) return true;
     cur = nodeMap.get(cur.parentId);
   }
@@ -3696,14 +3708,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const nodeMap = new Map(state.nodes.map((n) => [n.id, n]));
     const wasUnderRoom = new Set<string>();
     for (const n of state.nodes) {
-      let pid = n.parentId;
-      while (pid) {
-        if (pid === nodeId) {
-          wasUnderRoom.add(n.id);
-          break;
-        }
-        pid = nodeMap.get(pid)?.parentId;
-      }
+      if (isAncestorOf(nodeId, n.id, nodeMap)) wasUnderRoom.add(n.id);
     }
     get().reparentAllDevices({ skipUndo: true });
     // A left/top-edge resize moves the room origin by arbitrary px — children
@@ -3714,14 +3719,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   snapRoomChildrenToGrid: (roomId, extraIds) => {
     const state = get();
     const nodeMap = new Map(state.nodes.map((n) => [n.id, n]));
-    const isUnderRoom = (n: SchematicNode): boolean => {
-      let pid = n.parentId;
-      while (pid) {
-        if (pid === roomId) return true;
-        pid = nodeMap.get(pid)?.parentId;
-      }
-      return false;
-    };
     // state.nodes is kept parent-first (sortNodesParentFirst), so reading parent
     // offsets from newPos-then-nodeMap sums final positions for nested parents
     // (rack-in-room) too.
@@ -3729,18 +3726,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     for (const n of state.nodes) {
       // Same exclusions as snapNodesToGrid — stubs sit at sub-grid, port-centred Y.
       if (n.type === "stub-label" || n.type === "text-stub") continue;
-      if (!isUnderRoom(n) && !extraIds?.has(n.id)) continue;
-      let dx = 0;
-      let dy = 0;
-      let pid = n.parentId;
-      while (pid) {
-        const p = nodeMap.get(pid);
-        if (!p) break;
-        const pp = newPos.get(pid) ?? p.position;
-        dx += pp.x;
-        dy += pp.y;
-        pid = p.parentId;
-      }
+      if (!isAncestorOf(roomId, n.id, nodeMap) && !extraIds?.has(n.id)) continue;
+      const { dx, dy } = parentOffsetFromMap(n, nodeMap, newPos);
       const x = Math.round((n.position.x + dx) / GRID_SIZE) * GRID_SIZE - dx;
       const y = Math.round((n.position.y + dy) / GRID_SIZE) * GRID_SIZE - dy;
       if (x !== n.position.x || y !== n.position.y) newPos.set(n.id, { x, y });
@@ -5707,6 +5694,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           // Only load if still empty (no race with user actions)
           if (get().nodes.length > 0) return;
           const data = migrateSchematic(mod.default) as SchematicFile;
+          breakParentCycles(data.nodes);
           snapNodesToGrid(data.nodes);
           applyRoomLockState(data.nodes);
           syncCounters(data.nodes, data.edges);
@@ -5804,6 +5792,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       }
       const parsed = JSON.parse(raw);
       const data = migrateSchematic(parsed) as SchematicFile;
+      breakParentCycles(data.nodes);
       snapNodesToGrid(data.nodes);
       applyRoomLockState(data.nodes);
       syncCounters(data.nodes, data.edges);
@@ -5988,6 +5977,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         (node.data as { html: string }).html = sanitizeNoteHtml((node.data as { html: string }).html);
       }
     }
+    breakParentCycles(nodes);
     snapNodesToGrid(nodes);
     applyRoomLockState(nodes);
     syncCounters(nodes, edges);
