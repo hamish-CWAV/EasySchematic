@@ -110,7 +110,12 @@ export function emitRoom(
   }
   writer.addRect(CANONICAL_LAYERS.ROOMS, rect.x, rect.y, rect.w, rect.h, borderStyle);
 
-  // Label — just inside the top-left corner
+  // Label — just inside the top-left corner.
+  //
+  // Room names carry no decorative all-caps of their own (#294): the display-case
+  // preference is the only thing that decides their casing, exactly as it is for device
+  // and port labels. This used to force `.toUpperCase()` as a drafting convention, which
+  // made "As-typed" a lie for rooms and left them looking unlike every other label.
   if (data.label) {
     const labelSize = data.labelSize ?? 14;
     const heightIn = cssFontPxToDxfHeight(labelSize);
@@ -118,7 +123,7 @@ export function emitRoom(
       CANONICAL_LAYERS.LABELS,
       rect.x + pxToIn(8),
       rect.y + rect.h - pxToIn(labelSize + 4),
-      data.label.toUpperCase(),
+      transformLabelNow(data.label),
       {
         height: heightIn,
         align: "left",
@@ -156,7 +161,7 @@ export function emitDevice(
   // matching DeviceNode's headerBandHeight() so the DXF export tracks the canvas layout.
   const headerRows = rowsInSlot(data.auxiliaryData, "header");
   const resolvedLabel = resolveDeviceLabel(data, schematicDefaults);
-  const labelZone = resolvedLabel.wrap ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
+  const labelZone = resolvedLabel.wrapsInHeader ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
   const bandH = headerBandHeight(data.auxiliaryData, labelZone);
   const headerContent = labelZone + headerRows.reduce((s, r) => s + auxRowHeight(r), 0);
   const headerPad = bandH - headerContent;
@@ -190,11 +195,16 @@ export function emitDevice(
   const auxTextHeight = cssFontPxToDxfHeight(9);
 
   // Device label — sits in the label zone at the top of the band (below pt pad).
-  // Baseline near the bottom of the zone keeps the text visually inside the zone.
-  // DXF doesn't support multi-line wrap; even with wrap=on we emit a single (possibly truncated) line.
+  // DXF doesn't support multi-line wrap; even with wrap=on we emit a single (possibly
+  // truncated) line. The zone, though, is two lines tall whenever the canvas wraps
+  // (HEADER_LABEL_ZONE_2_PX), so baselining at the bottom of the zone dropped that one
+  // line onto the *second* line's slot and left a blank line above it (#249 follow-up).
+  // Centre the single line's 16-px slot in the zone instead: identical baseline for an
+  // unwrapped label, vertically centred for a wrapped one.
   if (resolvedLabel.text) {
     const labelHeight = cssFontPxToDxfHeight(12);
-    const labelBaselineY = ay + headerPadTop + labelZone - 4;
+    const labelLineTop = ay + headerPadTop + (labelZone - HEADER_LABEL_ZONE_PX) / 2;
+    const labelBaselineY = labelLineTop + HEADER_LABEL_ZONE_PX - 4;
     writer.addText(
       CANONICAL_LAYERS.LABELS,
       pxToIn(ax + w / 2),
@@ -318,15 +328,18 @@ export function emitDevice(
       if (section && section !== lastSec && lastSec !== undefined) {
         const sepY = -pxToIn(handleY - 6);
         const sepStyle: EntityStyle = { linetype: "ES_DASHED" };
+        // I/O section headers follow the case preference, the same as the canvas renders
+        // them (DeviceNode's `displayLabel(item.name)`) — #294.
+        const sectionText = transformLabelNow(section);
         if (dir === "input") {
           writer.addLine(CANONICAL_LAYERS.DEVICES, rect.x, sepY, rect.x + rect.w / 2, sepY, sepStyle);
-          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + pxToIn(4), sepY + pxToIn(1), section, { height: cssFontPxToDxfHeight(8) });
+          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + pxToIn(4), sepY + pxToIn(1), sectionText, { height: cssFontPxToDxfHeight(8) });
         } else if (dir === "output") {
           writer.addLine(CANONICAL_LAYERS.DEVICES, rect.x + rect.w / 2, sepY, rect.x + rect.w, sepY, sepStyle);
-          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w - pxToIn(4), sepY + pxToIn(1), section, { height: cssFontPxToDxfHeight(8), align: "right" });
+          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w - pxToIn(4), sepY + pxToIn(1), sectionText, { height: cssFontPxToDxfHeight(8), align: "right" });
         } else {
           writer.addLine(CANONICAL_LAYERS.DEVICES, rect.x, sepY, rect.x + rect.w, sepY, sepStyle);
-          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w / 2, sepY + pxToIn(1), section, { height: cssFontPxToDxfHeight(8), align: "center" });
+          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w / 2, sepY + pxToIn(1), sectionText, { height: cssFontPxToDxfHeight(8), align: "center" });
         }
       }
       lastSec = section;

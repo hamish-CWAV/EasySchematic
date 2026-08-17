@@ -1,7 +1,9 @@
-import { memo, type CSSProperties } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import type { AnnotationData } from "../types";
 import { useSchematicStore } from "../store";
+import { contrastingTextColor } from "../colorContrast";
+import { useCanvasBackdrop } from "../hooks/useCanvasBackdrop";
 
 function AnnotationNode({ id, data, selected }: NodeProps) {
   const annotationData = data as unknown as AnnotationData;
@@ -9,6 +11,15 @@ function AnnotationNode({ id, data, selected }: NodeProps) {
   const border = annotationData.borderColor ?? "#3b82f6";
   const shape = annotationData.shape ?? "rectangle";
   const fontSize = annotationData.fontSize ?? 12;
+
+  // The fill is usually translucent, so what the label actually sits on is the fill
+  // composited over the canvas — dark in dark mode, which is what made the old fixed
+  // #333 label invisible at default settings (#258). Pick black or white off that.
+  const backdrop = useCanvasBackdrop();
+  const textColor = useMemo(
+    () => contrastingTextColor(bgColor, { backdrop }),
+    [bgColor, backdrop],
+  );
 
   const handleDoubleClick = () => {
     useSchematicStore.getState().setEditingNodeId(id);
@@ -22,7 +33,7 @@ function AnnotationNode({ id, data, selected }: NodeProps) {
     justifyContent: "center",
     fontSize,
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-    color: "#333",
+    color: textColor,
     pointerEvents: "none",
     padding: "4px",
     textAlign: "center",
@@ -83,7 +94,7 @@ function AnnotationNode({ id, data, selected }: NodeProps) {
           justifyContent: "center",
           fontSize,
           fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-          color: "#333",
+          color: textColor,
           overflow: "hidden",
           textAlign: "center",
           padding: "4px",

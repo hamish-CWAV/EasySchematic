@@ -66,8 +66,8 @@ function buildColumnItems(ports: Port[]): ColumnItem[] {
 
 function labelZoneFor(data: DeviceData): number {
   // Harness assumes default display settings (no global short-name/wrap overrides).
-  const { wrap } = resolveDeviceLabel(data, {});
-  return wrap ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
+  const { wrapsInHeader } = resolveDeviceLabel(data, {});
+  return wrapsInHeader ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
 }
 
 /** Y (node-local) of the first port row's handle center. */

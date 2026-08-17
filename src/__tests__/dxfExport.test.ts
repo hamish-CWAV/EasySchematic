@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import DxfParser from "dxf-parser";
+import type { ReactFlowInstance } from "@xyflow/react";
 
+import type { AuxRow, LabelCaseMode, SchematicNode } from "../types";
+import { DEFAULT_LABEL_CASE } from "../types";
+import { useSchematicStore } from "../store";
 import { DxfWriter } from "../dxfExport/writer";
+import { emitDevice, emitRoom } from "../dxfExport/nodes";
 import {
   CAP_HEIGHT_RATIO,
+  DPI,
   cssFontPxToDxfHeight,
   escapeForMText,
   escapeForText,
@@ -14,7 +20,7 @@ import {
   tintToWhite,
   truncateToWidth,
 } from "../dxfExport/units";
-import { LTYPE_DEFS, buildLayerDefs, signalLayerName } from "../dxfExport/layers";
+import { CANONICAL_LAYERS, LTYPE_DEFS, buildLayerDefs, signalLayerName } from "../dxfExport/layers";
 import { emitRoundedWaypointPath } from "../dxfExport/geometry";
 
 /** Build a minimum-viable DXF document with the given entities inside ENTITIES. */
@@ -429,5 +435,252 @@ describe("visual-fidelity follow-up", () => {
     const styleEnd = dxf.indexOf("ENDTAB", styleStart);
     const styleBlock = dxf.substring(styleStart, styleEnd);
     expect(styleBlock).not.toMatch(/\r?\n\s*3\r?\n\s*txt\r?\n/);
+  });
+});
+
+describe("emitDevice — header label placement", () => {
+  const DEVICE_Y = 100;
+
+  function deviceNode(label: string, auxiliaryData: AuxRow[] = []): SchematicNode {
+    return {
+      id: "n1",
+      type: "device",
+      position: { x: 0, y: DEVICE_Y },
+      measured: { width: 144, height: 80 },
+      data: {
+        label,
+        // Wrapping enabled per-instance so `wrapsInHeader` turns purely on whether
+        // the name overflows the 144-px box.
+        wrapLabel: true,
+        auxiliaryData,
+        ports: [
+          { id: "p1", label: "In", direction: "input", signalType: "hdmi" },
+          { id: "p2", label: "Out", direction: "output", signalType: "hdmi" },
+        ],
+      },
+    } as unknown as SchematicNode;
+  }
+
+  /** Minimal ReactFlowInstance stand-in — emitDevice only reads positionAbsolute
+   *  and handleBounds off the internal node. */
+  function stubInstance(node: SchematicNode): ReactFlowInstance {
+    return {
+      getInternalNode: () => ({
+        internals: {
+          positionAbsolute: { x: node.position.x, y: node.position.y },
+          handleBounds: { source: [], target: [] },
+        },
+      }),
+    } as unknown as ReactFlowInstance;
+  }
+
+  /** Baseline Y of the device-name TEXT, in px below the device's top edge. */
+  function labelBaselineOffsetPx(label: string, auxiliaryData: AuxRow[] = []): number {
+    const node = deviceNode(label, auxiliaryData);
+    const dxf = buildMinimalDxf((w) => {
+      emitDevice(w, node, stubInstance(node), [], undefined, "USD", {});
+    });
+    const parsed = parse(dxf);
+    const labels = parsed.entities.filter(
+      (e: { type: string; layer: string }) =>
+        e.type === "TEXT" && e.layer === CANONICAL_LAYERS.LABELS,
+    );
+    expect(labels.length).toBeGreaterThan(0);
+    // DXF is Y-up inches with the canvas origin at y=0; convert back to screen px.
+    return -labels[0].startPoint.y * DPI - DEVICE_Y;
+  }
+
+  // "Ethernet Switch (4-port)" and the adapters overflow the 144-px box, so the
+  // canvas reserves a two-line label zone for them. DXF still emits ONE line, and
+  // used to baseline it at the bottom of that zone — which read as a blank line
+  // above the name (#249 follow-up). The single line must sit at the same height
+  // as an unwrapped one in the same band.
+  it("centers the single DXF line in a two-line label zone", () => {
+    const short = labelBaselineOffsetPx("Camera");
+    expect(short).toBeCloseTo(20, 3);
+    expect(labelBaselineOffsetPx("Ethernet Switch (4-port)")).toBeCloseTo(short, 3);
+    expect(labelBaselineOffsetPx("USB-A (M) → RJ45 (F) Adapter")).toBeCloseTo(short, 3);
+  });
+
+  it("keeps the label above the header aux rows when the zone is two lines", () => {
+    const rows: AuxRow[] = [{ text: "{{deviceType}}", position: "header" }];
+    // Band is 48px (32 zone + 12 row, rounded up to the 16-px grid), pad 4 → top pad 2.
+    // Single line centred in the 32-px zone puts its baseline at 2 + 8 + 12 = 22,
+    // comfortably clear of the aux row, which starts at 2 + 32 = 34.
+    expect(labelBaselineOffsetPx("USB-A (M) → RJ45 (F) Adapter", rows)).toBeCloseTo(22, 3);
+    expect(labelBaselineOffsetPx("Camera", rows)).toBeCloseTo(14, 3);
+  });
+});
+
+// Room names follow the display-case preference (#294) in the DXF too — and nothing else.
+// The exporter used to hardcode `data.label.toUpperCase()` as a drafting convention, the
+// counterpart of RoomNode's decorative CSS `uppercase`. Both are gone: rooms are cased by
+// the preference alone, exactly like device and port labels, so an as-typed export now
+// reproduces what the user actually typed.
+describe("emitRoom — label casing", () => {
+  afterEach(() => {
+    useSchematicStore.setState({ labelCase: DEFAULT_LABEL_CASE });
+  });
+
+  function roomNode(label: string): SchematicNode {
+    return {
+      id: "r1",
+      type: "room",
+      position: { x: 0, y: 0 },
+      measured: { width: 400, height: 300 },
+      data: { label },
+    } as unknown as SchematicNode;
+  }
+
+  /** The room name as it lands in the DXF TEXT entity, for the given case mode. */
+  function emittedRoomLabel(label: string, mode: LabelCaseMode): string {
+    useSchematicStore.setState({ labelCase: mode });
+    const node = roomNode(label);
+    const dxf = buildMinimalDxf((w) => {
+      emitRoom(w, node, {
+        getInternalNode: () => ({
+          internals: {
+            positionAbsolute: { x: node.position.x, y: node.position.y },
+            handleBounds: { source: [], target: [] },
+          },
+        }),
+      } as unknown as ReactFlowInstance);
+    });
+    const parsed = parse(dxf);
+    const labels = parsed.entities.filter(
+      (e: { type: string; layer: string }) =>
+        e.type === "TEXT" && e.layer === CANONICAL_LAYERS.LABELS,
+    );
+    expect(labels.length).toBe(1);
+    return labels[0].text;
+  }
+
+  it("applies the case preference to the room name in all four modes", () => {
+    expect(emittedRoomLabel("main Hall", "uppercase")).toBe("MAIN HALL");
+    expect(emittedRoomLabel("main Hall", "lowercase")).toBe("main hall");
+    expect(emittedRoomLabel("main Hall", "capitalize")).toBe("Main Hall");
+  });
+
+  it("emits the room name verbatim under as-typed — no drafting all-caps", () => {
+    // This is the assertion that fails if anyone reinstates the hardcoded `.toUpperCase()`:
+    // a mixed-case room name has to survive the export untouched in the default mode.
+    for (const label of ["main Hall", "Booth", "FOH", "rack room 2"]) {
+      expect(emittedRoomLabel(label, "as-typed")).toBe(label);
+    }
+    // Spelled out for the one case where verbatim and all-caps would otherwise agree.
+    expect(emittedRoomLabel("main Hall", "as-typed")).not.toBe("MAIN HALL");
+  });
+
+  it("is display-only — the stored room label is never mutated", () => {
+    const node = roomNode("main Hall");
+    emittedRoomLabel("main Hall", "lowercase");
+    expect((node.data as { label: string }).label).toBe("main Hall");
+  });
+});
+
+// The second half of #294: I/O section headers follow the case preference in the DXF too.
+// The canvas already does this via DeviceNode's `displayLabel(item.name)`; without the
+// same call here a sectioned device's DXF disagrees with what's on screen.
+describe("emitDevice — I/O section header casing", () => {
+  afterEach(() => {
+    useSchematicStore.setState({ labelCase: DEFAULT_LABEL_CASE });
+  });
+
+  /** Two sections per direction — the first section in a direction emits no separator
+   *  (there's nothing above it to separate from), so the second one carries the label. */
+  const PORTS = [
+    { id: "p1", label: "Mic 1", direction: "input", signalType: "analog-audio", section: "mic In" },
+    { id: "p2", label: "Line 1", direction: "input", signalType: "analog-audio", section: "line In" },
+    { id: "p3", label: "Main", direction: "output", signalType: "analog-audio", section: "main Out" },
+    { id: "p4", label: "Aux", direction: "output", signalType: "analog-audio", section: "aux Out" },
+    { id: "p5", label: "Net A", direction: "bidirectional", signalType: "ethernet", section: "net A" },
+    { id: "p6", label: "Net B", direction: "bidirectional", signalType: "ethernet", section: "net B" },
+  ];
+
+  const sectionedDevice = (): SchematicNode =>
+    ({
+      id: "n1",
+      type: "device",
+      position: { x: 0, y: 0 },
+      measured: { width: 144, height: 200 },
+      data: { label: "patch Bay", ports: PORTS, auxiliaryData: [] },
+    }) as unknown as SchematicNode;
+
+  /** Handle bounds for every port, one row apart. Bidirectional ports expose -in/-out. */
+  function handleBounds() {
+    const source: { id: string; x: number; y: number; width: number; height: number }[] = [];
+    let row = 0;
+    for (const p of PORTS) {
+      const y = 40 + row * 16;
+      if (p.direction === "bidirectional") {
+        source.push({ id: `${p.id}-in`, x: 0, y, width: 8, height: 8 });
+        source.push({ id: `${p.id}-out`, x: 136, y, width: 8, height: 8 });
+      } else {
+        source.push({ id: p.id, x: p.direction === "input" ? 0 : 136, y, width: 8, height: 8 });
+      }
+      row++;
+    }
+    return { source, target: [] };
+  }
+
+  /** Every LABELS-layer TEXT emitted for the sectioned device, in emission order.
+   *  Index 0 is the device name; the rest are the section headers. */
+  function emittedLabelTexts(mode: LabelCaseMode): string[] {
+    useSchematicStore.setState({ labelCase: mode });
+    const node = sectionedDevice();
+    const dxf = buildMinimalDxf((w) => {
+      emitDevice(
+        w,
+        node,
+        {
+          getInternalNode: () => ({
+            internals: {
+              positionAbsolute: { x: node.position.x, y: node.position.y },
+              handleBounds: handleBounds(),
+            },
+          }),
+        } as unknown as ReactFlowInstance,
+        [],
+        undefined,
+        "USD",
+        {},
+      );
+    });
+    return parse(dxf)
+      .entities.filter(
+        (e: { type: string; layer: string }) =>
+          e.type === "TEXT" && e.layer === CANONICAL_LAYERS.LABELS,
+      )
+      .map((e: { text: string }) => e.text);
+  }
+
+  /** Just the section headers — drops the device name at index 0. */
+  const sectionHeaders = (mode: LabelCaseMode) => emittedLabelTexts(mode).slice(1);
+
+  it("emits one header per section change, covering all three port directions", () => {
+    // input / output / bidirectional each take a different branch of the separator code.
+    expect(sectionHeaders("as-typed")).toEqual(["line In", "aux Out", "net B"]);
+  });
+
+  it("applies the case preference to section headers in all four modes", () => {
+    expect(sectionHeaders("as-typed")).toEqual(["line In", "aux Out", "net B"]);
+    expect(sectionHeaders("uppercase")).toEqual(["LINE IN", "AUX OUT", "NET B"]);
+    expect(sectionHeaders("lowercase")).toEqual(["line in", "aux out", "net b"]);
+    expect(sectionHeaders("capitalize")).toEqual(["Line In", "Aux Out", "Net B"]);
+  });
+
+  it("leaves section headers untouched under as-typed", () => {
+    // Unlike room labels there was never a decorative uppercase here — the section text
+    // was emitted raw — so as-typed must be the identity, byte for byte.
+    for (const text of sectionHeaders("as-typed")) {
+      expect(text).toBe(PORTS.find((p) => p.section?.toLowerCase() === text.toLowerCase())?.section);
+    }
+  });
+
+  it("is display-only — the stored section names are never mutated", () => {
+    sectionHeaders("uppercase");
+    expect(PORTS.map((p) => p.section)).toEqual([
+      "mic In", "line In", "main Out", "aux Out", "net A", "net B",
+    ]);
   });
 });

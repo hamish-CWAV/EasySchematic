@@ -9,6 +9,7 @@ import { getPaperSize } from "../printConfig";
 import { STUB_GAP } from "../stubPlacement";
 import { getPortAbsolutePositions } from "../snapUtils";
 import { buildStubLabelText } from "../stubLabelText";
+import { useDisplayLabel } from "../labelCaseUtils";
 
 /** Find the connecting edge: source-side stub is the TARGET of an edge from a device;
  *  target-side stub is the SOURCE of an edge to a device. */
@@ -219,14 +220,21 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
     };
   }, [id, data.side, data.placed]);
 
+  const displayLabel = useDisplayLabel();
   const text = useMemo(() => {
     if (!labelStr) return "?";
     const [arrow, farLabel, farPort, farRoom, myPage, farPage] = labelStr.split("\0");
     return buildStubLabelText(
-      { arrow, farLabel, farPort, farRoom, myPage, farPage },
+      // The far device's name and its room are labels like any other, so the auto-case
+      // preference applies to them here too (#294). Applied to the parts rather than the
+      // assembled string so the arrow and the "Pg" tag stay untouched.
+      //
+      // farPort is deliberately NOT wrapped: resolvePortLabel already runs the transform
+      // (see packList.ts), so wrapping it here would be a redundant second pass.
+      { arrow, farLabel: displayLabel(farLabel), farPort, farRoom: displayLabel(farRoom), myPage, farPage },
       { showPort: effectiveShowPort, showRoom: effectiveShowRoom, pageMode: effectivePageMode },
     );
-  }, [labelStr, effectiveShowPort, effectiveShowRoom, effectivePageMode]);
+  }, [labelStr, effectiveShowPort, effectiveShowRoom, effectivePageMode, displayLabel]);
 
   const color = SIGNAL_COLORS[data.signalType] ?? "#999";
   // Source-side stubs receive an incoming line (they're the TARGET of the edge);

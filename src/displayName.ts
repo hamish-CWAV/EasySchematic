@@ -1,4 +1,5 @@
 import type { DeviceData, DeviceTemplate, SchematicFile } from "./types";
+import { estimateTextWidthPx } from "./textWidth";
 
 export interface SchematicDisplayDefaults {
   useShortNames?: boolean;
@@ -14,7 +15,13 @@ export function getSchematicDisplayDefaults(file: Pick<SchematicFile, "useShortN
 
 export interface ResolvedDeviceLabel {
   text: string;
+  /** Is multi-line rendering permitted for this device? Rack views use it as a
+   *  max-lines gate against their own (variable) label box. */
   wrap: boolean;
+  /** Does the canvas device header actually need its second line — i.e. `wrap` is on
+   *  AND `text` overflows the 144-px device box? The header reserves a fixed 16-px
+   *  band for line two, so this must be a "needs it", not a "wrapping is on" (#249). */
+  wrapsInHeader: boolean;
   /** True when a compact name is available for this device — explicit shortName or
    *  modelNumber. Drives whether the "Use short name" toggle is enabled in the editor. */
   hasShortName: boolean;
@@ -50,6 +57,31 @@ function autoNumberSuffix(label: string, baseLabel: string | undefined): string 
   return "";
 }
 
+/** Width available to the device name inside the header band: the 144-px device
+ *  box, less its 1-px left/right border, less the header's `px-3` padding. */
+export const DEVICE_LABEL_AVAIL_PX = 144 - 2 - 24;
+/** `text-xs font-semibold` on the header label — and only Inter 400/700 are loaded,
+ *  so CSS weight matching renders 600 as Bold. */
+const DEVICE_LABEL_FONT_PX = 12;
+/** A couple of percent of slack for kerning and sub-pixel rounding: wrapping a name
+ *  that would just barely have fit costs 16 px of header, but NOT wrapping one that
+ *  doesn't fit silently truncates it, so lean toward the second line at the margin. */
+const FIT_TOLERANCE = 0.98;
+
+/** Does this device name actually need a second line inside the header?
+ *
+ *  The single source of truth for the question, so the canvas, the snap/height
+ *  estimates, the routing harness and every export agree on how tall a device is
+ *  (#249 — wrapping used to reserve line two unconditionally).
+ *
+ *  Measured against the name as stored: the auto-case preference is applied later,
+ *  at render time, so an uppercase override can push a borderline name past the
+ *  box. FIT_TOLERANCE absorbs a few percent of that. */
+export function deviceLabelNeedsWrap(text: string): boolean {
+  const width = estimateTextWidthPx(text, DEVICE_LABEL_FONT_PX, "bold");
+  return width > DEVICE_LABEL_AVAIL_PX * FIT_TOLERANCE;
+}
+
 export function resolveDeviceLabel(
   device: Pick<DeviceData, "label" | "shortName" | "useShortName" | "wrapLabel" | "modelNumber" | "baseLabel">,
   defaults: SchematicDisplayDefaults,
@@ -60,8 +92,12 @@ export function resolveDeviceLabel(
   const text = useShort && hasShortName
     ? compact.text + autoNumberSuffix(device.label, device.baseLabel)
     : device.label;
+  // Wrapping being *enabled* only permits a second line. In the device header, where
+  // the space for line two is reserved up front, the name has to actually overflow to
+  // get one — otherwise every short-named device carries dead space (#249).
   const wrap = device.wrapLabel ?? defaults.wrapDeviceLabels ?? false;
-  return { text, wrap, hasShortName, shortSource: compact.source };
+  const wrapsInHeader = wrap && deviceLabelNeedsWrap(text);
+  return { text, wrap, wrapsInHeader, hasShortName, shortSource: compact.source };
 }
 
 /** What to show in the device library / sidebar for a template entry — same fallback

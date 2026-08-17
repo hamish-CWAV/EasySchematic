@@ -59,8 +59,9 @@ function estimateDeviceHeight(node: SchematicNode): number {
   //     = 48 + rows×16.
   // totalAuxHeight adds (a) header band surplus above the 32-px baseline and (b) footer block height.
   // Per-instance wrapLabel override is honored here; schematic-wide default is not threaded — React Flow's
-  // measured height supersedes this estimate after the first render.
-  const labelZone = data.wrapLabel ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
+  // measured height supersedes this estimate after the first render. `resolveDeviceLabel` also decides
+  // whether the name is actually wide enough to need line two, so this matches what DeviceNode renders.
+  const labelZone = resolveDeviceLabel(data, {}).wrapsInHeader ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
   return 48 + portRows * 16 + totalAuxHeight(data.auxiliaryData, labelZone);
 }
 
@@ -244,7 +245,7 @@ export function getPortAbsolutePositions(
   const dd = device.data as DeviceData;
   const ports = dd.ports ?? [];
   const resolved = resolveDeviceLabel(dd, displayDefaults);
-  const labelZone = resolved.wrap ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
+  const labelZone = resolved.wrapsInHeader ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
   const headerBand = headerBandHeight(dd.auxiliaryData, labelZone);
   // Round to integer pixels — absoluteNodePos walks the parent chain summing
   // positions, and any sub-pixel ancestor (older saves, room dragged to non-

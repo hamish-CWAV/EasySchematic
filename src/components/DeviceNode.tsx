@@ -14,6 +14,7 @@ import {
 import type { AuxRow } from "../types";
 import { useDisplayLabel } from "../labelCaseUtils";
 import { resolveDeviceLabel } from "../displayName";
+import { contrastingTextColor } from "../colorContrast";
 import { isPortConnected } from "../portVisibility";
 
 type ColumnItem =
@@ -58,7 +59,15 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     () => resolveDeviceLabel(data, { useShortNames, wrapDeviceLabels }),
     [data, useShortNames, wrapDeviceLabels],
   );
-  const labelZone = resolvedLabel.wrap ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
+  const labelZone = resolvedLabel.wrapsInHeader ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
+  // A custom header color has no idea what the theme's heading/muted tokens will look
+  // like on top of it — a black header rendered near-black text and the gray aux rows
+  // vanished (#295). Pick black or white off the header's luminance instead. With no
+  // custom color the header is `--color-surface` and the theme tokens are already right.
+  const headerTextColor = useMemo(
+    () => (data.headerColor ? contrastingTextColor(data.headerColor) : null),
+    [data.headerColor],
+  );
   const hiddenPinSignalTypesStr = useSchematicStore((s) => s.hiddenPinSignalTypes);
   const isHiddenAdapter = useSchematicStore((s) => s.hiddenAdapterNodeIds.has(id));
   const isOverlapping = useSchematicStore((s) => s.overlapNodeId === id);
@@ -403,8 +412,10 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     );
   }
 
-  /** Individual aux row markup shared between header band and footer block. */
-  function renderAuxRow(row: AuxRow, key: number) {
+  /** Individual aux row markup shared between header band and footer block.
+   *  `color` overrides the muted token for header rows sitting on a custom header
+   *  color; the slight fade keeps them secondary to the device name (#295). */
+  function renderAuxRow(row: AuxRow, key: number, color?: string | null) {
     if (!row.text.trim()) {
       return <div key={key} aria-hidden style={{ height: 6 }} />;
     }
@@ -413,6 +424,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
       <div
         key={key}
         className="text-[9px] text-[var(--color-text-muted)] leading-3 truncate whitespace-nowrap text-center"
+        style={color ? { color, opacity: 0.85 } : undefined}
         title={resolved}
       >
         {resolved}
@@ -432,17 +444,20 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     const totalPad = bandH - content;
     const pt = Math.floor(totalPad / 2);
     const pb = totalPad - pt;
-    const labelStyle = resolvedLabel.wrap
-      ? {
-          display: "-webkit-box" as const,
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical" as const,
-          overflow: "hidden" as const,
-          wordBreak: "break-word" as const,
-          textAlign: "center" as const,
-          lineHeight: "14px",
-        }
-      : undefined;
+    const labelStyle: React.CSSProperties = {
+      ...(resolvedLabel.wrapsInHeader
+        ? {
+            display: "-webkit-box" as const,
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical" as const,
+            overflow: "hidden" as const,
+            wordBreak: "break-word" as const,
+            textAlign: "center" as const,
+            lineHeight: "14px",
+          }
+        : {}),
+      ...(headerTextColor ? { color: headerTextColor } : {}),
+    };
     return (
       <div
         className="px-3 border-b border-[var(--color-border)] rounded-t-lg flex flex-col"
@@ -458,7 +473,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
         >
           <span
             className={
-              resolvedLabel.wrap
+              resolvedLabel.wrapsInHeader
                 ? "text-xs font-semibold text-[var(--color-text-heading)]"
                 : "text-xs font-semibold text-[var(--color-text-heading)] truncate leading-tight"
             }
@@ -468,7 +483,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
             {displayLabel(resolvedLabel.text)}
           </span>
         </div>
-        {rows.map((row, i) => renderAuxRow(row, i))}
+        {rows.map((row, i) => renderAuxRow(row, i, headerTextColor))}
       </div>
     );
   }
@@ -503,7 +518,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
                 item.type === "section" ? (
                   <div key={`lsec-${i}`} className="h-4 flex items-end pl-2">
                     <span className="text-[9px] text-[var(--color-text-muted)] truncate border-b border-[var(--color-border)]/30 w-full pb-0.5 mr-1">
-                      {item.name}
+                      {displayLabel(item.name)}
                     </span>
                   </div>
                 ) : item.type === "divider" ? (
@@ -518,7 +533,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
                 item.type === "section" ? (
                   <div key={`rsec-${i}`} className="h-4 flex items-end pr-2">
                     <span className="text-[9px] text-[var(--color-text-muted)] truncate text-right border-b border-[var(--color-border)]/30 w-full pb-0.5 ml-1">
-                      {item.name}
+                      {displayLabel(item.name)}
                     </span>
                   </div>
                 ) : item.type === "divider" ? (
@@ -608,12 +623,12 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
           <div className="flex h-4">
             <div className="flex-1 flex items-end pl-2">
               <span className="text-[9px] text-[var(--color-text-muted)] truncate border-b border-[var(--color-border)]/30 w-full pb-0.5 mr-1">
-                Rear
+                {displayLabel("Rear")}
               </span>
             </div>
             <div className="flex-1 flex items-end pr-2 justify-end">
               <span className="text-[9px] text-[var(--color-text-muted)] truncate text-right border-b border-[var(--color-border)]/30 w-full pb-0.5 ml-1">
-                Front
+                {displayLabel("Front")}
               </span>
             </div>
           </div>
@@ -621,7 +636,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
             item.type === "section" ? (
               <div key={`psec-${i}`} className="flex justify-center items-end h-4 mx-1">
                 <span className="text-[9px] text-[var(--color-text-muted)] pb-0.5 truncate border-b border-[var(--color-border)]/30 w-full text-center">
-                  {item.name}
+                  {displayLabel(item.name)}
                 </span>
               </div>
             ) : item.type === "divider" ? (
@@ -639,7 +654,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
               return (
                 <div key={`bsec-${i}`} className="flex justify-center items-end h-4 mx-1">
                   <span className="text-[9px] text-[var(--color-text-muted)] pb-0.5 truncate border-b border-[var(--color-border)]/30 w-full text-center">
-                    {item.name}
+                    {displayLabel(item.name)}
                   </span>
                 </div>
               );
