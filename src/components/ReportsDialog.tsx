@@ -17,6 +17,7 @@ import {
 } from "../packList";
 import {
   computeCableSchedule,
+  computeCableScheduleForCsv,
   exportCableScheduleCsv,
   getCableScheduleTableData,
   type CableScheduleRow,
@@ -84,7 +85,7 @@ function ReportsDialog({ initialTab, onClose }: ReportsDialogProps) {
       exportDevicesCsv(nodes, ownedGear, schematicName);
     } else if (tab === "cableSchedule") {
       const s = useSchematicStore.getState();
-      const rows = computeCableSchedule(nodes, edges, s.cableNamingScheme, {
+      const rows = computeCableScheduleForCsv(nodes, edges, s.cableNamingScheme, {
         roomDistances: s.roomDistances,
         distanceSettings: s.distanceSettings,
       }, s.bundles);

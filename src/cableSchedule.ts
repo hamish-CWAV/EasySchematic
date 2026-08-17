@@ -8,7 +8,7 @@ import type {
 import { SIGNAL_LABELS, CONNECTOR_LABELS } from "./types";
 import { getCableType } from "./cableTypes";
 import { resolvePort, resolvePortLabel, getRoomLabel, escapeCsv, csvRow, groupBy } from "./packList";
-import { transformLabelNow } from "./labelCaseUtils";
+import { transformLabelNow, withRawLabels } from "./labelCaseUtils";
 import type { ReportLayout } from "./reportLayout";
 import type { ReportTableData } from "./reportPdf";
 import type { DeviceData } from "./types";
@@ -388,6 +388,22 @@ function computeRowEstimatedLength(
     ctx?.roomDistances,
     ctx?.distanceSettings,
   );
+}
+
+/** Cable-schedule rows with every label as stored, bypassing the display-case
+ *  preference (#309). The CSV export uses these instead of computeCableSchedule so
+ *  an exported schedule re-imports to the same stored names — the file may
+ *  legitimately not match on-screen casing when a case preference is active. The
+ *  on-screen table and PDF keep the rendered rows. */
+export function computeCableScheduleForCsv(
+  nodes: SchematicNode[],
+  edges: ConnectionEdge[],
+  namingScheme: "sequential" | "type-prefix" = "sequential",
+  distanceContext?: CableScheduleDistanceContext,
+  bundles?: Record<string, BundleMeta>,
+): CableScheduleRow[] {
+  return withRawLabels(() =>
+    computeCableSchedule(nodes, edges, namingScheme, distanceContext, bundles));
 }
 
 /** Build the cable-schedule CSV file contents (including the UTF-8 BOM). */

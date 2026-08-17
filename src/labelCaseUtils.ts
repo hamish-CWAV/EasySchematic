@@ -94,8 +94,28 @@ export function useDisplayLabel(): (text: string | null | undefined) => string {
   return useCallback((text) => transformLabel(text, mode), [mode]);
 }
 
+/** While true, transformLabelNow passes labels through as stored. Only ever set
+ *  inside withRawLabels — never directly. */
+let rawLabels = false;
+
+/** Run fn with the display-case transform suspended, so every label comes out as
+ *  stored (#309). For exports that are DATA rather than a rendered document — a
+ *  re-importable CSV must round-trip stored names, not bake in the display case.
+ *  Covers all of fn's transitive transformLabelNow calls (device, room, port, and
+ *  patch-panel labels alike); rendered surfaces (canvas, PDF, DXF) stay outside. */
+export function withRawLabels<T>(fn: () => T): T {
+  const prev = rawLabels;
+  rawLabels = true;
+  try {
+    return fn();
+  } finally {
+    rawLabels = prev;
+  }
+}
+
 /** Non-component helper — reads current preference from the store and transforms.
  *  Use inside report/export functions that run outside React. */
 export function transformLabelNow(text: string | null | undefined): string {
+  if (rawLabels) return text ?? "";
   return transformLabel(text, useSchematicStore.getState().labelCase);
 }
