@@ -9,6 +9,7 @@ import { LINE_STYLE_DASHARRAY, type ConnectionEdge, type LineStyle, type DeviceD
 import { usbcPowerShortfallW } from "../connectorTypes";
 import { midCustomLabelPlacement } from "../stubPlacement";
 import { computeEdgeLengthEstimate, resolveCableLengthLabel } from "../cableLengthLabel";
+import { showPathEditHint } from "../pathEditHint";
 
 function OffsetEdgeComponent({
   id,
@@ -214,6 +215,21 @@ function OffsetEdgeComponent({
   });
 
   const isManual = manualWpStr.length > 0;
+
+  // User-placed handles of any kind — manual waypoints or stub-leg waypoints
+  const hasOwnWaypoints = useSchematicStore((s) => {
+    const edge = s.edges.find((e) => e.id === id);
+    return !!(
+      edge?.data?.manualWaypoints?.length ||
+      edge?.data?.stubSourceWaypoints?.length ||
+      edge?.data?.stubTargetWaypoints?.length
+    );
+  });
+
+  // Whether this edge is the only selected edge (for the path-edit hint, #275)
+  const soleSelection = useSchematicStore(
+    (s) => s.edges.filter((e) => e.selected).length === 1,
+  );
 
   let edgePath: string;
   let lx: number;
@@ -670,8 +686,24 @@ function OffsetEdgeComponent({
     </>
   ) : null;
 
+  // Path-edit discoverability hint (#275) — a lone selected cable with no handles yet
+  // points at the right-click menu where Add Handle lives.
+  const pathEditHint = showPathEditHint({
+    soleSelected: !!selected && soleSelection,
+    hasRoute: !!routeStr,
+    hasOwnWaypoints,
+    directAttach,
+  }) ? (
+    <div
+      className="reconnect-tooltip"
+      style={{ transform: `translate(-50%, -100%) translate(${customMidPt.x}px, ${customMidPt.y - 12}px)` }}
+    >
+      Right-click cable to add a path handle
+    </div>
+  ) : null;
+
   // All labels + reconnect visuals rendered via EdgeLabelRenderer (HTML layer above all SVG edges)
-  const hasPortalContent = customLabels || cableIdLabels || reconnectVisuals || usbcWarningBadge || cableLengthBadge;
+  const hasPortalContent = customLabels || cableIdLabels || reconnectVisuals || usbcWarningBadge || cableLengthBadge || pathEditHint;
   const edgeLabelsPortal = hasPortalContent ? (
     <EdgeLabelRenderer>
       {cableIdLabels}
@@ -679,6 +711,7 @@ function OffsetEdgeComponent({
       {cableLengthBadge}
       {usbcWarningBadge}
       {reconnectVisuals}
+      {pathEditHint}
     </EdgeLabelRenderer>
   ) : null;
 

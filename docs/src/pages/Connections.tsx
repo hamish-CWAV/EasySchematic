@@ -54,6 +54,24 @@ export default function ConnectionsPage() {
         <li>Or <strong>click</strong> the connection to select it, then press <strong>Delete</strong></li>
       </ul>
 
+      <h2>Shaping the cable path</h2>
+      <p>
+        Connections auto-route around devices, but you can shape any run by hand
+        with <strong>path handles</strong>:
+      </p>
+      <ul>
+        <li><strong>Right-click</strong> a connection and choose <strong>Add Handle</strong> — a handle appears where you clicked</li>
+        <li><strong>Click</strong> the connection to select it, then <strong>drag</strong> a handle to reshape the run (handles snap to the grid)</li>
+        <li>Right-click <strong>near a handle</strong> and choose <strong>Remove Handle</strong> to delete it</li>
+        <li>Right-click and choose <strong>Reset Route</strong> to drop all handles and return to auto-routing</li>
+      </ul>
+      <p>
+        Selecting a connection that has no handles yet shows a small{" "}
+        <strong>"Right-click cable to add a path handle"</strong> hint at its midpoint. For the full
+        story on how manual handles interact with auto-routing, see the{" "}
+        <a href="/connection-routing">Connection Routing guide</a>.
+      </p>
+
       <h2>Cable length</h2>
       <p>
         Each connection has an optional <strong>cable length</strong> field. Set it in the cable schedule

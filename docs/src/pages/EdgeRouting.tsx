@@ -60,6 +60,10 @@ export default function EdgeRoutingPage() {
         <li>A waypoint appears on the connection at the click position</li>
       </ol>
       <p>
+        As a reminder, selecting a connection that has no waypoints yet shows a{" "}
+        <strong>"Right-click cable to add a path handle"</strong> hint at its midpoint.
+      </p>
+      <p>
         The connection is re-routed using A* pathfinding between each pair of waypoints,
         so it still avoids devices and maintains smooth orthogonal turns — it just passes
         through your chosen points along the way.
