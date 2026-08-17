@@ -37,7 +37,7 @@ import type {
   PatchPanelViewPage,
 } from "./types";
 import type { ReactFlowInstance } from "@xyflow/react";
-import type { SignalType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
+import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
 import { defaultStubPlacement, healStubPortAlignment, STUB_W_EST } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
@@ -281,6 +281,25 @@ interface Clipboard {
   edges: ConnectionEdge[];
   /** Height of the copied selection's bounding box, used for paste offset */
   boundsHeight: number;
+}
+
+/** A connection that a port edit left invalid, awaiting a user decision (#306). */
+export interface PortEditConflict {
+  edgeId: string;
+  source: string;
+  target: string;
+  sourceHandle: string | null;
+  targetHandle: string | null;
+  sourcePort: Port;
+  targetPort: Port;
+  /** Effective connector each end of this cable actually plugs into — a passthrough
+   *  port's front/rear face connector, a plain port's connectorType. */
+  sourceConnector?: ConnectorType;
+  targetConnector?: ConnectorType;
+  /** Effective signal at each end (resolves inherited passthrough signals). */
+  sourceSignal: SignalType;
+  targetSignal: SignalType;
+  reason: "signal-mismatch" | "connector-mismatch";
 }
 
 interface SchematicState {
@@ -623,10 +642,18 @@ interface SchematicState {
     sourcePort: Port;
     targetPort: Port;
     reason: "signal-mismatch" | "connector-mismatch";
+    /** When set, the adapter replaces this existing connection instead of joining a new one (#306). */
+    replaceEdgeId?: string;
   } | null;
   dismissIncompatibleDialog: () => void;
   forceIncompatibleConnection: () => void;
   insertAdapterBetween: (template: DeviceTemplate) => void;
+
+  // Port-edit revalidation dialog (#306): connections a port edit made invalid
+  pendingPortEditConflicts: PortEditConflict[] | null;
+  resolvePortEditConflict: (edgeId: string, action: "disconnect" | "keep" | "adapter", adapterTemplate?: DeviceTemplate) => void;
+  resolveAllPortEditConflicts: (action: "disconnect" | "keep") => void;
+  dismissPortEditConflicts: () => void;
 
   // Adapter visibility (#adapter-overhaul)
   hideAdapters: boolean;
@@ -1320,6 +1347,280 @@ function getPortFromHandle(
   return ports.find((p) => p.id === baseId);
 }
 
+/** Connect-time validity rules, shared by the store's isValidConnection and port-edit
+ *  revalidation (#306). `excludeEdgeId` is left out of the duplicate-handle checks. */
+function validateConnection(
+  nodes: SchematicNode[],
+  edges: ConnectionEdge[],
+  connection: Connection,
+  excludeEdgeId: string | null,
+): boolean {
+  const sourcePort = getPortFromHandle(
+    nodes,
+    connection.source,
+    connection.sourceHandle,
+  );
+  const targetPort = getPortFromHandle(
+    nodes,
+    connection.target,
+    connection.targetHandle,
+  );
+
+  if (!sourcePort || !targetPort) return false;
+
+  // ── Passthrough port handling ────────────────────────────────────────
+  const srcIsPassthrough = sourcePort.direction === "passthrough";
+  const tgtIsPassthrough = targetPort.direction === "passthrough";
+
+  if (srcIsPassthrough || tgtIsPassthrough) {
+    // Detect which face of each passthrough port this connection uses
+    const srcSide = connection.sourceHandle?.endsWith("-rear") ? "rear"
+      : connection.sourceHandle?.endsWith("-front") ? "front"
+      : undefined;
+    const tgtSide = connection.targetHandle?.endsWith("-rear") ? "rear"
+      : connection.targetHandle?.endsWith("-front") ? "front"
+      : undefined;
+
+    // Block same-device connections unless both handles are "-front" on a patch-panel
+    // (that's a patch cable connecting two front-face jacks on the same panel)
+    if (connection.source === connection.target) {
+      const srcNode = nodes.find((n) => n.id === connection.source);
+      const isFrontToFront = srcSide === "front" && tgtSide === "front";
+      const isPatchPanel = (srcNode as DeviceNode | undefined)?.data?.deviceType === "patch-panel";
+      if (!isFrontToFront || !isPatchPanel) return false;
+    }
+
+    // Resolve the effective connector type for each side
+    const srcConnector = srcIsPassthrough
+      ? (srcSide === "rear" ? sourcePort.rearConnectorType : srcSide === "front" ? sourcePort.frontConnectorType : sourcePort.connectorType)
+      : sourcePort.connectorType;
+    const tgtConnector = tgtIsPassthrough
+      ? (tgtSide === "rear" ? targetPort.rearConnectorType : tgtSide === "front" ? targetPort.frontConnectorType : targetPort.connectorType)
+      : targetPort.connectorType;
+
+    // Connector compatibility (bare-wire always passes)
+    if (!areConnectorsCompatible(srcConnector ?? sourcePort.connectorType, tgtConnector ?? targetPort.connectorType)) return false;
+
+    // Signal-type check: if either port inherits its signal from edges we can't know it
+    // at connection time, so we accept anything. Otherwise use effectiveSignalType.
+    const srcSignal = effectiveSignalType(sourcePort, connection.source, edges, srcIsPassthrough ? srcSide : undefined);
+    const tgtSignal = effectiveSignalType(targetPort, connection.target, edges, tgtIsPassthrough ? tgtSide : undefined);
+    const srcInherits = sourcePort.inheritsSignal && srcSignal === sourcePort.signalType;
+    const tgtInherits = targetPort.inheritsSignal && tgtSignal === targetPort.signalType;
+    if (!srcInherits && !tgtInherits && srcSignal !== tgtSignal) {
+      const netBypass = NETWORK_SIGNAL_TYPES.has(srcSignal) && NETWORK_SIGNAL_TYPES.has(tgtSignal);
+      const bareBypass = BARE_WIRE_CONNECTORS.has(srcConnector ?? "none" as never) ||
+        BARE_WIRE_CONNECTORS.has(tgtConnector ?? "none" as never);
+      const pairBypass = areSignalPairsCompatible(srcSignal, tgtSignal);
+      if (!netBypass && !bareBypass && !pairBypass) return false;
+    }
+
+    // Duplicate-handle guard (same as non-passthrough below)
+    if (!sourcePort.multiConnect) {
+      const dup = edges.some(
+        (e) => e.id !== excludeEdgeId && e.source === connection.source && e.sourceHandle === connection.sourceHandle,
+      );
+      if (dup) return false;
+    }
+    if (!targetPort.multiConnect) {
+      const dup = edges.some(
+        (e) => e.id !== excludeEdgeId && e.target === connection.target && e.targetHandle === connection.targetHandle,
+      );
+      if (dup) return false;
+    }
+
+    return true;
+  }
+  // ── End passthrough handling ─────────────────────────────────────────
+
+  // Network signal types (ethernet, dante, etc.) can connect in any direction
+  const networkBypass = NETWORK_SIGNAL_TYPES.has(sourcePort.signalType) && NETWORK_SIGNAL_TYPES.has(targetPort.signalType);
+  // Bare-wire connectors (phoenix/terminal-block) bypass signal type checks — if you're
+  // screwing bare wire into screw terminals, you presumably know what signal you're carrying
+  const bareWireBypass = !!sourcePort.connectorType && !!targetPort.connectorType &&
+    BARE_WIRE_CONNECTORS.has(sourcePort.connectorType) && BARE_WIRE_CONNECTORS.has(targetPort.connectorType);
+  const signalBypass = areSignalsCompatibleViaConnector(
+    sourcePort.signalType, sourcePort.connectorType,
+    targetPort.signalType, targetPort.connectorType,
+  ) || areSignalPairsCompatible(sourcePort.signalType, targetPort.signalType);
+  if (!networkBypass && !bareWireBypass) {
+    const canSource = sourcePort.direction === "output" || sourcePort.direction === "bidirectional";
+    const canTarget = targetPort.direction === "input" || targetPort.direction === "bidirectional";
+    if (!canSource || !canTarget) return false;
+  }
+  if (sourcePort.signalType !== targetPort.signalType && !networkBypass && !bareWireBypass && !signalBypass) return false;
+
+  // Multicable ports can only connect to other multicable ports
+  const srcIsMulticable = sourcePort.isMulticable ?? false;
+  const tgtIsMulticable = targetPort.isMulticable ?? false;
+  if (srcIsMulticable !== tgtIsMulticable) return false;
+
+  // Don't allow multiple connections to the same handle, unless the port is multi-connect
+  if (!targetPort.multiConnect) {
+    const duplicateTarget = edges.some(
+      (e) =>
+        e.id !== excludeEdgeId &&
+        e.target === connection.target &&
+        e.targetHandle === connection.targetHandle,
+    );
+    if (duplicateTarget) return false;
+  }
+
+  if (!sourcePort.multiConnect) {
+    const duplicateSource = edges.some(
+      (e) =>
+        e.id !== excludeEdgeId &&
+        e.source === connection.source &&
+        e.sourceHandle === connection.sourceHandle,
+    );
+    if (duplicateSource) return false;
+  }
+
+  // For bidirectional ports, block the opposite side if one side is already connected
+  if (sourcePort.direction === "bidirectional" && connection.sourceHandle) {
+    const baseId = connection.sourceHandle.replace(/-(in|out|rear|front)$/, "");
+    const otherHandle = connection.sourceHandle.endsWith("-out")
+      ? `${baseId}-in`
+      : `${baseId}-out`;
+    const otherConnected = edges.some(
+      (e) =>
+        (e.source === connection.source && e.sourceHandle === otherHandle) ||
+        (e.target === connection.source && e.targetHandle === otherHandle),
+    );
+    if (otherConnected) return false;
+  }
+  if (targetPort.direction === "bidirectional" && connection.targetHandle) {
+    const baseId = connection.targetHandle.replace(/-(in|out|rear|front)$/, "");
+    const otherHandle = connection.targetHandle.endsWith("-in")
+      ? `${baseId}-out`
+      : `${baseId}-in`;
+    const otherConnected = edges.some(
+      (e) =>
+        (e.source === connection.target && e.sourceHandle === otherHandle) ||
+        (e.target === connection.target && e.targetHandle === otherHandle),
+    );
+    if (otherConnected) return false;
+  }
+
+  return true;
+}
+
+/** Which face of a passthrough port a handle addresses ("p1-front" → "front"). */
+function handleFace(handle: string | null | undefined): "rear" | "front" | undefined {
+  return handle?.endsWith("-rear") ? "rear" : handle?.endsWith("-front") ? "front" : undefined;
+}
+
+/** The connector a cable on this handle actually mates with: the front/rear face
+ *  connector for a passthrough port, plain connectorType otherwise — the same
+ *  resolution validateConnection applies. */
+function faceConnector(port: Port, handle: string | null | undefined): ConnectorType | undefined {
+  if (port.direction !== "passthrough") return port.connectorType;
+  const face = handleFace(handle);
+  return face === "rear" ? port.rearConnectorType
+    : face === "front" ? port.frontConnectorType
+    : port.connectorType;
+}
+
+/** After a device's ports are edited, find connections on that device that the new
+ *  connector/signal types make invalid, using the same rules as connect time (#306).
+ *  Connections the user already accepted as mismatched (connectorMismatch /
+ *  allowIncompatible) are skipped. Pure so it can be unit-tested. */
+export function findInvalidatedConnections(
+  nodes: SchematicNode[],
+  edges: ConnectionEdge[],
+  nodeId: string,
+  oldPorts: Port[],
+): PortEditConflict[] {
+  const node = nodes.find((n) => n.id === nodeId && n.type === "device");
+  if (!node) return [];
+  const oldById = new Map(oldPorts.map((p) => [p.id, p]));
+  const changed = new Set<string>();
+  for (const p of (node.data as DeviceData).ports) {
+    const old = oldById.get(p.id);
+    if (!old) continue;
+    if (
+      old.connectorType !== p.connectorType ||
+      old.signalType !== p.signalType ||
+      old.frontConnectorType !== p.frontConnectorType ||
+      old.rearConnectorType !== p.rearConnectorType
+    ) {
+      changed.add(p.id);
+    }
+  }
+  if (changed.size === 0) return [];
+
+  const conflicts: PortEditConflict[] = [];
+  for (const e of edges) {
+    const srcBare = (e.sourceHandle ?? "").replace(/-(in|out|rear|front)$/, "");
+    const tgtBare = (e.targetHandle ?? "").replace(/-(in|out|rear|front)$/, "");
+    const touchesEdit =
+      (e.source === nodeId && changed.has(srcBare)) ||
+      (e.target === nodeId && changed.has(tgtBare));
+    if (!touchesEdit) continue;
+    if (e.data?.connectorMismatch || e.data?.allowIncompatible) continue;
+
+    const sourcePort = getPortFromHandle(nodes, e.source, e.sourceHandle ?? null);
+    const targetPort = getPortFromHandle(nodes, e.target, e.targetHandle ?? null);
+    if (!sourcePort || !targetPort) continue;
+
+    const connection: Connection = {
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle ?? null,
+      targetHandle: e.targetHandle ?? null,
+    };
+
+    // Classify (and later adapt) by what the cable actually plugs into: the face
+    // connector on passthrough ports and the effective (possibly inherited) signal.
+    const sourceConnector = faceConnector(sourcePort, e.sourceHandle);
+    const targetConnector = faceConnector(targetPort, e.targetHandle);
+    const sourceSignal = effectiveSignalType(
+      sourcePort, e.source, edges,
+      sourcePort.direction === "passthrough" ? handleFace(e.sourceHandle) : undefined,
+    );
+    const targetSignal = effectiveSignalType(
+      targetPort, e.target, edges,
+      targetPort.direction === "passthrough" ? handleFace(e.targetHandle) : undefined,
+    );
+
+    const push = (reason: PortEditConflict["reason"]) =>
+      conflicts.push({
+        edgeId: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+        targetHandle: e.targetHandle ?? null,
+        sourcePort,
+        targetPort,
+        sourceConnector,
+        targetConnector,
+        sourceSignal,
+        targetSignal,
+        reason,
+      });
+
+    if (!validateConnection(nodes, edges, connection, e.id)) {
+      const connectorsBad =
+        !!sourceConnector && !!targetConnector &&
+        !areConnectorsCompatible(sourceConnector, targetConnector);
+      push(connectorsBad && sourceSignal === targetSignal ? "connector-mismatch" : "signal-mismatch");
+      continue;
+    }
+
+    // Connector mismatches don't fail isValidConnection — onConnect handles them
+    // with the adapter flow — so apply the same connector checks here.
+    if (
+      sourceConnector && targetConnector &&
+      ((sourceConnector !== targetConnector &&
+        !areConnectorsCompatible(sourceConnector, targetConnector)) ||
+        needsAdapter(sourceConnector, targetConnector))
+    ) {
+      push("connector-mismatch");
+    }
+  }
+  return conflicts;
+}
+
 function removeOrphanedEdges(nodes: SchematicNode[], edges: ConnectionEdge[]): ConnectionEdge[] {
   return edges.filter((e) => {
     const srcNode = nodes.find((n) => n.id === e.source);
@@ -1502,6 +1803,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   fileHandle: null,
   isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
   pendingIncompatibleConnection: null,
+  pendingPortEditConflicts: null,
   hideAdapters: false,
   hiddenAdapterNodeIds: new Set(),
   hiddenVirtualEdgeIds: new Set(),
@@ -2199,154 +2501,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   isValidConnection: (connection) => {
     const state = get();
-    const sourcePort = getPortFromHandle(
-      state.nodes,
-      connection.source,
-      connection.sourceHandle,
-    );
-    const targetPort = getPortFromHandle(
-      state.nodes,
-      connection.target,
-      connection.targetHandle,
-    );
-
-    if (!sourcePort || !targetPort) return false;
-
-    // ── Passthrough port handling ────────────────────────────────────────
-    const srcIsPassthrough = sourcePort.direction === "passthrough";
-    const tgtIsPassthrough = targetPort.direction === "passthrough";
-
-    if (srcIsPassthrough || tgtIsPassthrough) {
-      // Detect which face of each passthrough port this connection uses
-      const srcSide = connection.sourceHandle?.endsWith("-rear") ? "rear"
-        : connection.sourceHandle?.endsWith("-front") ? "front"
-        : undefined;
-      const tgtSide = connection.targetHandle?.endsWith("-rear") ? "rear"
-        : connection.targetHandle?.endsWith("-front") ? "front"
-        : undefined;
-
-      // Block same-device connections unless both handles are "-front" on a patch-panel
-      // (that's a patch cable connecting two front-face jacks on the same panel)
-      if (connection.source === connection.target) {
-        const srcNode = state.nodes.find((n) => n.id === connection.source);
-        const isFrontToFront = srcSide === "front" && tgtSide === "front";
-        const isPatchPanel = (srcNode as DeviceNode | undefined)?.data?.deviceType === "patch-panel";
-        if (!isFrontToFront || !isPatchPanel) return false;
-      }
-
-      // Resolve the effective connector type for each side
-      const srcConnector = srcIsPassthrough
-        ? (srcSide === "rear" ? sourcePort.rearConnectorType : srcSide === "front" ? sourcePort.frontConnectorType : sourcePort.connectorType)
-        : sourcePort.connectorType;
-      const tgtConnector = tgtIsPassthrough
-        ? (tgtSide === "rear" ? targetPort.rearConnectorType : tgtSide === "front" ? targetPort.frontConnectorType : targetPort.connectorType)
-        : targetPort.connectorType;
-
-      // Connector compatibility (bare-wire always passes)
-      if (!areConnectorsCompatible(srcConnector ?? sourcePort.connectorType, tgtConnector ?? targetPort.connectorType)) return false;
-
-      // Signal-type check: if either port inherits its signal from edges we can't know it
-      // at connection time, so we accept anything. Otherwise use effectiveSignalType.
-      const srcSignal = effectiveSignalType(sourcePort, connection.source, state.edges, srcIsPassthrough ? srcSide : undefined);
-      const tgtSignal = effectiveSignalType(targetPort, connection.target, state.edges, tgtIsPassthrough ? tgtSide : undefined);
-      const srcInherits = sourcePort.inheritsSignal && srcSignal === sourcePort.signalType;
-      const tgtInherits = targetPort.inheritsSignal && tgtSignal === targetPort.signalType;
-      if (!srcInherits && !tgtInherits && srcSignal !== tgtSignal) {
-        const netBypass = NETWORK_SIGNAL_TYPES.has(srcSignal) && NETWORK_SIGNAL_TYPES.has(tgtSignal);
-        const bareBypass = BARE_WIRE_CONNECTORS.has(srcConnector ?? "none" as never) ||
-          BARE_WIRE_CONNECTORS.has(tgtConnector ?? "none" as never);
-        const pairBypass = areSignalPairsCompatible(srcSignal, tgtSignal);
-        if (!netBypass && !bareBypass && !pairBypass) return false;
-      }
-
-      // Duplicate-handle guard (same as non-passthrough below)
-      if (!sourcePort.multiConnect) {
-        const dup = state.edges.some(
-          (e) => e.id !== _reconnectingEdgeId && e.source === connection.source && e.sourceHandle === connection.sourceHandle,
-        );
-        if (dup) return false;
-      }
-      if (!targetPort.multiConnect) {
-        const dup = state.edges.some(
-          (e) => e.id !== _reconnectingEdgeId && e.target === connection.target && e.targetHandle === connection.targetHandle,
-        );
-        if (dup) return false;
-      }
-
-      return true;
-    }
-    // ── End passthrough handling ─────────────────────────────────────────
-
-    // Network signal types (ethernet, dante, etc.) can connect in any direction
-    const networkBypass = NETWORK_SIGNAL_TYPES.has(sourcePort.signalType) && NETWORK_SIGNAL_TYPES.has(targetPort.signalType);
-    // Bare-wire connectors (phoenix/terminal-block) bypass signal type checks — if you're
-    // screwing bare wire into screw terminals, you presumably know what signal you're carrying
-    const bareWireBypass = !!sourcePort.connectorType && !!targetPort.connectorType &&
-      BARE_WIRE_CONNECTORS.has(sourcePort.connectorType) && BARE_WIRE_CONNECTORS.has(targetPort.connectorType);
-    const signalBypass = areSignalsCompatibleViaConnector(
-      sourcePort.signalType, sourcePort.connectorType,
-      targetPort.signalType, targetPort.connectorType,
-    ) || areSignalPairsCompatible(sourcePort.signalType, targetPort.signalType);
-    if (!networkBypass && !bareWireBypass) {
-      const canSource = sourcePort.direction === "output" || sourcePort.direction === "bidirectional";
-      const canTarget = targetPort.direction === "input" || targetPort.direction === "bidirectional";
-      if (!canSource || !canTarget) return false;
-    }
-    if (sourcePort.signalType !== targetPort.signalType && !networkBypass && !bareWireBypass && !signalBypass) return false;
-
-    // Multicable ports can only connect to other multicable ports
-    const srcIsMulticable = sourcePort.isMulticable ?? false;
-    const tgtIsMulticable = targetPort.isMulticable ?? false;
-    if (srcIsMulticable !== tgtIsMulticable) return false;
-
-    // Don't allow multiple connections to the same handle, unless the port is multi-connect
-    if (!targetPort.multiConnect) {
-      const duplicateTarget = state.edges.some(
-        (e) =>
-          e.id !== _reconnectingEdgeId &&
-          e.target === connection.target &&
-          e.targetHandle === connection.targetHandle,
-      );
-      if (duplicateTarget) return false;
-    }
-
-    if (!sourcePort.multiConnect) {
-      const duplicateSource = state.edges.some(
-        (e) =>
-          e.id !== _reconnectingEdgeId &&
-          e.source === connection.source &&
-          e.sourceHandle === connection.sourceHandle,
-      );
-      if (duplicateSource) return false;
-    }
-
-    // For bidirectional ports, block the opposite side if one side is already connected
-    if (sourcePort.direction === "bidirectional" && connection.sourceHandle) {
-      const baseId = connection.sourceHandle.replace(/-(in|out|rear|front)$/, "");
-      const otherHandle = connection.sourceHandle.endsWith("-out")
-        ? `${baseId}-in`
-        : `${baseId}-out`;
-      const otherConnected = state.edges.some(
-        (e) =>
-          (e.source === connection.source && e.sourceHandle === otherHandle) ||
-          (e.target === connection.source && e.targetHandle === otherHandle),
-      );
-      if (otherConnected) return false;
-    }
-    if (targetPort.direction === "bidirectional" && connection.targetHandle) {
-      const baseId = connection.targetHandle.replace(/-(in|out|rear|front)$/, "");
-      const otherHandle = connection.targetHandle.endsWith("-in")
-        ? `${baseId}-out`
-        : `${baseId}-in`;
-      const otherConnected = state.edges.some(
-        (e) =>
-          (e.source === connection.target && e.sourceHandle === otherHandle) ||
-          (e.target === connection.target && e.targetHandle === otherHandle),
-      );
-      if (otherConnected) return false;
-    }
-
-    return true;
+    return validateConnection(state.nodes, state.edges, connection, _reconnectingEdgeId);
   },
 
   updateDeviceLabel: (nodeId, label) => {
@@ -2480,6 +2635,20 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     });
     if (edgesChanged) {
       set({ edges: syncedEdges });
+    }
+
+    // A connector/signal edit can strand existing connections in an invalid state —
+    // surface them so the user can disconnect, adapt, or knowingly keep them (#306)
+    if (oldNode) {
+      const conflicts = findInvalidatedConnections(
+        get().nodes,
+        get().edges,
+        nodeId,
+        (oldNode.data as DeviceData).ports,
+      );
+      if (conflicts.length > 0) {
+        set({ pendingPortEditConflicts: conflicts });
+      }
     }
 
     get().saveToLocalStorage();
@@ -3912,7 +4081,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       };
     }
 
-    const existingEdges = ensureUniqueEdgeIds(state.edges);
+    // Replacing an existing connection (#306): the invalid cable makes way for the adapter legs
+    const existingEdges = ensureUniqueEdgeIds(
+      pending.replaceEdgeId ? state.edges.filter((e) => e.id !== pending.replaceEdgeId) : state.edges,
+    );
     const newEdges: ConnectionEdge[] = [];
 
     if (adapterInput) {
@@ -3975,6 +4147,102 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       pendingIncompatibleConnection: null,
     });
     get().saveToLocalStorage();
+  },
+
+  resolvePortEditConflict: (edgeId, action, adapterTemplate) => {
+    const state = get();
+    const conflicts = state.pendingPortEditConflicts;
+    const conflict = conflicts?.find((c) => c.edgeId === edgeId);
+    if (!conflict) return;
+    const remaining = conflicts!.filter((c) => c.edgeId !== edgeId);
+    const rest = remaining.length > 0 ? remaining : null;
+
+    if (action === "adapter") {
+      if (!adapterTemplate) return;
+      // Reuse the adapter auto-insert machinery: stage the pair as a pending
+      // connection that replaces the invalid cable (insertAdapterBetween pushes undo).
+      // insertAdapterBetween reads connectorType/signalType off the pending ports for
+      // bridge resolution and leg mismatch flags, so hand it the effective face
+      // connector and signal — a passthrough Port's own connectorType is not the
+      // connector this cable mates with.
+      set({
+        pendingPortEditConflicts: rest,
+        pendingIncompatibleConnection: {
+          connection: {
+            source: conflict.source,
+            target: conflict.target,
+            sourceHandle: conflict.sourceHandle,
+            targetHandle: conflict.targetHandle,
+          },
+          sourcePort: { ...conflict.sourcePort, connectorType: conflict.sourceConnector, signalType: conflict.sourceSignal },
+          targetPort: { ...conflict.targetPort, connectorType: conflict.targetConnector, signalType: conflict.targetSignal },
+          reason: conflict.reason,
+          replaceEdgeId: conflict.edgeId,
+        },
+      });
+      get().insertAdapterBetween(adapterTemplate);
+      return;
+    }
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    if (action === "disconnect") {
+      const newEdges = state.edges.filter((e) => e.id !== edgeId);
+      set({
+        edges: newEdges,
+        nodes: reconcileWaypointNodes(state.nodes, newEdges),
+        pendingPortEditConflicts: rest,
+      });
+    } else {
+      // keep — flag the connection as a known mismatch so it renders as knowingly-wrong
+      set({
+        edges: state.edges.map((e) => {
+          if (e.id !== edgeId) return e;
+          const nextData: ConnectionData = {
+            ...e.data!,
+            signalType: conflict.sourceSignal,
+            connectorMismatch: true,
+          };
+          return { ...e, data: nextData, style: { ...e.style, stroke: resolveEdgeStroke(nextData) } };
+        }),
+        pendingPortEditConflicts: rest,
+      });
+    }
+    get().saveToLocalStorage();
+  },
+
+  resolveAllPortEditConflicts: (action) => {
+    const state = get();
+    const conflicts = state.pendingPortEditConflicts;
+    if (!conflicts || conflicts.length === 0) return;
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const byEdgeId = new Map(conflicts.map((c) => [c.edgeId, c]));
+    if (action === "disconnect") {
+      const newEdges = state.edges.filter((e) => !byEdgeId.has(e.id));
+      set({
+        edges: newEdges,
+        nodes: reconcileWaypointNodes(state.nodes, newEdges),
+        pendingPortEditConflicts: null,
+      });
+    } else {
+      set({
+        edges: state.edges.map((e) => {
+          const c = byEdgeId.get(e.id);
+          if (!c) return e;
+          const nextData: ConnectionData = {
+            ...e.data!,
+            signalType: c.sourceSignal,
+            connectorMismatch: true,
+          };
+          return { ...e, data: nextData, style: { ...e.style, stroke: resolveEdgeStroke(nextData) } };
+        }),
+        pendingPortEditConflicts: null,
+      });
+    }
+    get().saveToLocalStorage();
+  },
+
+  dismissPortEditConflicts: () => {
+    set({ pendingPortEditConflicts: null });
   },
 
   setPrintView: (v) => { set({ printView: v }); },
