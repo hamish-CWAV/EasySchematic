@@ -3,7 +3,7 @@ import type { Node, Edge } from "@xyflow/react";
 export type ConnectorType =
   | "bnc" | "hdmi" | "displayport" | "vga"
   | "xlr-3" | "xlr-4" | "xlr-5" | "trs-quarter" | "ts-quarter" | "trs-eighth" | "combo-xlr-trs"
-  | "rj45" | "ethercon" | "sfp" | "lc" | "sc"
+  | "rj45" | "ethercon" | "sfp" | "lc" | "sc" | "st"
   | "usb-a" | "usb-b" | "usb-c"
   | "db7w2" | "db9" | "db15" | "db25" | "din-5" | "phoenix" | "terminal-block" | "powercon" | "edison" | "iec" | "iec-c5" | "iec-c7" | "iec-c15" | "iec-c20"
   | "speakon" | "socapex" | "multipin" | "rca" | "toslink" | "barrel"
@@ -1080,6 +1080,7 @@ export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
   sfp: "SFP/SFP+",
   lc: "Fiber - LC",
   sc: "Fiber - SC",
+  st: "Fiber - ST",
   "usb-a": "USB-A",
   "usb-b": "USB-B",
   "usb-c": "USB-C",
@@ -1252,7 +1253,7 @@ export const SIGNAL_GROUPS: Record<string, SignalType[]> = {
 export const CONNECTOR_GROUPS: Record<string, ConnectorType[]> = {
   "Video": ["bnc", "hdmi", "mini-hdmi", "micro-hdmi", "displayport", "mini-displayport", "dvi", "vga"],
   "Audio": ["xlr-3", "xlr-4", "xlr-5", "mini-xlr", "combo-xlr-trs", "trs-quarter", "ts-quarter", "trs-eighth", "trs-2.5mm", "rca", "din-5", "mini-din-4", "mini-din-7", "mini-din-8", "toslink"],
-  "Network / Data": ["rj45", "ethercon", "sfp", "lc", "sc", "opticalcon", "qsfp", "qsfp28", "mpo", "rj11", "rj12"],
+  "Network / Data": ["rj45", "ethercon", "sfp", "lc", "sc", "st", "opticalcon", "qsfp", "qsfp28", "mpo", "rj11", "rj12"],
   "USB": ["usb-a", "usb-b", "usb-c", "usb-mini", "usb-micro"],
   "D-Sub / Serial": ["db9", "db15", "db25", "db37", "db7w2", "lemo-5pin"],
   "Power": ["iec", "iec-c5", "iec-c7", "iec-c15", "iec-c20", "powercon", "powercon-true1", "edison", "barrel", "l5-20", "l6-20", "l6-30", "l21-30", "cam-lok", "socapex", "pcie-6pin", "lemo-2pin", "lemo-4pin", "kycon-4pin", "d-tap", "v-mount"],

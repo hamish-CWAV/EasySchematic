@@ -832,6 +832,17 @@ export const templates: DeviceTemplate[] = [
       port("Ethernet Out", "ethernet", "output"),
     ],
   },
+  {
+    id: "c0a80101-030c-4000-8000-000000000734",
+    deviceType: "adapter",
+    label: "USB-A (M) → RJ45 (F) Adapter",
+    searchTerms: ["usb-a", "usb", "ethernet", "rj45", "dongle", "network", "nic", "adapter", "male", "female"],
+    powerDrawW: 0,
+    ports: [
+      { ...port("USB-A In", "usb", "input", "usb-a"), directAttach: true },
+      port("Ethernet Out", "ethernet", "output"),
+    ],
+  },
   // ── Connector-Mismatch Adapters (passive cable adapters) ────────────
   {
     id: "c0a80101-00ce-4000-8000-000000000206",

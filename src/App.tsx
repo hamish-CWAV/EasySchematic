@@ -495,6 +495,9 @@ function SchematicCanvas() {
   } | null>(null);
   const clickConnectCleanupRef = useRef<(() => void) | null>(null);
   const isClickConnectMode = useRef(false);
+  // Set when React Flow accepted the connection itself, so the drag/click end
+  // handlers don't hand the same connection to onConnect a second time.
+  const connectHandledRef = useRef(false);
   const [connectPreview, setConnectPreview] = useState<{
     fromX: number; fromY: number; toX: number; toY: number; fromSource: boolean;
     snapped: boolean; valid: boolean; adaptable: boolean;
@@ -980,6 +983,7 @@ function SchematicCanvas() {
         });
       }
       clickConnectFromRef.current = { ...pos, fromSource, nodeId, handleId };
+      connectHandledRef.current = false;
 
       // Convert screen mouse coords to flow space using the ReactFlow container's position
       const containerRect = document.querySelector('.react-flow')?.getBoundingClientRect();
@@ -1101,12 +1105,46 @@ function SchematicCanvas() {
     [startPreviewTracking],
   );
 
+  /**
+   * React Flow only fires onConnect for connections that pass isValidConnection, so a
+   * connection needing an adapter would otherwise end silently. Resolve the port under
+   * the pointer and, when the connection is invalid, hand it to onConnect so the
+   * signal/connector mismatch check (and adapter auto-insert) runs. Used by both the
+   * drag path and the click path — the click path had no equivalent at all, which is
+   * why clicking two ports that need an adapter did nothing.
+   */
+  const handleIncompatibleConnectAt = useCallback((clientX: number, clientY: number) => {
+    const from = clickConnectFromRef.current;
+    // React Flow already made the connection — don't re-run it against the now-occupied port.
+    if (!from || connectHandledRef.current) return;
+    const el = document.elementFromPoint(clientX, clientY);
+    const handleEl = el?.closest(".react-flow__handle") as HTMLElement | null;
+    if (!handleEl) return;
+    const targetNodeEl = handleEl.closest(".react-flow__node");
+    const targetNodeId = targetNodeEl?.getAttribute("data-id");
+    const targetHandleId = handleEl.getAttribute("data-handleid");
+    if (!targetNodeId || !targetHandleId || targetNodeId === from.nodeId) return;
+    const connection = from.fromSource
+      ? { source: from.nodeId, sourceHandle: from.handleId, target: targetNodeId, targetHandle: targetHandleId }
+      : { source: targetNodeId, sourceHandle: targetHandleId, target: from.nodeId, targetHandle: from.handleId };
+    const state = useSchematicStore.getState();
+    if (!state.isValidConnection(connection as Connection)) {
+      // Trigger the signal-type mismatch check in onConnect
+      state.onConnect(connection as Connection);
+    }
+  }, []);
+
   // Click-to-connect: second click completes or cancels
   const onClickConnectEnd = useCallback(
-    (_event?: MouseEvent | TouchEvent) => {
+    (event?: MouseEvent | TouchEvent) => {
+      const clientX = !event ? undefined : "clientX" in event ? event.clientX : event.changedTouches?.[0]?.clientX;
+      const clientY = !event ? undefined : "clientY" in event ? event.clientY : event.changedTouches?.[0]?.clientY;
+      if (clientX !== undefined && clientY !== undefined) {
+        handleIncompatibleConnectAt(clientX, clientY);
+      }
       clearClickConnect();
     },
-    [clearClickConnect],
+    [clearClickConnect, handleIncompatibleConnectAt],
   );
 
   // Drag-to-connect: show preview on drag start
@@ -1123,33 +1161,14 @@ function SchematicCanvas() {
   const onConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
     if (!isClickConnectMode.current) {
       // Before clearing, check if user dropped on an incompatible handle
-      const from = clickConnectFromRef.current;
-      if (from) {
-        const clientX = "clientX" in event ? event.clientX : event.changedTouches?.[0]?.clientX;
-        const clientY = "clientY" in event ? event.clientY : event.changedTouches?.[0]?.clientY;
-        if (clientX !== undefined && clientY !== undefined) {
-          const el = document.elementFromPoint(clientX, clientY);
-          const handleEl = el?.closest(".react-flow__handle") as HTMLElement | null;
-          if (handleEl) {
-            const targetNodeEl = handleEl.closest(".react-flow__node");
-            const targetNodeId = targetNodeEl?.getAttribute("data-id");
-            const targetHandleId = handleEl.getAttribute("data-handleid");
-            if (targetNodeId && targetHandleId && targetNodeId !== from.nodeId) {
-              const connection = from.fromSource
-                ? { source: from.nodeId, sourceHandle: from.handleId, target: targetNodeId, targetHandle: targetHandleId }
-                : { source: targetNodeId, sourceHandle: targetHandleId, target: from.nodeId, targetHandle: from.handleId };
-              const state = useSchematicStore.getState();
-              if (!state.isValidConnection(connection as Connection)) {
-                // Trigger the signal-type mismatch check in onConnect
-                state.onConnect(connection as Connection);
-              }
-            }
-          }
-        }
+      const clientX = "clientX" in event ? event.clientX : event.changedTouches?.[0]?.clientX;
+      const clientY = "clientY" in event ? event.clientY : event.changedTouches?.[0]?.clientY;
+      if (clientX !== undefined && clientY !== undefined) {
+        handleIncompatibleConnectAt(clientX, clientY);
       }
       clearClickConnect();
     }
-  }, [clearClickConnect]);
+  }, [clearClickConnect, handleIncompatibleConnectAt]);
 
   // Clicking empty space cancels click-to-connect; double-click opens quick-add
   const onPaneClick = useCallback(
@@ -1502,6 +1521,9 @@ function SchematicCanvas() {
       onNodeDragStop={onNodeDragStop}
       onEdgesChange={onEdgesChange}
       onConnect={(connection) => {
+        // React Flow validated and accepted this one; the end handlers must not
+        // re-check it once the port is occupied and re-enter the mismatch branch.
+        connectHandledRef.current = true;
         onConnect(connection);
         clearClickConnect();
       }}

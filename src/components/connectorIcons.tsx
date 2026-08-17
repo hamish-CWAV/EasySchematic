@@ -758,6 +758,8 @@ const CONNECTOR_SPECS: Partial<Record<ConnectorType, ConnectorSpec>> = {
   // ── Fiber ──
   "lc":             { widthMm: 6.3,   heightMm: 9.0,   render: (p) => renderRectangle(6.3, 9.0, 0.5, p) },
   "sc":             { widthMm: 9.0,   heightMm: 9.0,   render: (p) => renderRectangle(9.0, 9.0, 0.5, p) },
+  // ST is the odd one out in the fiber family — a round bayonet barrel, not a square ferrule housing.
+  "st":             { widthMm: 9.5,   heightMm: 9.5,   render: (p) => renderCircle(9.5, p) },
   "toslink":        { widthMm: 7.2,   heightMm: 9.8,   render: renderToslink },
   "sfp":            { widthMm: 13.4,  heightMm: 8.5,   render: (p) => renderRectangle(13.4, 8.5, 0.5, p) },
   "qsfp":           { widthMm: 18.4,  heightMm: 8.5,   render: (p) => renderRectangle(18.4, 8.5, 0.5, p) },

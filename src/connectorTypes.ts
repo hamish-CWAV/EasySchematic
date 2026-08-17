@@ -86,7 +86,16 @@ export interface ConnectorAcceptance {
 export const CONNECTOR_ACCEPTS: Partial<Record<ConnectorType, ConnectorAcceptance>> = {
   "combo-xlr-trs": { native: ["xlr-3", "trs-quarter", "ts-quarter"] },
   "ethercon":      { native: ["rj45"] },
-  "opticalcon":    { native: ["lc"] },
+  // Fiber terminations are treated as interchangeable. LC, SC and ST all land on
+  // the same 1.25/2.5mm ferrule families and in the field you bridge whatever
+  // mismatch you find with a hybrid patch cord, so warning on every mixed pair
+  // was noise. opticalCON breaks out to that same family, so it accepts all three
+  // rather than just LC. MPO/QSFP ribbon and SFP cages are deliberately excluded —
+  // no patch cord bridges those.
+  "opticalcon":    { native: ["lc", "sc", "st"] },
+  "lc":            { native: ["sc", "st", "opticalcon"] },
+  "sc":            { native: ["lc", "st", "opticalcon"] },
+  "st":            { native: ["lc", "sc", "opticalcon"] },
   "binding-post-banana": { native: ["binding-post", "banana"] },
   "usb-c":         { adapter: ["usb-a", "usb-b"] },
   // USB host (Type-A) to peripheral (Type-B / mini-B / micro-B) is the standard
@@ -176,6 +185,14 @@ export function areConnectorsCompatible(a: ConnectorType | undefined, b: Connect
   return false;
 }
 
+/** Check if two DIFFERENT connector types mate directly, with nothing in between. */
+export function matesNatively(a: ConnectorType, b: ConnectorType): boolean {
+  return (
+    CONNECTOR_ACCEPTS[a]?.native?.includes(b) === true ||
+    CONNECTOR_ACCEPTS[b]?.native?.includes(a) === true
+  );
+}
+
 /** Check if a connection between two connector types requires an adapter cable */
 export function needsAdapter(a: ConnectorType | undefined, b: ConnectorType | undefined): boolean {
   if (!a || !b || a === b) return false;
@@ -203,6 +220,7 @@ export const CONNECTOR_TO_CABLE: Record<ConnectorType, string> = {
   sfp: "SFP Fiber",
   lc: "LC Fiber",
   sc: "SC Fiber",
+  st: "ST Fiber",
   "usb-a": "USB",
   "usb-b": "USB",
   "usb-c": "USB-C",
@@ -274,71 +292,169 @@ export const CONNECTOR_TO_CABLE: Record<ConnectorType, string> = {
   other: "Other",
 };
 
-/** Find adapter/converter templates that bridge two different signal types */
-export function findAdaptersForSignalBridge(
+/**
+ * Connector families whose members mate natively but terminate a cable DIFFERENTLY.
+ *
+ * A run between two members is one physical cable carrying a different end on each
+ * side — a hybrid patch cord — so the pack list has to name both ends or the wrong
+ * part gets packed. LC/SC/ST/opticalCON are the only such family: they were made
+ * mutually compatible above *precisely because* no adapter is inserted, which is what
+ * leaves a single cable spanning two terminations. Every other mismatch is resolved
+ * either by an inserted adapter (which splits the run into two correctly-labelled
+ * cables) or by one connector being a superset jack that an ordinary single-type
+ * cable already fits — combo XLR/TRS, EtherCon accepting RJ45, binding-post/banana,
+ * USB-A to USB-B/mini/micro, 1/4" TRS to TS. Those must NOT get a combined label:
+ * the hybrid part it would name does not exist.
+ *
+ * The value is the cable-family word that every member's CONNECTOR_TO_CABLE entry
+ * ends with, so "LC Fiber" + "SC Fiber" reads back out as "LC to SC Fiber".
+ */
+export const HYBRID_CABLE_FAMILY: Partial<Record<ConnectorType, string>> = {
+  lc: "Fiber",
+  sc: "Fiber",
+  st: "Fiber",
+  opticalcon: "Fiber",
+};
+
+/** The two adapter ports that carry a bridge, and which way round the adapter sits. */
+export interface AdapterBridgePorts {
+  /** Adapter port the source device's signal arrives at */
+  sourceSidePort: Port;
+  /** Adapter port that carries on to the target device */
+  targetSidePort: Port;
+  /** True when the adapter is being used against its declared port directions */
+  reversed: boolean;
+}
+
+const canReceive = (p: Port): boolean =>
+  p.direction === "input" || p.direction === "bidirectional";
+const canSend = (p: Port): boolean =>
+  p.direction === "output" || p.direction === "bidirectional";
+
+/**
+ * Resolve the pair of adapter ports that bridges `sourceSignalType` → `targetSignalType`,
+ * or null when the template can't bridge them.
+ *
+ * The template's declared orientation is tried first, then the reverse. A USB→Ethernet
+ * dongle is the same physical part whichever end you plug in first, so dragging
+ * Ethernet→USB reuses that one template rather than the library carrying a mirrored
+ * copy of every adapter. Forward wins on a tie, so existing behaviour is unchanged
+ * wherever a template already matched.
+ */
+export function resolveSignalBridgePorts(
+  template: Pick<DeviceTemplate, "ports">,
   sourceSignalType: SignalType,
   targetSignalType: SignalType,
-  templates: DeviceTemplate[],
+): AdapterBridgePorts | null {
+  const forwardIn = template.ports.find((p) => canReceive(p) && p.signalType === sourceSignalType);
+  const forwardOut = template.ports.find((p) => canSend(p) && p.signalType === targetSignalType);
+  if (forwardIn && forwardOut) {
+    return { sourceSidePort: forwardIn, targetSidePort: forwardOut, reversed: false };
+  }
+
+  const reverseIn = template.ports.find((p) => canSend(p) && p.signalType === sourceSignalType);
+  const reverseOut = template.ports.find((p) => canReceive(p) && p.signalType === targetSignalType);
+  if (reverseIn && reverseOut) {
+    return { sourceSidePort: reverseIn, targetSidePort: reverseOut, reversed: true };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve the pair of adapter ports that bridges `sourceConnector` → `targetConnector`
+ * within one signal type, or null when the template can't bridge them.
+ *
+ * Same declared-then-reversed rule as `resolveSignalBridgePorts`: a USB-C→USB-A dongle
+ * is the same part whichever end you plug in first. The two ports are always distinct
+ * because callers only bridge connectors that differ.
+ */
+export function resolveConnectorBridgePorts(
+  template: Pick<DeviceTemplate, "ports">,
+  sourceConnector: ConnectorType,
+  targetConnector: ConnectorType,
+  signalType: SignalType,
+): AdapterBridgePorts | null {
+  const matches = (p: Port, connector: ConnectorType) =>
+    p.signalType === signalType && p.connectorType === connector;
+
+  const forwardIn = template.ports.find((p) => canReceive(p) && matches(p, sourceConnector));
+  const forwardOut = template.ports.find((p) => canSend(p) && matches(p, targetConnector));
+  if (forwardIn && forwardOut) {
+    return { sourceSidePort: forwardIn, targetSidePort: forwardOut, reversed: false };
+  }
+
+  const reverseIn = template.ports.find((p) => canSend(p) && matches(p, sourceConnector));
+  const reverseOut = template.ports.find((p) => canReceive(p) && matches(p, targetConnector));
+  if (reverseIn && reverseOut) {
+    return { sourceSidePort: reverseIn, targetSidePort: reverseOut, reversed: true };
+  }
+
+  return null;
+}
+
+/**
+ * Rank bridge matches for the pickers and for the exactly-one-match auto-insert rule.
+ *
+ * Reverse matches are a **fallback, not an addition**: they are only offered when no
+ * template matches in its declared direction. The library deliberately ships mirrored
+ * connector adapters — both `XLR-3 (M) → TRS 1/4" (F)` and `TRS 1/4" (M) → XLR-3 (F)`
+ * exist — so admitting reverse matches alongside forward ones would put two templates
+ * where one used to be and silently downgrade 28 connector pairings (all of power, most
+ * of analog-audio, HDMI↔DVI) from auto-insert to the picker dialog. Tiering keeps every
+ * pairing that auto-inserted before doing exactly what it did before.
+ *
+ * The cost is that a reverse match is never shown next to a forward one, so a mirrored
+ * template stays out of the picker for the direction its twin already covers. That twin
+ * is the correctly-oriented part for that drag, so it is the one worth offering.
+ */
+function rankBridgeMatches(
+  matches: ReadonlyArray<{ template: DeviceTemplate; reversed: boolean }>,
 ): DeviceTemplate[] {
-  const results = templates.filter((t) => {
-    if (t.deviceType !== "adapter") return false;
-    const hasMatchingInput = t.ports.some(
-      (p) =>
-        (p.direction === "input" || p.direction === "bidirectional") &&
-        p.signalType === sourceSignalType,
-    );
-    const hasMatchingOutput = t.ports.some(
-      (p) =>
-        (p.direction === "output" || p.direction === "bidirectional") &&
-        p.signalType === targetSignalType,
-    );
-    return hasMatchingInput && hasMatchingOutput;
-  });
+  const forward = matches.filter((m) => !m.reversed);
+  const chosen = (forward.length > 0 ? forward : matches).map((m) => m.template);
 
   // Sort: fewest total ports first (tightest match), then alphabetically
-  results.sort((a, b) => {
+  chosen.sort((a, b) => {
     const aPorts = a.ports.filter((p) => p.signalType !== "power").length;
     const bPorts = b.ports.filter((p) => p.signalType !== "power").length;
     if (aPorts !== bPorts) return aPorts - bPorts;
     return a.label.localeCompare(b.label);
   });
 
-  return results;
+  return chosen;
 }
 
-/** Find adapter templates that bridge two different connector types within the same signal type */
+/** Find adapter/converter templates that bridge two different signal types, in either drag direction */
+export function findAdaptersForSignalBridge(
+  sourceSignalType: SignalType,
+  targetSignalType: SignalType,
+  templates: DeviceTemplate[],
+): DeviceTemplate[] {
+  const matches = [];
+  for (const t of templates) {
+    if (t.deviceType !== "adapter") continue;
+    const bridge = resolveSignalBridgePorts(t, sourceSignalType, targetSignalType);
+    if (bridge) matches.push({ template: t, reversed: bridge.reversed });
+  }
+  return rankBridgeMatches(matches);
+}
+
+/** Find adapter templates that bridge two different connector types within the same
+ *  signal type, in either drag direction */
 export function findAdaptersForConnectorBridge(
   sourceConnector: ConnectorType,
   targetConnector: ConnectorType,
   signalType: SignalType,
   templates: DeviceTemplate[],
 ): DeviceTemplate[] {
-  const results = templates.filter((t) => {
-    if (t.deviceType !== "adapter") return false;
-    const hasMatchingInput = t.ports.some(
-      (p) =>
-        (p.direction === "input" || p.direction === "bidirectional") &&
-        p.signalType === signalType &&
-        p.connectorType === sourceConnector,
-    );
-    const hasMatchingOutput = t.ports.some(
-      (p) =>
-        (p.direction === "output" || p.direction === "bidirectional") &&
-        p.signalType === signalType &&
-        p.connectorType === targetConnector,
-    );
-    return hasMatchingInput && hasMatchingOutput;
-  });
-
-  // Sort: fewest total ports first (tightest match), then alphabetically
-  results.sort((a, b) => {
-    const aPorts = a.ports.filter((p) => p.signalType !== "power").length;
-    const bPorts = b.ports.filter((p) => p.signalType !== "power").length;
-    if (aPorts !== bPorts) return aPorts - bPorts;
-    return a.label.localeCompare(b.label);
-  });
-
-  return results;
+  const matches = [];
+  for (const t of templates) {
+    if (t.deviceType !== "adapter") continue;
+    const bridge = resolveConnectorBridgePorts(t, sourceConnector, targetConnector, signalType);
+    if (bridge) matches.push({ template: t, reversed: bridge.reversed });
+  }
+  return rankBridgeMatches(matches);
 }
 
 /**

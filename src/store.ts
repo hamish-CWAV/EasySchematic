@@ -54,7 +54,7 @@ import { requestRoutes, setRoutingResultHandler, cancelRouting as cancelRoutingC
 import { reconcileWaypointNodes, syncEdgesFromWaypointNodes, spliceWaypointsForRemovedNodes } from "./waypointSync";
 import { orthogonalize, extractSegments, segmentsCross, type RoutedEdge, type CrossingPoint } from "./edgeRouter";
 import { simplifyWaypoints, waypointsToSvgPath, waypointsToSvgPathWithHops } from "./pathfinding";
-import { areConnectorsCompatible, needsAdapter, findAdaptersForConnectorBridge, findAdaptersForSignalBridge, NETWORK_SIGNAL_TYPES, BARE_WIRE_CONNECTORS, areSignalsCompatibleViaConnector, areSignalPairsCompatible, effectiveSignalType } from "./connectorTypes";
+import { areConnectorsCompatible, needsAdapter, findAdaptersForConnectorBridge, findAdaptersForSignalBridge, resolveSignalBridgePorts, resolveConnectorBridgePorts, NETWORK_SIGNAL_TYPES, BARE_WIRE_CONNECTORS, areSignalsCompatibleViaConnector, areSignalPairsCompatible, effectiveSignalType } from "./connectorTypes";
 import { inferRackHeightU, inferRackForm, shelfFootprintMm, shelfInnerWidthMm } from "./rackUtils";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
 import { createDefaultLayout } from "./titleBlockLayout";
@@ -3864,18 +3864,61 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     }
     adapterNode = { ...adapterNode, position: { x: posX, y: posY } };
 
-    // Find matching ports on adapter
-    const adapterInput = adapterPorts.find(
+    // Find matching ports on adapter, using the same resolver the matcher used so the
+    // two can't disagree. Both resolvers also match the adapter used in reverse —
+    // dragging Ethernet→USB onto a USB→Ethernet dongle, or USB-A→USB-C onto a
+    // USB-C→USB-A one — so the two ends follow whichever orientation was matched.
+    // A connector mismatch must resolve by connector: picking ports by signal type
+    // alone would wire a USB-A→USB-C drag into the adapter's USB-C end and leave both
+    // legs connector-mismatched. Signal resolution and the per-end finds remain as
+    // fallbacks so a partially-matching adapter still wires the end it can, as before.
+    const bridge =
+      (pending.reason === "connector-mismatch" &&
+      pending.sourcePort.connectorType &&
+      pending.targetPort.connectorType
+        ? resolveConnectorBridgePorts(
+            { ports: adapterPorts },
+            pending.sourcePort.connectorType,
+            pending.targetPort.connectorType,
+            pending.sourcePort.signalType,
+          )
+        : null) ??
+      resolveSignalBridgePorts(
+        { ports: adapterPorts },
+        pending.sourcePort.signalType,
+        pending.targetPort.signalType,
+      );
+    const adapterInput = bridge?.sourceSidePort ?? adapterPorts.find(
       (p) => (p.direction === "input" || p.direction === "bidirectional") && p.signalType === pending.sourcePort.signalType,
     );
-    const adapterOutput = adapterPorts.find(
+    const adapterOutput = bridge?.targetSidePort ?? adapterPorts.find(
       (p) => (p.direction === "output" || p.direction === "bidirectional") && p.signalType === pending.targetPort.signalType,
     );
+
+    // Cosmetic only: an adapter matched in reverse has its source-side port on the
+    // declared right and its target-side port on the declared left, so the two legs
+    // approach from mirrored sides and read as crossed. Flipping every port mirrors
+    // the device — the same thing "Flip all ports" does from the port context menu —
+    // so the signal runs straight through. `flipped` is per-port render placement
+    // only: handle IDs are the port IDs either way, so the edges built below and the
+    // router are untouched.
+    if (bridge?.reversed) {
+      adapterNode = {
+        ...adapterNode,
+        data: {
+          ...adapterNode.data,
+          ports: adapterPorts.map((p) => ({ ...p, flipped: !p.flipped || undefined })),
+        },
+      };
+    }
 
     const existingEdges = ensureUniqueEdgeIds(state.edges);
     const newEdges: ConnectionEdge[] = [];
 
     if (adapterInput) {
+      // A strict `input` port renders as a target-only handle, but ConnectionMode.Loose
+      // lets a targetHandle resolve against source handles too — so the incoming leg is
+      // safe whichever direction the adapter was matched in.
       const inputHandle = adapterInput.direction === "bidirectional" ? `${adapterInput.id}-in` : adapterInput.id;
       const inputData: ConnectionData = {
         signalType: pending.sourcePort.signalType,
@@ -3903,12 +3946,18 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(!areConnectorsCompatible(adapterOutput.connectorType, pending.targetPort.connectorType) ? { connectorMismatch: true } : {}),
         ...(adapterOutput.directAttach ? { directAttach: true } : {}),
       };
+      // An edge's sourceHandle only ever resolves against source handles, and a strict
+      // `input` port renders as target-only — so when a reversed adapter puts an input
+      // on the device side the leg has to be drawn device → adapter instead. That also
+      // reads correctly: the adapter's male plug goes into the device.
+      const drawFromDevice =
+        adapterOutput.direction === "input" && pending.targetPort.direction !== "input";
       newEdges.push({
         id: nextEdgeId([...existingEdges, ...newEdges]),
-        source: adapterId,
-        target: pending.connection.target,
-        sourceHandle: outputHandle,
-        targetHandle: pending.connection.targetHandle,
+        source: drawFromDevice ? pending.connection.target : adapterId,
+        target: drawFromDevice ? adapterId : pending.connection.target,
+        sourceHandle: drawFromDevice ? pending.connection.targetHandle : outputHandle,
+        targetHandle: drawFromDevice ? outputHandle : pending.connection.targetHandle,
         data: outputData,
         style: {
           stroke: resolveEdgeStroke(outputData),

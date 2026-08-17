@@ -202,6 +202,7 @@ export default function DevicesAndPortsPage() {
           <tr><td>SFP/SFP+</td><td>SFP Fiber</td></tr>
           <tr><td>LC Fiber</td><td>LC Fiber</td></tr>
           <tr><td>SC Fiber</td><td>SC Fiber</td></tr>
+          <tr><td>ST Fiber</td><td>ST Fiber</td></tr>
           <tr><td>opticalCON</td><td>opticalCON Fiber</td></tr>
           <tr><td>QSFP</td><td>QSFP Fiber</td></tr>
           <tr><td>MPO/MTP</td><td>MPO Fiber</td></tr>
