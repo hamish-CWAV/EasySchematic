@@ -35,6 +35,7 @@ import FacePlateEditor from "./FacePlateEditor";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
+import { visibleSaveActions, SAVE_ACTION_LABELS, SAVE_ACTION_TITLES, type SaveActionId } from "../deviceEditorActions";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -171,6 +172,25 @@ export default function DeviceEditor() {
   const [showAllPorts, setShowAllPorts] = useState(false);
   const [hiddenPorts, setHiddenPorts] = useState<string[]>([]);
   const [portVisOpen, setPortVisOpen] = useState(false);
+
+  // Footer save/revert split-button menu
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!saveMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (saveMenuRef.current && !saveMenuRef.current.contains(e.target as Node)) setSaveMenuOpen(false);
+    };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSaveMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", keyHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", keyHandler);
+    };
+  }, [saveMenuOpen]);
 
   // DHCP server config
   const [dhcpServer, setDhcpServer] = useState<DhcpServerConfig | undefined>(undefined);
@@ -954,13 +974,30 @@ export default function DeviceEditor() {
 
   const drift = getTemplateDrift(node.data, customTemplates);
   const hasPreset = !!(templateId && templatePresets[templateId]);
+  const saveActionHandlers: Record<SaveActionId, () => void> = {
+    "save-user-template": handleSaveAsTemplate,
+    "submit-community": handleSubmitToCommunity,
+    "update-user-template": handleUpdateUserTemplate,
+    "update-as-custom": handleForkBuiltInToCustom,
+    "save-preset": handleSaveAsPreset,
+    "revert-preset": handleRevertToPreset,
+    "revert-template": handleRevertToTemplate,
+  };
+  const [primarySaveAction, ...menuSaveActions] = visibleSaveActions({
+    templateId,
+    isUserTemplate: customTemplates.some((t) => t.id === templateId),
+    hasLabeledPort: ports.some((p) => p.label.trim().length > 0),
+    hasPreset,
+    dirtyVsPreset,
+    dirtyVsTemplate,
+  });
   const inputs = ports.filter((p) => p.direction === "input");
   const outputs = ports.filter((p) => p.direction === "output");
   const bidir = ports.filter((p) => p.direction === "bidirectional");
   const passthroughPorts = ports.filter((p) => p.direction === "passthrough");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }} onKeyDownCapture={onCtrlEnter}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget && !saveMenuOpen) close(); }} onKeyDownCapture={onCtrlEnter}>
       <div
         className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-2xl w-[560px] max-h-[85vh] flex flex-col"
       >
@@ -1773,66 +1810,52 @@ export default function DeviceEditor() {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-[var(--color-border)] flex items-center gap-2">
-          <button
-            onClick={handleSaveAsTemplate}
-            className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-            title="Save this device configuration as a reusable user template"
-          >
-            Save as User Template
-          </button>
-          {(!templateId || dirtyVsTemplate || customTemplates.some((t) => t.id === templateId)) && ports.some((p) => p.label.trim()) && (
+          <div ref={saveMenuRef} className="relative flex items-stretch">
             <button
-              onClick={handleSubmitToCommunity}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Submit this device to the community device library"
+              onClick={saveActionHandlers[primarySaveAction]}
+              className={`px-3 py-1.5 text-xs ${menuSaveActions.length > 0 ? "rounded-l" : "rounded"} bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer`}
+              title={SAVE_ACTION_TITLES[primarySaveAction]}
             >
-              Submit to Community
+              {SAVE_ACTION_LABELS[primarySaveAction]}
             </button>
-          )}
-          {templateId && customTemplates.some((t) => t.id === templateId) ? (
-            <button
-              onClick={handleUpdateUserTemplate}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Overwrite the saved user template with this configuration and apply it to every instance on the schematic"
-            >
-              Update User Template
-            </button>
-          ) : templateId ? (
-            <>
-              <button
-                onClick={handleForkBuiltInToCustom}
-                className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-                title="Save these changes as a new '(Custom)' user template and apply them to every instance of this device on the schematic"
-              >
-                Update as Custom
-              </button>
-              <button
-                onClick={handleSaveAsPreset}
-                className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-                title="Set this configuration as the project default for this template"
-              >
-                Save as Preset
-              </button>
-            </>
-          ) : null}
-          {hasPreset && dirtyVsPreset && (
-            <button
-              onClick={handleRevertToPreset}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Reset ports and visibility to the project preset"
-            >
-              Revert to Preset
-            </button>
-          )}
-          {dirtyVsTemplate && (
-            <button
-              onClick={handleRevertToTemplate}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Reset ports and visibility to the original template defaults"
-            >
-              Revert to Template
-            </button>
-          )}
+            {menuSaveActions.length > 0 && (
+              <>
+                <button
+                  onClick={() => setSaveMenuOpen((o) => !o)}
+                  className="px-1.5 rounded-r flex items-center bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-l-0 border-[var(--color-border)] transition-colors cursor-pointer"
+                  title="More save and revert actions"
+                  aria-haspopup="menu"
+                  aria-expanded={saveMenuOpen}
+                  aria-label="More save and revert actions"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+                {saveMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 bottom-full mb-1 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg py-1 z-50"
+                  >
+                    {menuSaveActions.map((id) => (
+                      <button
+                        key={id}
+                        role="menuitem"
+                        onClick={() => {
+                          setSaveMenuOpen(false);
+                          saveActionHandlers[id]();
+                        }}
+                        className="block w-full text-left px-3 py-2 text-xs text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-heading)] transition-colors cursor-pointer"
+                        title={SAVE_ACTION_TITLES[id]}
+                      >
+                        {SAVE_ACTION_LABELS[id]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           <div className="flex-1" />
           <button
             onClick={close}
@@ -1842,7 +1865,7 @@ export default function DeviceEditor() {
           </button>
           <button
             onClick={handleSave}
-            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
+            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white border border-transparent hover:bg-blue-500 transition-colors cursor-pointer"
           >
             Apply
           </button>

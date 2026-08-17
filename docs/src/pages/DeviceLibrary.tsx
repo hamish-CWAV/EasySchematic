@@ -54,8 +54,9 @@ export default function DeviceLibraryPage() {
           port still exists.
         </li>
         <li>
-          <strong>Built-in devices</strong> — editing a built-in library device shows an{" "}
-          <strong>Update as Custom</strong> button. It creates a user template named with{" "}
+          <strong>Built-in devices</strong> — editing a built-in library device offers{" "}
+          <strong>Update as Custom</strong> in the save menu (the arrow next to{" "}
+          <strong>Save as User Template</strong>). It creates a user template named with{" "}
           <em>(Custom)</em> appended (rename it later like any user template), re-points this device
           at it, and applies the change to the other instances of that built-in on the schematic.
         </li>
@@ -84,7 +85,7 @@ export default function DeviceLibraryPage() {
       </p>
       <ol>
         <li>Edit a device's ports, labels, or signal types</li>
-        <li>Click <strong>Save as Preset</strong> in the device editor</li>
+        <li>Choose <strong>Save as Preset</strong> from the save menu in the device editor</li>
         <li>The library shows a <strong>preset badge</strong> on that template</li>
       </ol>
       <p>
@@ -145,7 +146,7 @@ export default function DeviceLibraryPage() {
         <li><strong>Submit from the app</strong> — right-click any custom device on the canvas and choose
           "Submit to Community" to submit it directly without re-entering the details on the devices site.
           This also works for improvements to existing library devices: edit any placed device (fix a port,
-          add a missing connector) and the same button appears in the device editor once you've made changes</li>
+          add a missing connector) and the same action appears in the device editor's save menu once you've made changes</li>
         <li><strong>Clone from an existing device</strong> — on the devices site, the "Submit a device" form has a
           <em>Clone existing device</em> option; pick any current template and the form prefills with its ports,
           connectors, and metadata. Tweak what's different (a sibling model, a regional variant) and submit — the
