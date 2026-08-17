@@ -25,8 +25,11 @@ export default function ConnectionsPage() {
       <ul>
         <li>Connections go from <strong>output → input</strong> (left to right)</li>
         <li>Ports with <strong>matching signal types</strong> connect directly. Mismatched signal types can connect via an <strong>adapter</strong> (see below)</li>
-        <li>Each <strong>input</strong> port accepts only <strong>one</strong> connection</li>
-        <li><strong>Output</strong> ports can feed multiple inputs</li>
+        <li>
+          Each port — input <em>or</em> output — accepts <strong>one</strong> connection by default. To let a
+          single port carry several connections (one source feeding many destinations, or vice versa), mark it{" "}
+          <strong>multi-connect</strong> — see <em>Multi-connect ports (1:many)</em> below
+        </li>
         <li>
           <strong>Bidirectional</strong> ports connect on one side at a time — connecting one side disables the other
         </li>
@@ -133,17 +136,19 @@ export default function ConnectionsPage() {
         you're telling EasySchematic that these specific cables <em>should</em> share one physical path.
       </p>
 
-      <h2>Multi-connect ports</h2>
+      <h2>Multi-connect ports (1:many)</h2>
       <p>
         By default, each port accepts <strong>one connection</strong>. Some signals don't work that way in real life —
-        an SRT decoder can listen for many sender streams on a single UDP port, a wireless mic receiver pairs with
-        multiple transmitters, and a streaming encoder can broadcast one feed to many destinations. For these cases,
-        a port can be marked <strong>multi-connect</strong> to allow N connections to or from a single port.
+        one Dante flow can feed many destinations, an SRT decoder can listen for many sender streams on a single UDP
+        port, a wireless mic receiver pairs with multiple transmitters, and a streaming encoder can broadcast one
+        feed to many destinations. For these cases, a port can be marked <strong>multi-connect</strong> to allow N
+        connections to or from a single port — 1:many fan-out from a source, or many:1 fan-in to a destination.
       </p>
       <ul>
         <li>
-          Toggle multi-connect per port in the <strong>device editor</strong> — look for the
-          <strong> M</strong> badge on each port row (next to the multicable <strong>T</strong> toggle)
+          Toggle multi-connect per port in the <strong>device editor</strong> (double-click the device) — hover a
+          port row and click the <strong> M</strong> badge (next to the multicable <strong>T</strong> toggle). It
+          lights up amber when the port is multi-connect
         </li>
         <li>
           New ports default to multi-connect when their signal type is <strong>SRT</strong> or <strong>Custom</strong>,
@@ -158,6 +163,20 @@ export default function ConnectionsPage() {
           multi-connect only relaxes the connection-count rule
         </li>
       </ul>
+
+      <h3>Example: one Dante source, many destinations</h3>
+      <p>To show a Dante flow from one console output feeding several receivers:</p>
+      <ol>
+        <li><strong>Double-click</strong> the source device to open the device editor</li>
+        <li>Hover the Dante port's row and click the <strong>M</strong> badge so it lights up amber</li>
+        <li>
+          Draw a connection from that port to each destination — every destination gets its own line on the
+          canvas and its own row in the cable schedule
+        </li>
+      </ol>
+      <p>
+        If a destination should also accept several flows on one port, mark that port multi-connect too.
+      </p>
 
       <h2>Adapters</h2>
       <p>

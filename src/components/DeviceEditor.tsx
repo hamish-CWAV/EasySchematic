@@ -2623,7 +2623,7 @@ function PortRow({
               ? "bg-amber-100 text-amber-700"
               : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
           }`}
-          title="Multi-connect — port accepts multiple connections (SRT, wireless, custom signals)"
+          title="Multi-connect — allow multiple connections on this port (1:many), e.g. one Dante flow feeding many destinations"
         >
           <input
             type="checkbox"

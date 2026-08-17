@@ -6,6 +6,7 @@ import {
   CONNECTOR_TO_CABLE,
   CONNECTOR_GENDER,
   CONNECTORS_WITH_GENDER_VARIATION,
+  shouldDefaultMultiConnect,
 } from "../connectorTypes";
 import { CONNECTOR_LABELS, CONNECTOR_GROUPS } from "../types";
 
@@ -109,5 +110,26 @@ describe("USB-C Power Delivery shortfall (#204)", () => {
     const b = { usbcPowerSourceW: 10, usbcPowerDrawW: 5 };
     // a→b: b draws 5, a delivers 20 → fine; b→a: a draws 100, b delivers 10 → 90 short
     expect(usbcPowerShortfallW(a, b)).toBe(90);
+  });
+});
+
+describe("multi-connect defaults (#273)", () => {
+  it("defaults SRT and Custom signal ports to multi-connect", () => {
+    expect(shouldDefaultMultiConnect("srt")).toBe(true);
+    expect(shouldDefaultMultiConnect("custom")).toBe(true);
+  });
+
+  it("defaults wireless-connector ports to multi-connect regardless of signal", () => {
+    expect(shouldDefaultMultiConnect("analog-audio", "wireless")).toBe(true);
+  });
+
+  it("leaves Dante ports single-connection by default — 1:many flows need the M toggle", () => {
+    expect(shouldDefaultMultiConnect("dante")).toBe(false);
+    expect(shouldDefaultMultiConnect("dante", "rj45")).toBe(false);
+  });
+
+  it("leaves ordinary wired ports single-connection by default", () => {
+    expect(shouldDefaultMultiConnect("sdi", "bnc")).toBe(false);
+    expect(shouldDefaultMultiConnect("hdmi", "hdmi")).toBe(false);
   });
 });
