@@ -547,11 +547,14 @@ export function buildImportResult(
   }
 
   // Build room assignments
-  // deviceRoomPath: device → full room path string (e.g. "Studio A > Control Room")
+  // deviceRoomPath: device → full room path string (e.g. "Studio A > Control Room"),
+  // normalized so "A>B" and "A > B" resolve to the same room
+  const normalizeRoomPath = (path: string) =>
+    path.split(">").map((s) => s.trim()).filter(Boolean).join(" > ");
   const deviceRoomPath = new Map<string, string>();
   for (const c of connections) {
-    if (c.sourceRoom) deviceRoomPath.set(c.sourceDevice, c.sourceRoom);
-    if (c.destRoom) deviceRoomPath.set(c.destDevice, c.destRoom);
+    if (c.sourceRoom) deviceRoomPath.set(c.sourceDevice, normalizeRoomPath(c.sourceRoom));
+    if (c.destRoom) deviceRoomPath.set(c.destDevice, normalizeRoomPath(c.destRoom));
   }
 
   // For layout grouping, use the full path as the band key (handles same-name subrooms)

@@ -107,6 +107,29 @@ export default function ImportExportPage() {
         any other tool that can export CSV into a visual schematic.
       </p>
 
+      <h3>Nested subrooms via room paths</h3>
+      <p>
+        Room columns accept a <strong>room path</strong> using <code>&gt;</code> as a separator, so a cable
+        schedule can create <a href="/rooms-and-grouping">subrooms</a> in bulk:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Room column value</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>Sanctuary</code></td><td>Device is placed in a top-level room "Sanctuary"</td></tr>
+          <tr><td><code>Sanctuary &gt; FOH</code></td><td>Device is placed in a subroom "FOH" nested inside "Sanctuary"</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>Whitespace around the <code>&gt;</code> is ignored — <code>Sanctuary&gt;FOH</code> and <code>Sanctuary &gt; FOH</code> are the same subroom — and empty path segments are skipped</li>
+        <li>Paths can nest to any depth, e.g. <code>Campus &gt; Sanctuary &gt; FOH</code></li>
+        <li>Every room along the path is created automatically, even if no device sits directly in it</li>
+      </ul>
+
       <h2>PNG / SVG (image export)</h2>
       <ul>
         <li><strong>Export PNG</strong> — high-resolution raster image rendered at 4× pixel density, suitable for documents and presentations</li>

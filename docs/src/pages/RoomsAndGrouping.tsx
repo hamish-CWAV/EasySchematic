@@ -49,6 +49,11 @@ export default function RoomsAndGroupingPage() {
         When a parent room is deleted, its subrooms and devices are <strong>un-parented</strong> rather than deleted,
         preserving their content at the correct absolute position on the canvas.
       </p>
+      <p>
+        Subrooms can also be created in bulk during CSV import by using a room path like{" "}
+        <code>Sanctuary &gt; FOH</code> in a room column — see{" "}
+        <a href="/import-export">Files &amp; Exports</a>.
+      </p>
 
       <h2>Resizing rooms</h2>
       <p>
