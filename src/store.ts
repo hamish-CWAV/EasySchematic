@@ -237,16 +237,38 @@ function applyWaypointHeal(nodes: SchematicNode[], edges: ConnectionEdge[]): Con
 }
 
 function snapNodesToGrid(nodes: SchematicNode[]): SchematicNode[] {
-  for (const n of nodes) {
+  const nodeMap = new Map<string, SchematicNode>();
+  for (const n of nodes) nodeMap.set(n.id, n);
+  const done = new Set<string>();
+  const snapOne = (n: SchematicNode): void => {
+    if (done.has(n.id)) return;
+    done.add(n.id);
     // Stub labels are healed against their REAL partner port at routing time
     // (healStubPortAlignment in recomputeRoutes) — DOM-measured ports can sit a few px
     // off the model grid, so snapping the stub to the abstract grid here would BREAK
     // colinearity with such ports (kink at the label). Leave their stored Y alone.
     // Text stubs (#196) store the same sub-grid, port-centred Y for the same reason.
-    if (n.type === "stub-label" || n.type === "text-stub") continue;
-    n.position.x = Math.round(n.position.x / GRID_SIZE) * GRID_SIZE;
-    n.position.y = Math.round(n.position.y / GRID_SIZE) * GRID_SIZE;
-  }
+    if (n.type === "stub-label" || n.type === "text-stub") return;
+    // Snap in ABSOLUTE space: a parented device stores room-relative coords, and
+    // the room origin itself can sit off-grid (edge-aligned resize, older saves).
+    // Rounding the relative coords would leave the device's absolute position —
+    // and its ports — off the grid that unparented devices snap to (#322).
+    // Parents snap first so the child's offset sums their final positions.
+    let dx = 0;
+    let dy = 0;
+    let pid = n.parentId;
+    while (pid) {
+      const p = nodeMap.get(pid);
+      if (!p) break;
+      snapOne(p);
+      dx += p.position.x;
+      dy += p.position.y;
+      pid = p.parentId;
+    }
+    n.position.x = Math.round((n.position.x + dx) / GRID_SIZE) * GRID_SIZE - dx;
+    n.position.y = Math.round((n.position.y + dy) / GRID_SIZE) * GRID_SIZE - dy;
+  };
+  for (const n of nodes) snapOne(n);
   return nodes;
 }
 
@@ -406,6 +428,13 @@ interface SchematicState {
   /** Called when a room's NodeResizer finishes. Snapshots undo and reconciles
    *  device membership against the new bounds. */
   onRoomResizeEnd: (nodeId: string) => void;
+  /** Re-snap every node parented (directly or transitively) under `roomId` onto
+   *  the ABSOLUTE grid. Room geometry changes (drag, edge resize) shift children
+   *  by the origin delta, which is not grid-aligned when the origin sits off-grid
+   *  — ports then miss the routing grid and cables to outside devices kink (#322).
+   *  `extraIds` widens the pass to nodes no longer under the room — a shrink can
+   *  detach a former child at its shifted (off-grid) absolute position. */
+  snapRoomChildrenToGrid: (roomId: string, extraIds?: ReadonlySet<string>) => void;
 
   // Undo/Redo
   pushSnapshot: () => void;
@@ -3616,10 +3645,73 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
-  onRoomResizeEnd: (_nodeId) => {
+  onRoomResizeEnd: (nodeId) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
+    // Capture the descendant set BEFORE reconciling membership: a shrink can push
+    // a child's center outside the new bounds, and reparentAllDevices then detaches
+    // it (or hands it to another room) at its origin-shifted, off-grid absolute
+    // position — the snap below must still cover those escapees.
+    const nodeMap = new Map(state.nodes.map((n) => [n.id, n]));
+    const wasUnderRoom = new Set<string>();
+    for (const n of state.nodes) {
+      let pid = n.parentId;
+      while (pid) {
+        if (pid === nodeId) {
+          wasUnderRoom.add(n.id);
+          break;
+        }
+        pid = nodeMap.get(pid)?.parentId;
+      }
+    }
     get().reparentAllDevices({ skipUndo: true });
+    // A left/top-edge resize moves the room origin by arbitrary px — children
+    // travel with it, so pull them back onto the absolute grid.
+    get().snapRoomChildrenToGrid(nodeId, wasUnderRoom);
+  },
+
+  snapRoomChildrenToGrid: (roomId, extraIds) => {
+    const state = get();
+    const nodeMap = new Map(state.nodes.map((n) => [n.id, n]));
+    const isUnderRoom = (n: SchematicNode): boolean => {
+      let pid = n.parentId;
+      while (pid) {
+        if (pid === roomId) return true;
+        pid = nodeMap.get(pid)?.parentId;
+      }
+      return false;
+    };
+    // state.nodes is kept parent-first (sortNodesParentFirst), so reading parent
+    // offsets from newPos-then-nodeMap sums final positions for nested parents
+    // (rack-in-room) too.
+    const newPos = new Map<string, { x: number; y: number }>();
+    for (const n of state.nodes) {
+      // Same exclusions as snapNodesToGrid — stubs sit at sub-grid, port-centred Y.
+      if (n.type === "stub-label" || n.type === "text-stub") continue;
+      if (!isUnderRoom(n) && !extraIds?.has(n.id)) continue;
+      let dx = 0;
+      let dy = 0;
+      let pid = n.parentId;
+      while (pid) {
+        const p = nodeMap.get(pid);
+        if (!p) break;
+        const pp = newPos.get(pid) ?? p.position;
+        dx += pp.x;
+        dy += pp.y;
+        pid = p.parentId;
+      }
+      const x = Math.round((n.position.x + dx) / GRID_SIZE) * GRID_SIZE - dx;
+      const y = Math.round((n.position.y + dy) / GRID_SIZE) * GRID_SIZE - dy;
+      if (x !== n.position.x || y !== n.position.y) newPos.set(n.id, { x, y });
+    }
+    if (newPos.size === 0) return;
+    set({
+      nodes: state.nodes.map((n) => {
+        const p = newPos.get(n.id);
+        return p ? { ...n, position: p } : n;
+      }),
+    });
+    get().saveToLocalStorage();
   },
 
   pushSnapshot: () => {

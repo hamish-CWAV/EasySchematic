@@ -1075,9 +1075,22 @@ export function enforceMinSpacing(
 
   if (!changed) return null;
 
-  // Snap corrected position to grid
-  newX = Math.round(newX / GRID_SIZE) * GRID_SIZE;
-  newY = Math.round(newY / GRID_SIZE) * GRID_SIZE;
+  // Snap corrected position to grid — in ABSOLUTE space. A parented device
+  // stores room-relative coords, and the room origin itself can sit off-grid
+  // (edge-aligned resize); rounding the relative coords would land the device's
+  // ports off the grid its unsectioned peers snap to (#322).
+  let offX = 0;
+  let offY = 0;
+  let pid = draggedNode.parentId;
+  while (pid) {
+    const parent = allNodes.find((n) => n.id === pid);
+    if (!parent) break;
+    offX += parent.position.x;
+    offY += parent.position.y;
+    pid = parent.parentId;
+  }
+  newX = Math.round((newX + offX) / GRID_SIZE) * GRID_SIZE - offX;
+  newY = Math.round((newY + offY) / GRID_SIZE) * GRID_SIZE - offY;
 
   return { x: newX, y: newY };
 }

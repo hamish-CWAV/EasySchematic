@@ -1350,7 +1350,15 @@ function SchematicCanvas() {
           reparentNode(dn.id, { x: absX, y: absY }, { skipUndo: true });
           if (dn.type === "room") anyRoomMoved = true;
         }
-        if (anyRoomMoved) reparentAllDevices({ skipUndo: true });
+        if (anyRoomMoved) {
+          reparentAllDevices({ skipUndo: true });
+          // Moving a room shifts its children by the origin delta; if the origin
+          // sat off-grid, that delta knocks every child off the absolute grid.
+          const snapChildren = useSchematicStore.getState().snapRoomChildrenToGrid;
+          for (const dn of draggedNodes) {
+            if (dn.type === "room") snapChildren(dn.id);
+          }
+        }
         flushPendingSnapshot();
         return;
       }
@@ -1417,6 +1425,9 @@ function SchematicCanvas() {
       // smallest enclosing room so nested layouts still resolve correctly.
       if (draggedNode.type === "room") {
         reparentAllDevices({ skipUndo: true });
+        // Moving a room shifts its children by the origin delta; if the origin
+        // sat off-grid, that delta knocks every child off the absolute grid.
+        useSchematicStore.getState().snapRoomChildrenToGrid(draggedNode.id);
       }
 
       // #182: keep stub labels glued to their device. When a device moves, re-anchor its
