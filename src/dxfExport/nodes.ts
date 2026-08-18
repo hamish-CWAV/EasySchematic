@@ -6,6 +6,8 @@ import type {
   RoomData,
   SchematicNode,
   SignalType,
+  StubLabelData,
+  StubLabelPageMode,
 } from "../types";
 import type { DxfWriter, EntityStyle } from "./writer";
 import { cssFontPxToDxfHeight, pxToIn, tintToWhite, hexToRgb, rgbToTrueColor, truncateToWidth } from "./units";
@@ -21,6 +23,9 @@ import {
 } from "../auxiliaryData";
 import { transformLabelNow } from "../labelCaseUtils";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
+import { buildStubLabelText } from "../stubLabelText";
+import { resolveStubLabelParts, type StubLabelContext } from "../stubLabelResolve";
+import { STUB_H_EST, STUB_W_EST } from "../stubPlacement";
 
 /** Matches Tailwind `rounded-lg` on the canvas DeviceNode (8px = 0.083"). */
 const DEVICE_CORNER_RADIUS_IN = 8 / 96;
@@ -469,4 +474,84 @@ export function emitAnnotation(
       },
     );
   }
+}
+
+/** Matches the 2px CSS border-radius on the canvas StubLabelNode. */
+const STUB_CORNER_RADIUS_IN = 2 / 96;
+/** Canvas StubLabelNode text color (#374151, Tailwind gray-700). */
+const STUB_TEXT_TRUECOLOR = 0x374151;
+
+export interface StubLabelDefaults {
+  showPort: boolean;
+  showRoom: boolean;
+  pageMode: StubLabelPageMode;
+  signalColors: Partial<Record<SignalType, string>> | undefined;
+}
+
+/**
+ * Emit an off-page wire-reference stub: the signal-colored pill plus the label text
+ * the canvas shows — arrow, far device, and (when enabled) its port, room and page.
+ *
+ * The DXF used to emit nothing for these nodes, so the only text surviving at a stub
+ * end was the leg's cable ID (#319). The text is resolved through the same helper the
+ * canvas node uses, so the two can't drift apart.
+ */
+export function emitStubLabel(
+  writer: DxfWriter,
+  node: SchematicNode,
+  rfInstance: ReactFlowInstance,
+  ctx: StubLabelContext,
+  defaults: StubLabelDefaults,
+) {
+  if (node.type !== "stub-label") return;
+  const internal = rfInstance.getInternalNode(node.id);
+  if (!internal) return;
+  const data = node.data as StubLabelData;
+
+  const parts = resolveStubLabelParts(node.id, data, ctx);
+  if (!parts) return;
+  const text = buildStubLabelText(
+    // Only the name-ish parts take the display-case preference — the arrow and the
+    // "Pg" tag stay as assembled, exactly as on the canvas (#294).
+    { ...parts, farLabel: transformLabelNow(parts.farLabel), farRoom: transformLabelNow(parts.farRoom) },
+    {
+      showPort: data.showPort ?? defaults.showPort,
+      showRoom: data.showRoom ?? defaults.showRoom,
+      pageMode: data.pageMode ?? defaults.pageMode,
+    },
+  );
+  if (!text.trim()) return;
+
+  const ax = internal.internals.positionAbsolute.x;
+  const ay = internal.internals.positionAbsolute.y;
+  const w = node.measured?.width ?? STUB_W_EST;
+  const h = node.measured?.height ?? STUB_H_EST;
+  const rect = toDxfRect(ax, ay, w, h);
+  const trueColor = hexToTrueColor(resolveSignalColor(data.signalType, defaults.signalColors));
+
+  // Opaque fill, like the canvas box — the leg terminates at the pill's edge, and any
+  // connection routed past it must not read through the text.
+  writer.addSolidHatchRect(
+    CANONICAL_LAYERS.LABELS,
+    rect.x, rect.y, rect.w, rect.h,
+    { trueColor: 0xffffff },
+  );
+  writer.addRoundedRect(
+    CANONICAL_LAYERS.LABELS,
+    rect.x, rect.y, rect.w, rect.h,
+    STUB_CORNER_RADIUS_IN,
+    { trueColor },
+  );
+
+  // Deliberately NOT truncated to the pill: the box was measured against browser Inter
+  // and truncateToWidth's Arial estimate is conservative enough to clip nearly every
+  // stub label — which is the very information #319 is about. A hair of overhang in a
+  // CAD viewer beats an ellipsis eating the device name.
+  const height = cssFontPxToDxfHeight(9); // matches canvas 9px stub label
+  writer.addMText(
+    CANONICAL_LAYERS.LABELS,
+    rect.x + rect.w / 2, rect.y + rect.h / 2,
+    text,
+    { height, attachment: 5, style: { trueColor: STUB_TEXT_TRUECOLOR } },
+  );
 }

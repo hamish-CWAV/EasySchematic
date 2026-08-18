@@ -3,12 +3,10 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { StubLabelNode as StubLabelNodeType, StubLabelData, ConnectionEdge, SchematicNode } from "../types";
 import { SIGNAL_COLORS } from "../types";
 import { useSchematicStore, GRID_SIZE } from "../store";
-import { resolvePortLabel } from "../packList";
-import { computePageGrid } from "../printPageGrid";
-import { getPaperSize } from "../printConfig";
 import { STUB_GAP } from "../stubPlacement";
 import { getPortAbsolutePositions } from "../snapUtils";
 import { buildStubLabelText } from "../stubLabelText";
+import { buildPrintPageLookup, resolveStubLabelParts } from "../stubLabelResolve";
 import { useDisplayLabel } from "../labelCaseUtils";
 
 /** Find the connecting edge: source-side stub is the TARGET of an edge from a device;
@@ -16,16 +14,6 @@ import { useDisplayLabel } from "../labelCaseUtils";
 function findOwnEdge(stubId: string, side: "source" | "target", edges: ConnectionEdge[]): ConnectionEdge | undefined {
   return edges.find((e) =>
     side === "source" ? e.target === stubId : e.source === stubId,
-  );
-}
-
-/** Find the partner stub label node (same linkedConnectionId, opposite side). */
-function findPartnerStub(linkedConnectionId: string, mySide: "source" | "target", nodes: SchematicNode[]): SchematicNode | undefined {
-  const otherSide = mySide === "source" ? "target" : "source";
-  return nodes.find((n) =>
-    n.type === "stub-label" &&
-    (n.data as StubLabelData).linkedConnectionId === linkedConnectionId &&
-    (n.data as StubLabelData).side === otherSide,
   );
 }
 
@@ -47,61 +35,17 @@ function absolutePos(node: SchematicNode | undefined, nodeMap: Map<string, Schem
 
 function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeType>) {
   // Single combined selector returning a serialized string — minimizes re-renders.
+  // The resolution itself lives in stubLabelResolve so the DXF export emits the same
+  // text this box shows (#319); only the serialization is local.
   const labelStr = useSchematicStore((s) => {
-    const ownEdge = findOwnEdge(id, data.side, s.edges);
-    if (!ownEdge) return "";
-    // The "far device" for this stub is at the OTHER end of the partner leg, not our own.
-    const partnerEdge = s.edges.find(
-      (e) => e.data?.linkedConnectionId === data.linkedConnectionId && e.id !== ownEdge.id,
-    );
-    if (!partnerEdge) return "";
-    const farDeviceId = data.side === "source" ? partnerEdge.target : partnerEdge.source;
-    const farHandleId = data.side === "source" ? partnerEdge.targetHandle : partnerEdge.sourceHandle;
-    const farDevice = s.nodes.find((n) => n.id === farDeviceId);
-    if (!farDevice) return "";
-
-    const farLabel = (farDevice.data as Record<string, unknown>)?.label as string ?? "";
-    const farRoom = farDevice.parentId
-      ? s.nodes.find((n) => n.id === farDevice.parentId)
-      : null;
-    const farRoomLabel = (farRoom?.data as Record<string, unknown>)?.label as string ?? "";
-    const farPort = resolvePortLabel(farDevice, farHandleId ?? null);
-
-    // Partner stub's geographical X relative to ours — drives arrow direction.
-    const partnerStub = findPartnerStub(data.linkedConnectionId, data.side, s.nodes);
-    const nodeMap = new Map(s.nodes.map((n) => [n.id, n] as const));
-    const myAbs = absolutePos(s.nodes.find((n) => n.id === id), nodeMap);
-    const partnerAbs = partnerStub ? absolutePos(partnerStub, nodeMap) : myAbs;
-    const dx = partnerAbs.x - myAbs.x;
-    const dy = partnerAbs.y - myAbs.y;
-    let arrow: string;
-    if (Math.abs(dx) >= Math.abs(dy)) arrow = dx >= 0 ? "→" : "←";
-    else arrow = dy >= 0 ? "↓" : "↑";
-
-    // Page numbers in print view (matches OffsetEdge.tsx legacy behavior)
-    let myPage = "";
-    let farPage = "";
-    if (s.printView) {
-      const paperSize = getPaperSize(s.printPaperId, s.printCustomWidthIn, s.printCustomHeightIn);
-      const pages = computePageGrid(
-        paperSize, s.printOrientation, s.printScale, s.nodes,
-        s.titleBlockLayout?.heightIn ?? 1, s.printOriginOffsetX, s.printOriginOffsetY,
-      );
-      if (pages.length > 1) {
-        const findPage = (x: number, y: number) => {
-          for (const p of pages) {
-            if (x >= p.x && x < p.x + p.widthPx && y >= p.y && y < p.y + p.heightPx) return p.index + 1;
-          }
-          return 0;
-        };
-        const farAbs = absolutePos(farDevice, nodeMap);
-        const mp = findPage(myAbs.x, myAbs.y);
-        const fp = findPage(farAbs.x, farAbs.y);
-        if (mp > 0) myPage = String(mp);
-        if (fp > 0) farPage = String(fp);
-      }
-    }
-    return `${arrow}\0${farLabel}\0${farPort}\0${farRoomLabel}\0${myPage}\0${farPage}`;
+    const parts = resolveStubLabelParts(id, data, {
+      nodes: s.nodes,
+      edges: s.edges,
+      // Page tags only appear in print view (matches OffsetEdge.tsx legacy behavior).
+      pageAt: buildPrintPageLookup(s),
+    });
+    if (!parts) return "";
+    return [parts.arrow, parts.farLabel, parts.farPort, parts.farRoom, parts.myPage, parts.farPage].join("\0");
   });
 
   const showPortGlobal = useSchematicStore((s) => s.stubLabelShowPort);
@@ -236,7 +180,12 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
     );
   }, [labelStr, effectiveShowPort, effectiveShowRoom, effectivePageMode, displayLabel]);
 
-  const color = SIGNAL_COLORS[data.signalType] ?? "#999";
+  // Per-signal color overrides apply here as they do to the connection itself — a
+  // recolored signal type used to leave the stub box on the stock color while its own
+  // leg drew in the custom one (and the DXF pill, which honors the override, disagreed
+  // with the canvas).
+  const colorOverride = useSchematicStore((s) => s.signalColors?.[data.signalType]);
+  const color = colorOverride ?? SIGNAL_COLORS[data.signalType] ?? "#999";
   // Source-side stubs receive an incoming line (they're the TARGET of the edge);
   // target-side stubs originate the line (they're the SOURCE).
   const handleType = data.side === "source" ? "target" : "source";

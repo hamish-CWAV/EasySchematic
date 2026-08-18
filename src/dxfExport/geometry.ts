@@ -333,7 +333,65 @@ export function findEndpointLabelPos(
   }
 }
 
-/** Emit cable ID label(s) for an edge. */
+// Canvas connection-label chip (OffsetEdge `cableIdLabelStyle` / `customLabelStyle`):
+// opaque white ground, `padding: 0 3px`, 1px signal-colored border, 2px radius.
+const CHIP_PAD_X_PX = 3;
+/** Half the leading a 9px label gets at the browser's default line-height. */
+const CHIP_PAD_Y_PX = 1.6;
+/** Per-character advance as a fraction of CSS font size — matches OffsetEdge's
+ *  `estimateBadgeWidth`, which sizes the same chips on the canvas. */
+const CHIP_CHAR_ASPECT = 0.58;
+const CHIP_BORDER_PX = 1;
+const CHIP_RADIUS_IN = 2 / 96;
+
+/**
+ * Emit a connection label the way the canvas draws it: an opaque white chip with a
+ * signal-colored border, then the text over it. `cxPx`/`cyPx` is the chip centre in
+ * screen px.
+ *
+ * The chip is what actually fixes #298. Ordering the labels after the geometry keeps
+ * OTHER connections off the text, but a cable ID sits ON its own routed line by
+ * construction — "endpoint" mode anchors it middle-centre on the polyline, and
+ * "midpoint" mode only offsets when the longest segment is horizontal — and DXF text
+ * has no fill area, so glyphs never occlude what is under them however late they are
+ * written. MTEXT background fill would mask it in AutoCAD/TrueView but LibreCAD
+ * ignores that group, which is why the issue asks for a real mask entity.
+ */
+function emitLabelChip(
+  writer: DxfWriter,
+  cxPx: number, cyPx: number,
+  text: string,
+  fontPx: number,
+  trueColor: number,
+) {
+  const wPx = text.length * fontPx * CHIP_CHAR_ASPECT + 2 * CHIP_PAD_X_PX + 2 * CHIP_BORDER_PX;
+  const hPx = fontPx + 2 * CHIP_PAD_Y_PX + 2 * CHIP_BORDER_PX;
+  const x = pxToIn(cxPx - wPx / 2);
+  const y = -pxToIn(cyPx + hPx / 2);
+  const w = pxToIn(wPx);
+  const h = pxToIn(hPx);
+
+  writer.addSolidHatchRect(CANONICAL_LAYERS.LABELS, x, y, w, h, { trueColor: 0xffffff });
+  writer.addRoundedRect(
+    CANONICAL_LAYERS.LABELS, x, y, w, h, CHIP_RADIUS_IN,
+    { trueColor, linetype: "CONTINUOUS" },
+  );
+  writer.addMText(
+    CANONICAL_LAYERS.LABELS,
+    pxToIn(cxPx), -pxToIn(cyPx),
+    text,
+    { height: cssFontPxToDxfHeight(fontPx), attachment: 5, style: { trueColor, linetype: "CONTINUOUS" } },
+  );
+}
+
+/**
+ * Emit cable ID label(s) for an edge.
+ *
+ * `stubEnd` names the endpoint terminating at a stub-label box, if any. The endpoint
+ * cable ID is suppressed there, matching the canvas: the stub box already identifies
+ * the connection, and printing the ID at both the device port AND the stub label would
+ * put four IDs on one logical cable instead of two.
+ */
 export function emitCableIdLabels(
   writer: DxfWriter,
   edge: ConnectionEdge,
@@ -342,47 +400,25 @@ export function emitCableIdLabels(
   globalGap: number,
   globalMidOffset: number,
   trueColor: number,
+  stubEnd: "source" | "target" | null = null,
 ) {
   if (!edge.data?.cableId) return;
   if (edge.data?.hideCableId) return;
 
-  const height = cssFontPxToDxfHeight(9); // matches canvas 9pt cable ID label
   const gap = edge.data?.cableIdGap ?? globalGap;
   const midOffset = edge.data?.cableIdMidOffset ?? globalMidOffset;
-
-  const style: EntityStyle = { trueColor, linetype: "CONTINUOUS" };
   const effectiveMode = edge.data?.cableIdLabelMode ?? mode;
 
   if (effectiveMode === "midpoint") {
     const pos = findMidpointLabelPos(routed, midOffset);
-    writer.addMText(
-      CANONICAL_LAYERS.LABELS,
-      pxToIn(pos.x), -pxToIn(pos.y),
-      edge.data.cableId,
-      {
-        height,
-        attachment: 5, // middle-center
-        style,
-        backgroundAci: 7, // white
-        backgroundScale: 1.2,
-      },
-    );
+    emitLabelChip(writer, pos.x, pos.y, edge.data.cableId, 9, trueColor);
   } else {
-    // Emit at both ends
+    // Emit at both ends, minus any end that terminates at a stub label.
     for (const nearStart of [true, false]) {
+      if (nearStart && stubEnd === "source") continue;
+      if (!nearStart && stubEnd === "target") continue;
       const pos = findEndpointLabelPos(routed, nearStart, gap);
-      writer.addMText(
-        CANONICAL_LAYERS.LABELS,
-        pxToIn(pos.x), -pxToIn(pos.y),
-        edge.data.cableId,
-        {
-          height,
-          attachment: 5,
-          style,
-          backgroundAci: 7,
-          backgroundScale: 1.2,
-        },
-      );
+      emitLabelChip(writer, pos.x, pos.y, edge.data.cableId, 9, trueColor);
     }
   }
 }
@@ -406,38 +442,22 @@ export function emitCustomLabel(
   const targetLabel = edge.data?.targetLabel as string | undefined;
   if (!sourceLabel && !midLabel && !targetLabel) return;
 
-  const height = cssFontPxToDxfHeight(10); // matches canvas 10pt custom label
+  const fontPx = 9; // matches canvas customLabelStyle, sized to the cable ID chip (#209)
   const gap = 4; // matches canvas CUSTOM_LABEL_GAP
-  const style: EntityStyle = { trueColor, linetype: "CONTINUOUS" };
 
   if (sourceLabel) {
     const pos = findEndpointLabelPos(routed, true, gap);
-    writer.addMText(
-      CANONICAL_LAYERS.LABELS,
-      pxToIn(pos.x), -pxToIn(pos.y),
-      sourceLabel,
-      { height, attachment: 5, style, backgroundAci: 7, backgroundScale: 1.3 },
-    );
+    emitLabelChip(writer, pos.x, pos.y, sourceLabel, fontPx, trueColor);
   }
   if (midLabel) {
     const pos = stubEnd
       ? findEndpointLabelPos(routed, stubEnd === "source", gap)
       : findMidpointLabelPos(routed, 0);
-    writer.addMText(
-      CANONICAL_LAYERS.LABELS,
-      pxToIn(pos.x), -pxToIn(pos.y),
-      midLabel,
-      { height, attachment: 5, style, backgroundAci: 7, backgroundScale: 1.3 },
-    );
+    emitLabelChip(writer, pos.x, pos.y, midLabel, fontPx, trueColor);
   }
   if (targetLabel) {
     const pos = findEndpointLabelPos(routed, false, gap);
-    writer.addMText(
-      CANONICAL_LAYERS.LABELS,
-      pxToIn(pos.x), -pxToIn(pos.y),
-      targetLabel,
-      { height, attachment: 5, style, backgroundAci: 7, backgroundScale: 1.3 },
-    );
+    emitLabelChip(writer, pos.x, pos.y, targetLabel, fontPx, trueColor);
   }
 }
 

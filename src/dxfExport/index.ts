@@ -1,6 +1,8 @@
 import type { ReactFlowInstance } from "@xyflow/react";
 import { useSchematicStore } from "../store";
-import type { SignalType } from "../types";
+import type { ConnectionEdge, SignalType } from "../types";
+import type { RoutedEdge } from "../edgeRouter";
+import { buildPrintPageLookup } from "../stubLabelResolve";
 import { DxfWriter, type EntityStyle } from "./writer";
 import { pxToIn } from "./units";
 import {
@@ -19,20 +21,21 @@ import {
   emitEdgeGeometry,
   resolveLineStyle,
 } from "./geometry";
-import { emitAnnotation, emitDevice, emitRoom } from "./nodes";
+import { emitAnnotation, emitDevice, emitRoom, emitStubLabel } from "./nodes";
 import { emitTitleBlock } from "./titleBlock";
 import { emitLegend } from "./legend";
 
 const PADDING_IN = 0.25;
 
 /**
- * Export the current schematic as a DXF (R2000 / AC1015) file and trigger a
- * browser download.
+ * Build the DXF (R2000 / AC1015) text for the current schematic, or null when
+ * there is nothing to draw. Split out from the download so the emitted document
+ * — entity order in particular — can be inspected without a DOM.
  */
-export function exportDxf(rfInstance: ReactFlowInstance) {
+export function buildDxf(rfInstance: ReactFlowInstance): string | null {
   const state = useSchematicStore.getState();
   const { nodes, edges, routedEdges } = state;
-  if (nodes.length === 0) return;
+  if (nodes.length === 0) return null;
 
   const writer = new DxfWriter();
 
@@ -93,6 +96,8 @@ export function exportDxf(rfInstance: ReactFlowInstance) {
   const allArcCrossings = collectAllArcCrossings(routedEdges);
   const stubNodeIds = new Set(nodes.filter((n) => n.type === "stub-label").map((n) => n.id));
 
+  const drawnEdges: { edge: ConnectionEdge; routed: RoutedEdge; trueColor: number }[] = [];
+
   for (const edge of edges) {
     const routed = routedEdges[edge.id];
     if (!routed) continue;
@@ -113,20 +118,46 @@ export function exportDxf(rfInstance: ReactFlowInstance) {
     };
 
     emitEdgeGeometry(writer, routed, layer, entityStyle, allArcCrossings);
+    drawnEdges.push({ edge, routed, trueColor });
+  }
 
-    // Labels (cable ID + custom)
-    emitCableIdLabels(
-      writer, edge, routed,
-      state.cableIdLabelMode, state.cableIdGap, state.cableIdMidOffset,
-      trueColor,
-    );
-    // A stub leg has exactly one endpoint on a stub-label node; anchor the
-    // custom middle label to that end so it matches the canvas (#201).
+  // ─── Connection labels, in a pass of their own ──────────────────────
+  // Every viewer that matters (AutoCAD, TrueView, LibreCAD) paints model-space
+  // entities in database order, and layers carry no precedence of their own. So
+  // a label written right after its own line still ends up UNDER the lines of
+  // every edge emitted after it, and that line runs through the text (#298).
+  // Draining the labels once all geometry is down puts them all on top; each
+  // label also carries its own opaque chip, which is what masks the label's OWN
+  // line — ordering can't help there, since the label sits on it by design.
+  for (const { edge, routed, trueColor } of drawnEdges) {
+    // A stub leg has exactly one endpoint on a stub-label node. That end's cable
+    // ID is suppressed (the stub box names the connection there) and the custom
+    // middle label is anchored to it, both matching the canvas (#201, #319).
     const stubEnd: "source" | "target" | null =
       stubNodeIds.has(edge.source) ? "source"
       : stubNodeIds.has(edge.target) ? "target"
       : null;
+    emitCableIdLabels(
+      writer, edge, routed,
+      state.cableIdLabelMode, state.cableIdGap, state.cableIdMidOffset,
+      trueColor, stubEnd,
+    );
     emitCustomLabel(writer, edge, routed, trueColor, stubEnd);
+  }
+
+  // ─── Stub labels ────────────────────────────────────────────────────
+  // After the legs for the same reason, and after the cable IDs because the box
+  // is opaque on the canvas. The DXF used to skip these nodes entirely, leaving
+  // the leg's cable ID as the only text at a stub end (#319).
+  const pageAt = buildPrintPageLookup(state);
+  for (const node of nodes) {
+    if (node.type !== "stub-label") continue;
+    emitStubLabel(writer, node, rfInstance, { nodes, edges, pageAt }, {
+      showPort: state.stubLabelShowPort,
+      showRoom: state.stubLabelShowRoom,
+      pageMode: state.stubLabelPageMode,
+      signalColors: state.signalColors,
+    });
   }
 
   // ─── Title block (if configured) ───────────────────────────────────
@@ -158,11 +189,20 @@ export function exportDxf(rfInstance: ReactFlowInstance) {
   writer.writeObjects();
   writer.writeEof();
 
-  // ─── Download ───────────────────────────────────────────────────────
-  const blob = new Blob([writer.toString()], { type: "application/dxf" });
+  return writer.toString();
+}
+
+/**
+ * Export the current schematic as a DXF file and trigger a browser download.
+ */
+export function exportDxf(rfInstance: ReactFlowInstance) {
+  const dxf = buildDxf(rfInstance);
+  if (dxf === null) return;
+
+  const blob = new Blob([dxf], { type: "application/dxf" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.download = `${state.schematicName.replace(/[^a-zA-Z0-9-_ ]/g, "")}.dxf`;
+  link.download = `${useSchematicStore.getState().schematicName.replace(/[^a-zA-Z0-9-_ ]/g, "")}.dxf`;
   link.href = url;
   link.click();
   URL.revokeObjectURL(url);

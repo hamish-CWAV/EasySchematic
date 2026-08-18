@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import DxfParser from "dxf-parser";
 import type { ReactFlowInstance } from "@xyflow/react";
 
-import type { AuxRow, LabelCaseMode, SchematicNode } from "../types";
+import type { AuxRow, ConnectionEdge, LabelCaseMode, SchematicNode } from "../types";
 import { DEFAULT_LABEL_CASE } from "../types";
 import { useSchematicStore } from "../store";
 import { DxfWriter } from "../dxfExport/writer";
+import { buildDxf } from "../dxfExport";
 import { emitDevice, emitRoom } from "../dxfExport/nodes";
 import {
   CAP_HEIGHT_RATIO,
@@ -22,6 +23,7 @@ import {
 } from "../dxfExport/units";
 import { CANONICAL_LAYERS, LTYPE_DEFS, buildLayerDefs, signalLayerName } from "../dxfExport/layers";
 import { emitRoundedWaypointPath } from "../dxfExport/geometry";
+import type { RoutedEdge } from "../edgeRouter";
 
 /** Build a minimum-viable DXF document with the given entities inside ENTITIES. */
 function buildMinimalDxf(
@@ -53,6 +55,89 @@ function buildMinimalDxf(
 function parse(dxfString: string): any {
   const parser = new DxfParser();
   return parser.parseSync(dxfString);
+}
+
+/** A single horizontal run, the shape the router produces for a straight hop. */
+function straightRoute(x1: number, y: number, x2: number) {
+  return {
+    segments: [{ x1, y1: y, x2, y2: y, axis: "h" }],
+    waypoints: [{ x: x1, y }, { x: x2, y }],
+    crossingPoints: [],
+    labelX: (x1 + x2) / 2,
+    labelY: y,
+  } as unknown as RoutedEdge;
+}
+
+/** ReactFlowInstance stand-in over a fixed node list — the exporter only reads
+ *  positionAbsolute and handleBounds. */
+function instanceFor(nodes: SchematicNode[]): ReactFlowInstance {
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  return {
+    getInternalNode: (id: string) => {
+      const n = byId.get(id);
+      if (!n) return undefined;
+      return {
+        internals: {
+          positionAbsolute: { x: n.position.x, y: n.position.y },
+          handleBounds: { source: [], target: [] },
+        },
+      };
+    },
+  } as unknown as ReactFlowInstance;
+}
+
+interface RawEntity { type: string; layer: string; pairs: [string, string][] }
+
+/** Every entity in the ENTITIES section, in emission order, walking the (group code,
+ *  value) pairs directly. dxf-parser silently drops HATCH, so anything asserting about
+ *  fills — or about where a fill sits relative to the text it masks — has to read the
+ *  stream itself. */
+function rawEntityStream(dxf: string): RawEntity[] {
+  const lines = dxf.split("\r\n");
+  const out: RawEntity[] = [];
+  let inEntities = false;
+  let current: RawEntity | null = null;
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    const code = lines[i];
+    const value = lines[i + 1];
+    if (code === "0") {
+      if (value === "ENDSEC") inEntities = false;
+      current = null;
+      if (inEntities && value !== "SECTION") {
+        current = { type: value, layer: "", pairs: [] };
+        out.push(current);
+      }
+    } else if (code === "2" && value === "ENTITIES") {
+      inEntities = true;
+    } else if (current) {
+      if (code === "8" && !current.layer) current.layer = value;
+      current.pairs.push([code, value]);
+    }
+  }
+  return out;
+}
+
+/** Bounding box (DXF inches) of a solid HATCH's polyline boundary. The boundary
+ *  vertices are the 10/20 pairs after group 93 (vertex count) and before 97. */
+function hatchBounds(e: RawEntity): { x1: number; y1: number; x2: number; y2: number } {
+  const xs: number[] = [], ys: number[] = [];
+  let inBoundary = false;
+  for (const [code, value] of e.pairs) {
+    if (code === "93") { inBoundary = true; continue; }
+    if (!inBoundary) continue;
+    if (code === "97") break;
+    if (code === "10") xs.push(Number(value));
+    else if (code === "20") ys.push(Number(value));
+  }
+  return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+}
+
+/** Drop the schematic the whole-document tests loaded into the store. */
+function resetExportStore() {
+  useSchematicStore.setState({
+    nodes: [], edges: [], routedEdges: {}, labelCase: DEFAULT_LABEL_CASE,
+    cableIdLabelMode: "endpoint", cableIdGap: 4, cableIdMidOffset: 0,
+  });
 }
 
 describe("units helpers", () => {
@@ -682,5 +767,292 @@ describe("emitDevice — I/O section header casing", () => {
     expect(PORTS.map((p) => p.section)).toEqual([
       "mic In", "line In", "main Out", "aux Out", "net A", "net B",
     ]);
+  });
+});
+
+// ─── Whole-document emission (entity order + stub labels) ────────────────────
+//
+// AutoCAD, TrueView and LibreCAD all paint model-space entities in database order and
+// give layers no precedence of their own, so where a label lands in the ENTITIES stream
+// decides whether it is readable — and DXF text has no fill area, so a label that sits
+// ON its own routed line needs a mask entity too. These pin all three consequences:
+// cable IDs must follow ALL connection geometry AND carry an opaque chip (#298), and
+// stub-label boxes must be in the document at all (#319 — they were skipped entirely,
+// leaving the leg's cable ID as the only text at a stub end).
+
+describe("buildDxf — connection label draw order and masking (#298)", () => {
+  const devices: SchematicNode[] = [
+    {
+      id: "dev-switch",
+      type: "device",
+      position: { x: 0, y: 0 },
+      measured: { width: 144, height: 80 },
+      data: { label: "Rack Switch", ports: [{ id: "port-1", label: "Port 1", direction: "output", signalType: "ethernet" }] },
+    },
+    {
+      id: "dev-display",
+      type: "device",
+      position: { x: 600, y: 0 },
+      measured: { width: 144, height: 80 },
+      data: { label: "Lobby Display", ports: [{ id: "port-1", label: "LAN 1", direction: "input", signalType: "ethernet" }] },
+    },
+    {
+      id: "dev-camera",
+      type: "device",
+      position: { x: 0, y: 300 },
+      measured: { width: 144, height: 80 },
+      data: { label: "PTZ Camera", ports: [{ id: "port-1", label: "LAN 1", direction: "output", signalType: "ethernet" }] },
+    },
+    {
+      id: "dev-encoder",
+      type: "device",
+      position: { x: 600, y: 300 },
+      measured: { width: 144, height: 80 },
+      data: { label: "NDI Encoder", ports: [{ id: "port-1", label: "LAN 1", direction: "input", signalType: "ethernet" }] },
+    },
+  ] as unknown as SchematicNode[];
+
+  const edges = [
+    { id: "e-switch-display", source: "dev-switch", target: "dev-display", sourceHandle: "port-1", targetHandle: "port-1", data: { signalType: "ethernet", cableId: "C-001" } },
+    { id: "e-camera-encoder", source: "dev-camera", target: "dev-encoder", sourceHandle: "port-1", targetHandle: "port-1", data: { signalType: "ethernet", cableId: "C-002" } },
+  ] as unknown as ConnectionEdge[];
+
+  /** Both connections run dead horizontal, so the label lands exactly on the wire —
+   *  the default geometry the issue is about. */
+  const WIRE_Y_A = 40;
+  const routedEdges = {
+    "e-switch-display": straightRoute(144, WIRE_Y_A, 600),
+    "e-camera-encoder": straightRoute(144, 340, 600),
+  };
+
+  afterEach(resetExportStore);
+
+  function exportEdges(over: Record<string, unknown> = {}) {
+    useSchematicStore.setState({
+      nodes: devices, edges, routedEdges,
+      cableIdLabelMode: "midpoint", cableIdGap: 4, cableIdMidOffset: 0,
+      colorKeyEnabled: false, printView: false,
+      ...over,
+    });
+    const dxf = buildDxf(instanceFor(devices));
+    expect(dxf).not.toBeNull();
+    return dxf!;
+  }
+
+  function connectionLabelOrder(over: Record<string, unknown> = {}) {
+    const entities = parse(exportEdges(over)).entities as { type: string; layer: string; text?: string }[];
+    const isConnectionGeometry = (e: { type: string; layer: string }) =>
+      (e.type === "LINE" || e.type === "ARC") && e.layer.startsWith("EasySchematic-Connections-");
+    const isCableId = (e: { type: string; layer: string; text?: string }) =>
+      e.type === "MTEXT" && e.layer === CANONICAL_LAYERS.LABELS && /^C-00[12]$/.test(e.text ?? "");
+    return {
+      lastGeometry: entities.map(isConnectionGeometry).lastIndexOf(true),
+      firstCableId: entities.findIndex(isCableId),
+      cableIds: entities.filter(isCableId).map((e) => e.text),
+    };
+  }
+
+  it("emits both cable IDs", () => {
+    expect(connectionLabelOrder().cableIds.sort()).toEqual(["C-001", "C-002"]);
+  });
+
+  // Half the regression: labels used to be emitted inside the per-edge loop, so C-001
+  // landed in the stream BEFORE the second connection's lines and that line drew
+  // through it.
+  it("puts every cable ID after every connection line", () => {
+    const { lastGeometry, firstCableId } = connectionLabelOrder();
+    expect(lastGeometry).toBeGreaterThan(-1);
+    expect(firstCableId).toBeGreaterThan(lastGeometry);
+  });
+
+  // The other half, and the one ordering cannot reach: in midpoint mode with no offset
+  // the label sits dead on its own wire, so it needs an opaque chip under it. Without
+  // the chip the wire reads straight through the glyphs in every viewer.
+  it("masks a cable ID's own connection line with an opaque chip", () => {
+    const stream = rawEntityStream(exportEdges());
+    const chips = stream
+      .filter((e) => e.type === "HATCH" && e.layer === CANONICAL_LAYERS.LABELS)
+      .map(hatchBounds);
+    expect(chips.length).toBe(2);
+
+    // The midpoint of the first connection, in DXF inches.
+    const labelX = (144 + 600) / 2 / DPI;
+    const wireY = -WIRE_Y_A / DPI;
+    const covering = chips.filter(
+      (c) => c.x1 < labelX && labelX < c.x2 && c.y1 < wireY && wireY < c.y2,
+    );
+    expect(covering.length).toBe(1);
+    // Wide enough for "C-001" plus the canvas chip's 3px side padding, not a hairline.
+    expect((covering[0].x2 - covering[0].x1) * DPI).toBeGreaterThan(5 * 9 * 0.5);
+  });
+
+  it("draws each chip after all connection geometry and under its own text", () => {
+    const stream = rawEntityStream(exportEdges());
+    const lastGeometry = stream
+      .map((e) => (e.type === "LINE" || e.type === "ARC") && e.layer.startsWith("EasySchematic-Connections-"))
+      .lastIndexOf(true);
+    const firstChip = stream.findIndex(
+      (e) => e.type === "HATCH" && e.layer === CANONICAL_LAYERS.LABELS,
+    );
+    const firstCableId = stream.findIndex(
+      (e) => e.type === "MTEXT" && e.pairs.some(([c, v]) => c === "1" && v === "C-001"),
+    );
+    expect(lastGeometry).toBeGreaterThan(-1);
+    expect(firstChip).toBeGreaterThan(lastGeometry);
+    expect(firstCableId).toBeGreaterThan(firstChip);
+  });
+
+  // The chip is the mask now, so the MTEXT background fill — which used ACI 7, the
+  // white/black pseudo-color that inverts with the viewer's background — is gone.
+  it("no longer relies on the MTEXT background fill", () => {
+    const stream = rawEntityStream(exportEdges());
+    const cableIdText = stream.find(
+      (e) => e.type === "MTEXT" && e.pairs.some(([c, v]) => c === "1" && v === "C-001"),
+    );
+    expect(cableIdText).toBeDefined();
+    expect(cableIdText!.pairs.some(([c]) => c === "90")).toBe(false);
+  });
+
+  it("chips endpoint-mode cable IDs too, at both ends", () => {
+    const chips = rawEntityStream(exportEdges({ cableIdLabelMode: "endpoint" }))
+      .filter((e) => e.type === "HATCH" && e.layer === CANONICAL_LAYERS.LABELS);
+    expect(chips.length).toBe(4); // 2 connections x 2 ends
+  });
+});
+
+describe("buildDxf — stub labels (#319)", () => {
+  // One logical connection split into two legs sharing a linkedConnectionId, each ending
+  // at a stub-label node — the shape convertEdgeToStubs produces.
+  const LINKED = "lnk-7f31";
+
+  const nodes = [
+    {
+      id: "dev-rack-switch",
+      type: "device",
+      position: { x: 0, y: 0 },
+      measured: { width: 144, height: 80 },
+      data: { label: "Rack Switch", ports: [{ id: "port-12", label: "Port 12", direction: "output", signalType: "ethernet" }] },
+    },
+    {
+      id: "stub-a",
+      type: "stub-label",
+      position: { x: 208, y: 33 },
+      measured: { width: 96, height: 14 },
+      data: { signalType: "ethernet", linkedConnectionId: LINKED, side: "source", placed: true },
+    },
+    {
+      id: "stub-b",
+      type: "stub-label",
+      position: { x: 900, y: 33 },
+      measured: { width: 96, height: 14 },
+      data: { signalType: "ethernet", linkedConnectionId: LINKED, side: "target", placed: true },
+    },
+    {
+      id: "dev-lobby-display",
+      type: "device",
+      position: { x: 1060, y: 0 },
+      measured: { width: 144, height: 80 },
+      data: { label: "Lobby Display", ports: [{ id: "port-1", label: "LAN 1", direction: "input", signalType: "ethernet" }] },
+    },
+  ] as unknown as SchematicNode[];
+
+  const edges = [
+    { id: "e-leg-a", source: "dev-rack-switch", target: "stub-a", sourceHandle: "port-12", targetHandle: "l", data: { signalType: "ethernet", cableId: "C-014", linkedConnectionId: LINKED } },
+    { id: "e-leg-b", source: "stub-b", target: "dev-lobby-display", sourceHandle: "r", targetHandle: "port-1", data: { signalType: "ethernet", cableId: "C-014", linkedConnectionId: LINKED } },
+  ] as unknown as ConnectionEdge[];
+
+  const routedEdges = {
+    "e-leg-a": straightRoute(144, 40, 208),
+    "e-leg-b": straightRoute(996, 40, 1060),
+  };
+
+  afterEach(resetExportStore);
+
+  function exportWithStubs(over: Record<string, unknown> = {}) {
+    useSchematicStore.setState({
+      nodes, edges, routedEdges,
+      stubLabelShowPort: true, stubLabelShowRoom: false, stubLabelPageMode: "cross-page",
+      cableIdLabelMode: "endpoint", cableIdGap: 4,
+      colorKeyEnabled: false, printView: false,
+      ...over,
+    });
+    const dxf = buildDxf(instanceFor(nodes));
+    expect(dxf).not.toBeNull();
+    return dxf!;
+  }
+
+  /** Every LABELS-layer MTEXT in emission order. Text arrives DXF-escaped, so compare
+   *  against escapeForMText of the expected string rather than the raw glyphs. */
+  function labelTexts(dxf: string): string[] {
+    return (parse(dxf).entities as { type: string; layer: string; text?: string }[])
+      .filter((e) => e.type === "MTEXT" && e.layer === CANONICAL_LAYERS.LABELS)
+      .map((e) => e.text ?? "");
+  }
+
+  it("writes the stub label text the canvas shows, not just the cable ID", () => {
+    const texts = labelTexts(exportWithStubs());
+    // Both stubs point at the far device across the split, with its far-end port.
+    expect(texts).toContain(escapeForMText("→ Lobby Display [LAN 1]"));
+    expect(texts).toContain(escapeForMText("← Rack Switch [Port 12]"));
+  });
+
+  // The canvas suppresses the endpoint cable ID at a stub end: the stub box already
+  // names the connection there, so printing the ID at the device port AND the stub
+  // would put four IDs on one logical cable. The DXF used to emit all four, and the
+  // stub pill's opaque fill then clipped the two it overlapped (#319).
+  it("suppresses the cable ID at the stub end of each leg", () => {
+    const texts = labelTexts(exportWithStubs());
+    expect(texts.filter((t) => t === "C-014").length).toBe(2); // one per leg, device end only
+  });
+
+  it("keeps the cable ID at the stub end when the mode is midpoint", () => {
+    // Midpoint labels aren't at an endpoint at all, so nothing is suppressed —
+    // matching OffsetEdge, which only guards the endpoint branch.
+    const texts = labelTexts(exportWithStubs({ cableIdLabelMode: "midpoint" }));
+    expect(texts.filter((t) => t === "C-014").length).toBe(2);
+  });
+
+  it("honours the per-stub port toggle", () => {
+    const texts = labelTexts(exportWithStubs({ stubLabelShowPort: false }));
+    expect(texts).toContain(escapeForMText("→ Lobby Display"));
+    expect(texts).toContain(escapeForMText("← Rack Switch"));
+  });
+
+  /** Index of the HATCH whose bounds are the given stub node's box, or -1. */
+  function stubPillIndex(stream: ReturnType<typeof rawEntityStream>, x: number, y: number, w: number, h: number) {
+    return stream.findIndex((e) => {
+      if (e.type !== "HATCH" || e.layer !== CANONICAL_LAYERS.LABELS) return false;
+      const b = hatchBounds(e);
+      return Math.abs(b.x1 - x / DPI) < 1e-6 && Math.abs(b.y1 + (y + h) / DPI) < 1e-6
+        && Math.abs(b.x2 - b.x1 - w / DPI) < 1e-6 && Math.abs(b.y2 - b.y1 - h / DPI) < 1e-6;
+    });
+  }
+
+  it("draws each stub pill as an opaque fill plus an outline on the labels layer", () => {
+    const stream = rawEntityStream(exportWithStubs());
+    // Both stub node boxes are filled...
+    expect(stubPillIndex(stream, 208, 33, 96, 14)).toBeGreaterThan(-1);
+    expect(stubPillIndex(stream, 900, 33, 96, 14)).toBeGreaterThan(-1);
+    // ...and outlined. Two pills + one chip per surviving cable ID (2) = 4 outlines.
+    const outlines = stream.filter(
+      (e) => e.type === "LWPOLYLINE" && e.layer === CANONICAL_LAYERS.LABELS,
+    );
+    expect(outlines.length).toBe(4);
+  });
+
+  it("emits the stub boxes after all connection geometry", () => {
+    const stream = rawEntityStream(exportWithStubs());
+    const lastGeometry = stream
+      .map((e) => (e.type === "LINE" || e.type === "ARC") && e.layer.startsWith("EasySchematic-Connections-"))
+      .lastIndexOf(true);
+    expect(lastGeometry).toBeGreaterThan(-1);
+    expect(stubPillIndex(stream, 208, 33, 96, 14)).toBeGreaterThan(lastGeometry);
+    expect(stubPillIndex(stream, 900, 33, 96, 14)).toBeGreaterThan(lastGeometry);
+  });
+
+  it("follows the display-case preference like every other label", () => {
+    useSchematicStore.setState({ labelCase: "uppercase" });
+    const texts = labelTexts(exportWithStubs());
+    expect(texts).toContain(escapeForMText("→ LOBBY DISPLAY [LAN 1]"));
   });
 });

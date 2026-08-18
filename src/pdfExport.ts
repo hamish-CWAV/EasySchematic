@@ -318,7 +318,7 @@ function drawContentBorder(
   doc.restoreGraphicsState();
 }
 
-interface PdfCrossingLabel {
+export interface PdfCrossingLabel {
   /** X position in inches */
   x: number;
   /** Y position in inches */
@@ -329,7 +329,7 @@ interface PdfCrossingLabel {
   color: string;
 }
 
-function computePdfCrossingLabels(
+export function computePdfCrossingLabels(
   page: PageRect,
   pages: PageRect[],
   routedEdges: Record<string, RoutedEdge>,
@@ -352,6 +352,17 @@ function computePdfCrossingLabels(
   }
 
   const marginPx = page.contentX - page.x;
+
+  // Band of canvas the page actually shows. The capture below spans the whole
+  // sheet inside the print margins — `page.contentH` additionally subtracts the
+  // title-block strip, which the raster still covers (the block is drawn over it
+  // afterwards, and crossing labels are drawn over that). Bounding against
+  // contentH dropped every label for a wire leaving the BOTTOM of a page, since
+  // that label sits a title-block height below it (#317).
+  const drawnLeft = page.x + marginPx;
+  const drawnRight = page.x + page.widthPx - marginPx;
+  const drawnTop = page.y + marginPx;
+  const drawnBottom = page.y + page.heightPx - marginPx;
 
   // Build node info lookup. Devices use their own label/room. Stub-label nodes
   // proxy to the FAR device of their logical connection (the device on the other
@@ -429,11 +440,11 @@ function computePdfCrossingLabels(
             const leftPx = bx - marginPx - insetPx;
             const rightPx = bx + marginPx + insetPx;
 
-            if (leftPx >= page.contentX && leftPx <= page.contentX + page.contentW) {
+            if (leftPx >= drawnLeft && leftPx <= drawnRight) {
               const text = fmtLabel(rightwardTarget);
               labels.push({ x: toPageX(leftPx), y: toPageY(y), text, anchor: "left", color: edgeColor });
             }
-            if (rightPx >= page.contentX && rightPx <= page.contentX + page.contentW) {
+            if (rightPx >= drawnLeft && rightPx <= drawnRight) {
               const text = fmtLabel(leftwardTarget);
               labels.push({ x: toPageX(rightPx), y: toPageY(y), text, anchor: "right", color: edgeColor });
             }
@@ -453,11 +464,11 @@ function computePdfCrossingLabels(
             const upPx = by - marginPx - insetPx;
             const downPx = by + marginPx + insetPx;
 
-            if (upPx >= page.contentY && upPx <= page.contentY + page.contentH) {
+            if (upPx >= drawnTop && upPx <= drawnBottom) {
               const text = fmtLabel(downwardTarget);
               labels.push({ x: toPageX(x), y: toPageY(upPx), text, anchor: "up", color: edgeColor });
             }
-            if (downPx >= page.contentY && downPx <= page.contentY + page.contentH) {
+            if (downPx >= drawnTop && downPx <= drawnBottom) {
               const text = fmtLabel(upwardTarget);
               labels.push({ x: toPageX(x), y: toPageY(downPx), text, anchor: "down", color: edgeColor });
             }
