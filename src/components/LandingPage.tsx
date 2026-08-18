@@ -1,63 +1,84 @@
 import { useEffect } from "react";
 import { sponsors } from "../sponsors";
+import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
+import { SIGNAL_LABELS, type SignalType } from "../types";
 
 const features = [
   {
     title: "Drag-and-Drop Device Library",
     description:
-      "2,000+ professional AV device templates — cameras, switchers, routers, audio consoles, media servers, displays, and more. Drag devices onto the canvas and connect them in seconds.",
+      "3,800+ professional AV device templates — cameras, switchers, routers, audio consoles, media servers, displays, and more. Drag devices onto the canvas and connect them in seconds, or build any device that isn't there yet.",
   },
   {
     title: "Color-Coded Signal Types",
     description:
-      "68 signal types including SDI, HDMI, NDI, Dante, AVB, AES67, MADI, DMX, Analog Audio, HDBaseT, ST 2110, and more — each with a distinct color so signal paths are instantly readable.",
+      "73 signal types including SDI, HDMI, NDI, Dante, AVB, AES67, MADI, DMX, Analog Audio, HDBaseT, and ST 2110 — each with a distinct color so signal paths are instantly readable. Adapters insert themselves between incompatible ports.",
   },
   {
-    title: "Smart Connection Routing",
+    title: "Smart Routing & Room Grouping",
     description:
-      "Connections route around devices automatically. Shared vertical paths, consistent spacing, and overlap avoidance keep your system diagrams clean and professional.",
+      "Connections route around devices automatically, with parallel nesting and line-jump arcs — drop waypoints by hand where you want a specific path. Group devices into nested rooms for control rooms, stages, OB trucks, and equipment closets.",
   },
   {
-    title: "Room Grouping",
+    title: "Rack Builder",
     description:
-      "Organize devices into rooms, racks, or logical groups. Move and resize groups freely. Nest rooms to represent control rooms, stages, OB trucks, and equipment closets.",
+      "Rack elevations that share devices with the schematic — place a device in a rack and it stays the same device on your drawing. Front, rear, and side views, snap-to-U placement, shelves and blanks, and a face-plate editor with connectors drawn at real-world size.",
   },
   {
-    title: "Pack Lists & Cable Schedules",
+    title: "Patch Bays & Print Sheets",
     description:
-      "Generate paperwork straight from your schematic — pack lists with every device and its details, cable schedules with signal types, source/destination, and cable IDs. No more maintaining separate spreadsheets.",
+      "Route connections through patch panels without cluttering the drawing, with per-segment cable IDs and designation strips printed at 100% scale. Compose rack viewports onto paper sheets and export a full-fidelity vector PDF.",
+  },
+  {
+    title: "Pack Lists, Cable Schedules & Reports",
+    description:
+      "Paperwork generated straight from your schematic — pack lists checked against the gear you own, cable schedules with connectors and estimated lengths, plus network and power reports. No more maintaining separate spreadsheets.",
   },
   {
     title: "Export to DXF, PDF & PNG",
     description:
-      "Export your AV schematics as DXF for AutoCAD, PDF for print, or PNG for presentations. Configurable page sizes, title blocks, and print layouts built for AV integration shops.",
+      "Export your AV schematics as DXF for AutoCAD and Vectorworks, PDF for print, or PNG and SVG for presentations. Configurable page sizes, title blocks, and print layouts built for AV integration shops. Import an existing cable schedule from CSV to get started.",
   },
   {
     title: "Community Device Database",
     description:
-      "Browse and contribute to a growing library of real-world AV device templates. Search by manufacturer, model, or signal type. Every template includes accurate port layouts and connector specs.",
+      "Browse and contribute to a growing library of real-world AV device templates. Search by manufacturer, model, or signal type. Every template includes accurate port layouts and connector specs — and there's a free public API.",
   },
   {
-    title: "Free & Browser-Based",
+    title: "Works Offline, Installs Like an App",
     description:
-      "No installs, no accounts, no subscriptions. Your schematics stay in your browser. Share via link, import/export JSON files, or use the public API.",
+      "Install EasySchematic from your browser and it runs in its own window, fully offline, on the show floor or in a truck with no signal. Your schematics are saved locally; an optional free account adds cloud saves and share links.",
+  },
+  {
+    title: "AI Assistant (Beta)",
+    description:
+      "Connect an assistant like Claude and have it search the device library, place devices, and make validated connections on your live canvas. Off by default, paired with a one-time token, and it never leaves your machine.",
   },
 ];
 
-const signalSamples = [
-  { name: "SDI", color: "var(--color-sdi)" },
-  { name: "HDMI", color: "var(--color-hdmi)" },
-  { name: "NDI", color: "var(--color-ndi)" },
-  { name: "Dante", color: "var(--color-dante)" },
-  { name: "AES67", color: "var(--color-aes)" },
-  { name: "MADI", color: "var(--color-madi)" },
-  { name: "DMX", color: "var(--color-dmx)" },
-  { name: "HDBaseT", color: "var(--color-hdbaset)" },
-  { name: "Analog", color: "var(--color-analog-audio)" },
-  { name: "ST 2110", color: "var(--color-sdi)" },
-  { name: "USB", color: "var(--color-usb)" },
-  { name: "Ethernet", color: "var(--color-ethernet)" },
+/** A representative dozen; the rest are counted off the live signal list. */
+const SAMPLE_SIGNALS: SignalType[] = [
+  "sdi",
+  "hdmi",
+  "ndi",
+  "dante",
+  "aes67",
+  "madi",
+  "dmx",
+  "hdbaset",
+  "analog-audio",
+  "st2110",
+  "usb",
+  "ethernet",
 ];
+
+const signalSamples = SAMPLE_SIGNALS.map((id) => ({
+  name: SIGNAL_LABELS[id],
+  color: DEFAULT_SIGNAL_COLORS[id],
+}));
+
+const moreSignals =
+  Object.keys(DEFAULT_SIGNAL_COLORS).length - SAMPLE_SIGNALS.length;
 
 function openEditor() {
   localStorage.setItem("easyschematic-skip-landing", "1");
@@ -94,12 +115,13 @@ export default function LandingPage() {
             AV Signal Flow Diagram Tool
           </h1>
           <p className="text-base md:text-lg text-slate-400 max-w-2xl mb-3">
-            Design AV system diagrams, block diagrams, and signal flow schematics for
-            broadcast, live production, and AV integration. Free and browser-based.
+            Design AV system diagrams, rack elevations, and signal flow schematics for
+            broadcast, live production, and AV integration — then generate the cable
+            schedule and pack list from the same drawing. Free and browser-based.
           </p>
           <p className="text-slate-500 mb-8">
-            2,000+ device templates &middot; 68 signal types &middot;
-            Smart edge routing &middot; DXF/PDF/PNG export
+            3,800+ device templates &middot; 73 signal types &middot;
+            Rack builder &middot; Cable schedules &middot; DXF/PDF/PNG export
           </p>
           <button
             onClick={openEditor}
@@ -181,7 +203,7 @@ export default function LandingPage() {
               </span>
             ))}
             <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-sm text-gray-500">
-              + 23 more
+              + {moreSignals} more
             </span>
           </div>
         </div>
@@ -250,7 +272,8 @@ export default function LandingPage() {
             Start Drawing Your Signal Flow
           </h2>
           <p className="text-slate-400 mb-8">
-            No signup required. Your work is saved locally in your browser.
+            No signup required — your work is saved locally in your browser. Create a
+            free account only if you want cloud saves and share links.
           </p>
           <button
             onClick={openEditor}
