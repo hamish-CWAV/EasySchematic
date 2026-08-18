@@ -450,7 +450,7 @@ describe("updateDevice port-edit revalidation flow", () => {
     expect(after.pendingPortEditConflicts![0].adapterFailed).toBe(true);
   });
 
-  it("undo and redo clear staged conflicts so they cannot act on restored cables", () => {
+  it("undo clears staged conflicts so they cannot act on restored cables", () => {
     loadBase();
     editDisplayPort({ signalType: "analog-audio", connectorType: "xlr-3" });
     expect(useSchematicStore.getState().pendingPortEditConflicts).toHaveLength(1);
@@ -462,9 +462,74 @@ describe("updateDevice port-edit revalidation flow", () => {
     expect(undone.edges.find((e) => e.id === "e1")).toBeDefined();
     const restored = undone.nodes.find((n) => n.id === "n2") as DeviceNode;
     expect(restored.data.ports[0].signalType).toBe("hdmi");
+  });
+
+  it("redo re-stages the conflicts of the port edit it re-applies", () => {
+    loadBase();
+    editDisplayPort({ signalType: "analog-audio", connectorType: "xlr-3" });
+    useSchematicStore.getState().undo();
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
 
     useSchematicStore.getState().redo();
+    const after = useSchematicStore.getState();
+    // The incompatible edit is back, so the dialog must be back with it (#326) —
+    // otherwise the cable sits silently invalid on this one path.
+    expect(after.pendingPortEditConflicts).toHaveLength(1);
+    expect(after.pendingPortEditConflicts![0].edgeId).toBe("e1");
+    expect(after.pendingPortEditConflicts![0].reason).toBe("signal-mismatch");
+    const redone = after.nodes.find((n) => n.id === "n2") as DeviceNode;
+    expect(redone.data.ports[0].signalType).toBe("analog-audio");
+  });
+
+  it("redo re-stages a conflict on a port whose id ends in -in", () => {
+    // Fixture-shaped ids (spk-xlr-in, laptop-hdmi-out) collide with the handle
+    // suffixes, the gap #306 shipped a fix for — redo's revalidation must clear it too.
+    const laptop = device("laptop", [
+      port("laptop-hdmi-out", { direction: "output", signalType: "hdmi", connectorType: "hdmi" }),
+    ]);
+    const speaker = device("spk", [
+      port("spk-xlr-in", { direction: "input", signalType: "hdmi", connectorType: "hdmi" }),
+    ], 400);
+    useSchematicStore.setState({
+      nodes: [laptop, speaker],
+      edges: [edge("e-spk", "laptop", "laptop-hdmi-out", "spk", "spk-xlr-in")],
+    });
+
+    const state = useSchematicStore.getState();
+    const spk = state.nodes.find((n) => n.id === "spk") as DeviceNode;
+    state.updateDevice("spk", {
+      ...spk.data,
+      ports: spk.data.ports.map((p) => ({ ...p, signalType: "analog-audio" as const, connectorType: "xlr-3" as const })),
+    });
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toHaveLength(1);
+
+    useSchematicStore.getState().undo();
     expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
+
+    useSchematicStore.getState().redo();
+    const after = useSchematicStore.getState();
+    expect(after.pendingPortEditConflicts?.map((c) => c.edgeId)).toEqual(["e-spk"]);
+  });
+
+  it("redo of an unrelated action stages nothing", () => {
+    loadBase();
+    editDisplayPort({ label: "Renamed" });
+    useSchematicStore.getState().undo();
+    useSchematicStore.getState().redo();
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
+  });
+
+  it("redo of a resolved conflict does not re-prompt for the accepted mismatch", () => {
+    loadBase();
+    editDisplayPort({ signalType: "analog-audio", connectorType: "xlr-3" });
+    useSchematicStore.getState().resolvePortEditConflict("e1", "keep");
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
+
+    useSchematicStore.getState().undo();
+    useSchematicStore.getState().redo();
+    const after = useSchematicStore.getState();
+    expect(after.edges.find((e) => e.id === "e1")?.data?.connectorMismatch).toBe(true);
+    expect(after.pendingPortEditConflicts).toBeNull();
   });
 
   it("resolveAll keep flags every conflicted connection at once", () => {
@@ -677,6 +742,79 @@ describe("propagateTemplateToInstances revalidation", () => {
       editedTemplate({ label: "Renamed In" }),
       "A",
     );
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
+  });
+});
+
+describe("syncDeviceFromTemplate revalidation", () => {
+  beforeEach(() => {
+    useSchematicStore.setState({
+      nodes: [],
+      edges: [],
+      pendingPortEditConflicts: null,
+      pendingIncompatibleConnection: null,
+      customTemplates: [],
+    });
+  });
+
+  /** A drifted instance of user template "tpl": the device is still HDMI, the template
+   *  has moved to XLR. Syncing keeps the device-side port id, so a live cable survives
+   *  the sync in an invalid state unless the sync stages a conflict. */
+  function drifted(templatePort: Partial<Port>, devicePortId = "amp-xlr-in-1") {
+    const src = device("s1", [port("out1")]);
+    const inst = {
+      id: "amp",
+      type: "device",
+      position: { x: 400, y: 0 },
+      data: {
+        label: "Amp",
+        deviceType: "amplifier",
+        templateId: "tpl",
+        templateVersion: 1,
+        ports: [{ id: devicePortId, label: "XLR In 1", signalType: "hdmi", direction: "input", connectorType: "hdmi", templatePortId: "t-in" }],
+      },
+    } as DeviceNode;
+    useSchematicStore.setState({
+      nodes: [src, inst],
+      edges: [edge("e-amp", "s1", "out1", "amp", devicePortId)],
+      customTemplates: [{
+        id: "tpl",
+        deviceType: "amplifier",
+        label: "Amp",
+        version: 2,
+        ports: [{ id: "t-in", label: "XLR In 1", signalType: "hdmi", direction: "input", connectorType: "hdmi", ...templatePort }],
+      } as DeviceTemplate],
+    });
+  }
+
+  it("stages the conflicts a template sync strands, at the moment of the sync", () => {
+    drifted({ signalType: "analog-audio", connectorType: "xlr-3" });
+    expect(useSchematicStore.getState().syncDeviceFromTemplate("amp")).not.toBeNull();
+    const conflicts = useSchematicStore.getState().pendingPortEditConflicts;
+    expect(conflicts?.map((c) => c.edgeId)).toEqual(["e-amp"]);
+    expect(conflicts![0].reason).toBe("signal-mismatch");
+  });
+
+  it("redoing a sync stages the same one conflict, not a second", () => {
+    // Redo revalidates whatever the restore changed (#326), and a sync keeps port ids
+    // stable — so without staging at the action the dialog appeared only on redo.
+    drifted({ signalType: "analog-audio", connectorType: "xlr-3" });
+    useSchematicStore.getState().syncDeviceFromTemplate("amp");
+    useSchematicStore.getState().dismissPortEditConflicts();
+
+    useSchematicStore.getState().undo();
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
+
+    useSchematicStore.getState().redo();
+    expect(useSchematicStore.getState().pendingPortEditConflicts?.map((c) => c.edgeId)).toEqual(["e-amp"]);
+  });
+
+  it("stages nothing when the sync leaves every cable valid", () => {
+    drifted({ label: "Program In" }, "amp-hdmi-in");
+    useSchematicStore.getState().syncDeviceFromTemplate("amp");
+    expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
+    useSchematicStore.getState().undo();
+    useSchematicStore.getState().redo();
     expect(useSchematicStore.getState().pendingPortEditConflicts).toBeNull();
   });
 });

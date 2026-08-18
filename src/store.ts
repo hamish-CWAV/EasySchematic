@@ -374,7 +374,7 @@ interface SchematicState {
   updateDeviceShortName: (nodeId: string, shortName: string) => void;
   batchUpdateDeviceShortNames: (changes: { nodeId: string; shortName: string }[]) => void;
   updateDevice: (nodeId: string, data: DeviceData) => void;
-  /** Patch device data without clearing baseLabel (for spreadsheet edits). */
+  /** Merge a partial into device data — no renumbering, no port revalidation (for spreadsheet edits). */
   patchDeviceData: (nodeId: string, patch: Partial<DeviceData>) => void;
   /** Merge two paired ports into a single passthrough port and re-anchor their edges atomically. */
   convertPortsToPassthrough: (nodeId: string, inputPortId: string, outputPortId: string, newPort: import("./types").Port) => void;
@@ -1248,6 +1248,31 @@ function renumberNodes(nodes: SchematicNode[]): SchematicNode[] {
   });
 }
 
+/** Is this device still wearing the name the app gave it, or did the user type one?
+ *
+ *  `baseLabel` is the live marker — renumberNodes owns the label while it is set and a
+ *  rename clears it — but it is absent on plenty of real devices: everything saved
+ *  through the device editor before #333, plus hand-authored, imported and pre-v9
+ *  files that never carried one. `model` is the template name the device was placed
+ *  from and no rename touches it, so a label of exactly `model`, or `${model} <n>` as
+ *  renumberNodes would have written it, is still an app-assigned name.
+ *
+ *  Deliberately not persisted as a baseLabel backfill: writing baseLabel back would
+ *  hand these devices to renumberNodes, which renames on load. Reading the fallback
+ *  only where the question is asked keeps the effect inside the action the user
+ *  invoked. */
+export function isAutoNamedDevice(
+  data: Pick<DeviceData, "label" | "baseLabel" | "model">,
+): boolean {
+  if (data.baseLabel) return true;
+  const model = data.model;
+  if (!model) return false;
+  if (data.label === model) return true;
+  if (!data.label.startsWith(`${model} `)) return false;
+  const suffix = data.label.slice(model.length + 1);
+  return suffix.length > 0 && /^\d+$/.test(suffix);
+}
+
 /** Ensure parent nodes appear before their children in the array (topological sort). */
 function sortNodesParentFirst(nodes: SchematicNode[]): SchematicNode[] {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
@@ -1679,6 +1704,36 @@ export function findInvalidatedConnections(
         needsAdapter(sourceConnector, targetConnector))
     ) {
       push("connector-mismatch");
+    }
+  }
+  return conflicts;
+}
+
+/** Revalidate every device whose ports differ between two whole-schematic states.
+ *  Redo re-applies the very port edit the user undid, so it has to re-stage that
+ *  edit's conflicts rather than land the invalid cables silently (#326). Devices
+ *  absent from the outgoing state, and ports the restore added or removed, aren't
+ *  edits — findInvalidatedConnections only looks at ports present on both sides. */
+function revalidateRestoredState(
+  fromNodes: SchematicNode[],
+  toNodes: SchematicNode[],
+  toEdges: ConnectionEdge[],
+): PortEditConflict[] {
+  const portsBefore = new Map<string, Port[]>();
+  for (const n of fromNodes) {
+    if (n.type === "device") portsBefore.set(n.id, (n.data as DeviceData).ports);
+  }
+  const conflicts: PortEditConflict[] = [];
+  // A cable between two restored devices is found from each end — one conflict each.
+  const seen = new Set<string>();
+  for (const n of toNodes) {
+    if (n.type !== "device") continue;
+    const oldPorts = portsBefore.get(n.id);
+    if (!oldPorts) continue;
+    for (const c of findInvalidatedConnections(toNodes, toEdges, n.id, oldPorts)) {
+      if (seen.has(c.edgeId)) continue;
+      seen.add(c.edgeId);
+      conflicts.push(c);
     }
   }
   return conflicts;
@@ -2654,10 +2709,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       });
     }
 
+    // baseLabel means "this device is still auto-named"; a rename clears it so
+    // renumberNodes stops owning the label. Only a rename — the editor saves every
+    // other field through here too, and dropping baseLabel on those made swapDevice
+    // read the device as user-renamed and keep the stale name (#333).
+    const renamed = !oldNode || data.label !== (oldNode.data as DeviceData).label;
+    const baseLabel = renamed ? undefined : (oldNode.data as DeviceData).baseLabel;
+
     set({
       nodes: renumberNodes(get().nodes.map((n) => {
         if (n.id !== nodeId || n.type !== "device") return n;
-        return { ...n, data: { ...data, baseLabel: undefined } } as DeviceNode;
+        return { ...n, data: { ...data, baseLabel } } as DeviceNode;
       })),
     });
 
@@ -2828,6 +2890,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (!template || template.version == null) return null;
 
     const result = syncDeviceWithTemplate(node.data, template, nodeId, state.edges);
+    const oldPorts = node.data.ports;
 
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
@@ -2837,6 +2900,19 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           : n,
       ),
     });
+
+    // Syncing keeps port IDs stable but can change a port's signal type under a live
+    // cable, stranding it exactly like a hand edit — so stage the same conflicts
+    // updateDevice and propagateTemplateToInstances do (#306). Without this the dialog
+    // only appeared when the sync was redone, since redo revalidates (#326).
+    const conflicts = findInvalidatedConnections(get().nodes, get().edges, nodeId, oldPorts);
+    if (conflicts.length > 0) {
+      const existing = get().pendingPortEditConflicts ?? [];
+      const seen = new Set(existing.map((c) => c.edgeId));
+      const fresh = conflicts.filter((c) => !seen.has(c.edgeId));
+      if (fresh.length > 0) set({ pendingPortEditConflicts: [...existing, ...fresh] });
+    }
+
     get().saveToLocalStorage();
     return result;
   },
@@ -3010,7 +3086,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     // 5. Build new DeviceData. Take factual fields from template; preserve a small set
     //    of instance-level customizations from the old device.
-    const userRenamed = !oldData.baseLabel; // baseLabel cleared on user rename
+    const userRenamed = !isAutoNamedDevice(oldData);
     const preservedLabel = userRenamed ? oldData.label : newTemplate.label;
     const newData: DeviceData = {
       label: preservedLabel,
@@ -3788,7 +3864,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     undoStack.push(structuredClone({ nodes: state.nodes, edges: state.edges, pages: state.pages, bundles: state.bundles, autoRoute: state.autoRoute }));
     const edges = next.edges.map(({ zIndex: _, selected: _s, ...rest }) => ({ ...rest, zIndex: 0 })) as typeof next.edges;
     const restoreAutoRoute = next.autoRoute !== undefined ? { autoRoute: next.autoRoute } : {};
-    set({ nodes: next.nodes, edges, pages: next.pages ?? state.pages, bundles: next.bundles ?? state.bundles, ...restoreAutoRoute, pendingPortEditConflicts: null, undoSize: undoStack.length, redoSize: redoStack.length });
+    // Redoing a port edit re-applies it, so the conflicts undo cleared have to come
+    // back with it — otherwise the invalid cables land with no dialog (#326).
+    const conflicts = revalidateRestoredState(state.nodes, next.nodes, edges);
+    set({ nodes: next.nodes, edges, pages: next.pages ?? state.pages, bundles: next.bundles ?? state.bundles, ...restoreAutoRoute, pendingPortEditConflicts: conflicts.length > 0 ? conflicts : null, undoSize: undoStack.length, redoSize: redoStack.length });
     get().saveToLocalStorage();
   },
 
