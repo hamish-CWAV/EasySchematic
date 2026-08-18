@@ -1601,13 +1601,18 @@ export function findInvalidatedConnections(
   }
   if (changed.size === 0) return [];
 
+  // Handles are usually the bare port id; bidirectional/passthrough ports append
+  // -in/-out/-rear/-front. Port ids can themselves end in such a suffix, so prefer
+  // an exact id match before stripping — same contract as getPortFromHandle.
+  const portIds = new Set((node.data as DeviceData).ports.map((p) => p.id));
+  const handlePortId = (h: string) =>
+    portIds.has(h) ? h : h.replace(/-(in|out|rear|front)$/, "");
+
   const conflicts: PortEditConflict[] = [];
   for (const e of edges) {
-    const srcBare = (e.sourceHandle ?? "").replace(/-(in|out|rear|front)$/, "");
-    const tgtBare = (e.targetHandle ?? "").replace(/-(in|out|rear|front)$/, "");
     const touchesEdit =
-      (e.source === nodeId && changed.has(srcBare)) ||
-      (e.target === nodeId && changed.has(tgtBare));
+      (e.source === nodeId && changed.has(handlePortId(e.sourceHandle ?? ""))) ||
+      (e.target === nodeId && changed.has(handlePortId(e.targetHandle ?? "")));
     if (!touchesEdit) continue;
     if (e.data?.connectorMismatch || e.data?.allowIncompatible) continue;
 

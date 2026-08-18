@@ -491,6 +491,45 @@ describe("updateDevice port-edit revalidation flow", () => {
   });
 });
 
+describe("findInvalidatedConnections with suffix-shaped port ids", () => {
+  // Port ids can themselves end in -in/-out (the seeded fixture's spk-xlr-in,
+  // probe-lan-in, ...), and plain ports use the bare id as the edge handle.
+  // Stripping the suffix unconditionally made those cables invisible to
+  // revalidation — the exact miss the 2026-08-18 test pass caught (#306).
+  it("flags a cable on a port whose id literally ends in -in", () => {
+    const src = device("s1", [port("s1-audio-out", { direction: "output", signalType: "analog-audio", connectorType: "xlr-3" })]);
+    const spk = device("spk", [port("spk-xlr-in", { direction: "input", signalType: "analog-audio", connectorType: "xlr-3" })]);
+    const e = edge("e1", "s1", "s1-audio-out", "spk", "spk-xlr-in", { signalType: "analog-audio" });
+
+    const oldPorts = (spk.data as DeviceData).ports;
+    const editedSpk = {
+      ...spk,
+      data: {
+        ...spk.data,
+        ports: [port("spk-xlr-in", { direction: "input", signalType: "analog-audio", connectorType: "hdmi" })],
+      },
+    } as DeviceNode;
+
+    const conflicts = findInvalidatedConnections([src, editedSpk], [e], "spk", oldPorts);
+    expect(conflicts.map((c) => c.edgeId)).toEqual(["e1"]);
+  });
+
+  it("still resolves genuine bidirectional -in/-out handles to their base port", () => {
+    const a = device("a", [port("a1", { direction: "bidirectional", signalType: "analog-audio", connectorType: "xlr-3" })]);
+    const b = device("b", [port("b1", { direction: "input", signalType: "analog-audio", connectorType: "xlr-3" })]);
+    const e = edge("e1", "a", "a1-out", "b", "b1", { signalType: "analog-audio" });
+
+    const oldPorts = (a.data as DeviceData).ports;
+    const editedA = {
+      ...a,
+      data: { ...a.data, ports: [port("a1", { direction: "bidirectional", signalType: "analog-audio", connectorType: "hdmi" })] },
+    } as DeviceNode;
+
+    const conflicts = findInvalidatedConnections([editedA, b], [e], "a", oldPorts);
+    expect(conflicts.map((c) => c.edgeId)).toEqual(["e1"]);
+  });
+});
+
 describe("propagateTemplateToInstances revalidation", () => {
   beforeEach(() => {
     useSchematicStore.setState({
