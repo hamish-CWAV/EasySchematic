@@ -1108,12 +1108,93 @@ export function snapParentedRestPosition(
   final: { x: number; y: number },
   nodeMap: Map<string, SchematicNode>,
 ): { x: number; y: number } {
-  if (!node.parentId || node.type === "stub-label" || node.type === "text-stub") return final;
+  if (!node.parentId) return final;
+  if (node.type === "stub-label" || node.type === "text-stub") return final;
   const { dx, dy } = parentOffsetFromMap(node, nodeMap);
   let { x, y } = final;
-  if (x === node.position.x) x = Math.round((x + dx) / GRID_SIZE) * GRID_SIZE - dx;
-  if (y === node.position.y) y = Math.round((y + dy) / GRID_SIZE) * GRID_SIZE - dy;
+  if (x === node.position.x) x = roundToGrid(x + dx) - dx;
+  if (y === node.position.y) y = roundToGrid(y + dy) - dy;
   return { x, y };
+}
+
+/** Nearest grid multiple. Callers work in ABSOLUTE space — a parented node's
+ *  relative coords have to have its parent-chain offset added first (#322). */
+function roundToGrid(v: number): number {
+  return Math.round(v / GRID_SIZE) * GRID_SIZE;
+}
+
+/**
+ * Rest positions for a group drag (#327), extending #322's absolute-grid
+ * invariant to the multi-selection path. React Flow lands a multi-selection by
+ * rounding ONE reference node onto the grid and shifting every other member by
+ * that same offset, so whichever sub-grid residue the reference had is imposed
+ * on the whole group: a device parented into a room whose origin sits off-grid
+ * leaves the group resting off the absolute routing grid, and the app's own
+ * uniform-delta pass (#134) carries the error through.
+ *
+ * The correction places the group in a frame anchored on `anchorId` — the node
+ * under the cursor, whose alignment `delta` the caller applies to everyone:
+ *   - the anchor's own absolute position is grid-rounded on each axis its
+ *     alignment did NOT move, and left as placed on the axes it did (alignment
+ *     is deliberate and can be flush to an off-grid room edge, as in #322);
+ *   - every other member keeps its pre-drag absolute offset from the anchor,
+ *     rounded to a grid multiple.
+ * So members inherit the anchor's residue rather than the React Flow
+ * reference's: whenever the anchor rests on the grid the whole group does, and
+ * when it deliberately does not, the group keeps its shape around it. Offsets
+ * that were not grid multiples to begin with — members in rooms with different
+ * origin residues — move by up to half a grid cell; that IS the residue being
+ * removed, and it is the one case where the group's relative spacing changes.
+ *
+ * Rooms are exempt: a room origin is allowed to sit off-grid (#322 — it can be
+ * deliberately edge-aligned to another room), and snapRoomChildrenToGrid puts
+ * its devices back on the absolute grid after the move. A room that is itself
+ * the anchor therefore keeps its origin while the devices around it still land
+ * on the grid. Stubs keep their port-centred sub-grid position, as everywhere
+ * else.
+ *
+ * Returns only the nodes whose position actually changes, keyed by id.
+ */
+export function snapGroupRestPositions(
+  nodes: readonly SchematicNode[],
+  draggedIds: ReadonlySet<string>,
+  delta: { dx: number; dy: number },
+  anchorId: string,
+): Map<string, { x: number; y: number }> {
+  const nodeMap = new Map<string, SchematicNode>();
+  for (const n of nodes) nodeMap.set(n.id, n);
+  const moves = new Map<string, { x: number; y: number }>();
+
+  const anchor = nodeMap.get(anchorId);
+  let frame: { preX: number; preY: number; restX: number; restY: number } | null = null;
+  if (anchor) {
+    const off = parentOffsetFromMap(anchor, nodeMap);
+    const preX = anchor.position.x + off.dx;
+    const preY = anchor.position.y + off.dy;
+    frame = {
+      preX,
+      preY,
+      restX: delta.dx === 0 ? roundToGrid(preX) : preX + delta.dx,
+      restY: delta.dy === 0 ? roundToGrid(preY) : preY + delta.dy,
+    };
+  }
+
+  for (const n of nodes) {
+    if (!draggedIds.has(n.id)) continue;
+    // Children of a dragged node ride along in relative coords; a dragged
+    // room's children are re-snapped absolutely by snapRoomChildrenToGrid.
+    if (n.parentId && draggedIds.has(n.parentId)) continue;
+    let rest = { x: n.position.x + delta.dx, y: n.position.y + delta.dy };
+    const exempt = n.type === "room" || n.type === "stub-label" || n.type === "text-stub";
+    if (frame && !exempt) {
+      const off = parentOffsetFromMap(n, nodeMap);
+      const absX = frame.restX + roundToGrid(n.position.x + off.dx - frame.preX);
+      const absY = frame.restY + roundToGrid(n.position.y + off.dy - frame.preY);
+      rest = { x: absX - off.dx, y: absY - off.dy };
+    }
+    if (rest.x !== n.position.x || rest.y !== n.position.y) moves.set(n.id, rest);
+  }
+  return moves;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { CURRENT_SCHEMA_VERSION } from "../migrations";
 import { GRID_SIZE } from "../gridConstants";
-import { computeSnap, enforceMinSpacing, snapParentedRestPosition } from "../snapUtils";
+import { computeSnap, enforceMinSpacing, snapGroupRestPositions, snapParentedRestPosition } from "../snapUtils";
 import type { SchematicFile, SchematicNode } from "../types";
 
 /**
@@ -307,5 +307,144 @@ describe("cyclic parentId chains (corrupt saves) terminate (#322)", () => {
     const neighbor = device("dev-2", 40, 40, "room-a");
     const corrected = enforceMinSpacing(dragged, [roomA, roomB, dragged, neighbor]);
     expect(corrected).not.toBeNull();
+  });
+});
+
+describe("group-drag rest positions inside an off-grid room (#327)", () => {
+  // Room origin off the 16px grid (legacy save), holding two devices at
+  // grid-multiple RELATIVE coords — so both sit off the ABSOLUTE grid — plus two
+  // top-level devices, one on the grid and one carrying the reference node's
+  // residue. React Flow lands a multi-selection by rounding one reference node
+  // and shifting the rest by that same offset, so whichever residue the
+  // reference had is imposed on every member.
+  function offGridRoomScene(): SchematicNode[] {
+    return [
+      room("room-1", 103, 57), // children land at abs x ≡ 7, y ≡ 9 (mod 16)
+      device("dev-1", 64, 32, "room-1"),
+      device("dev-2", 128, 32, "room-1"),
+      device("dev-3", 400, 96),
+      device("dev-off", 407, 405),
+    ];
+  }
+
+  const draggedIds = new Set(["dev-1", "dev-2", "dev-3", "dev-off"]);
+
+  function applyMoves(
+    nodes: SchematicNode[],
+    moves: Map<string, { x: number; y: number }>,
+  ): SchematicNode[] {
+    return nodes.map((n) => {
+      const pos = moves.get(n.id);
+      return pos ? ({ ...n, position: pos } as SchematicNode) : n;
+    });
+  }
+
+  it("rounds every dragged device onto the ABSOLUTE grid when the anchor aligned nothing", () => {
+    const nodes = offGridRoomScene();
+    // Without the correction the group rests exactly where React Flow left it.
+    expect(Math.abs(absPos(nodes, "dev-1").x % GRID_SIZE)).not.toBe(0);
+
+    const moves = snapGroupRestPositions(nodes, draggedIds, { dx: 0, dy: 0 }, "dev-3");
+    const rested = applyMoves(nodes, moves);
+    expectOnGrid(absPos(rested, "dev-1"));
+    expectOnGrid(absPos(rested, "dev-2"));
+    expectOnGrid(absPos(rested, "dev-3"));
+    // A top-level member carrying the reference node's residue is pulled back
+    // too — unparented, so #322's correction never looked at it.
+    expect(moves.get("dev-off")).toEqual({ x: 400, y: 400 });
+  });
+
+  it("lands parented members on the grid even when the anchor's alignment moved both axes", () => {
+    // Gating the correction on "this axis did not move" disables it for the
+    // WHOLE group the moment the anchor aligns to something — and the anchor's
+    // alignment says nothing about where the other members rest.
+    const nodes = [
+      room("room-1", 103, 57),
+      device("dev-1", 64, 32, "room-1"), // abs (167, 89)
+      device("dev-3", 697, 603),
+      device("peer", 704, 608), // not selected; the anchor aligns onto it
+    ];
+    const moves = snapGroupRestPositions(nodes, new Set(["dev-1", "dev-3"]), { dx: 7, dy: 5 }, "dev-3");
+    const rested = applyMoves(nodes, moves);
+
+    expect(absPos(rested, "dev-3")).toEqual({ x: 704, y: 608 }); // alignment lands exactly
+    expectOnGrid(absPos(rested, "dev-1"));
+  });
+
+  it("keeps the anchor's off-grid alignment and the group's spacing around it", () => {
+    const nodes = offGridRoomScene();
+    // x moved by the anchor's alignment snap — flush to an off-grid edge — and
+    // y merely rode along.
+    const moves = snapGroupRestPositions(nodes, draggedIds, { dx: -7, dy: 0 }, "dev-3");
+    const rested = applyMoves(nodes, moves);
+
+    expect(absPos(rested, "dev-3")).toEqual({ x: 393, y: 96 }); // alignment survives
+    // Same-room members keep their exact spacing and stay a grid multiple from
+    // the anchor, so its residue is the only one left in the group.
+    expect(absPos(rested, "dev-2").x - absPos(rested, "dev-1").x).toBe(64);
+    expect(Math.abs((absPos(rested, "dev-1").x - 393) % GRID_SIZE)).toBe(0);
+    expectOnGrid({ x: 0, y: absPos(rested, "dev-1").y });
+  });
+
+  it("shifts a mixed-residue group by up to half a cell — that residue IS the bug", () => {
+    // Members whose absolute offset was never a grid multiple cannot all land
+    // on the grid AND keep their exact spacing; #134's spacing guarantee yields
+    // here, bounded by half a grid cell.
+    const nodes = offGridRoomScene();
+    const gap = (ns: SchematicNode[]) => ({
+      x: absPos(ns, "dev-1").x - absPos(ns, "dev-off").x,
+      y: absPos(ns, "dev-1").y - absPos(ns, "dev-off").y,
+    });
+    const before = gap(nodes);
+
+    const moves = snapGroupRestPositions(nodes, new Set(["dev-1", "dev-off"]), { dx: 0, dy: 0 }, "dev-off");
+    const rested = applyMoves(nodes, moves);
+    expectOnGrid(absPos(rested, "dev-1"));
+    expectOnGrid(absPos(rested, "dev-off"));
+
+    const after = gap(rested);
+    expect(after.y).not.toBe(before.y);
+    expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(GRID_SIZE / 2);
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(GRID_SIZE / 2);
+  });
+
+  it("skips children of a dragged room — they ride along in relative coords", () => {
+    const nodes = offGridRoomScene();
+    const withRoom = new Set(["room-1", "dev-1", "dev-2"]);
+    const moves = snapGroupRestPositions(nodes, withRoom, { dx: 0, dy: 0 }, "room-1");
+    expect(moves.has("dev-1")).toBe(false);
+    expect(moves.has("dev-2")).toBe(false);
+    expect(moves.size).toBe(0);
+  });
+
+  it("leaves a dragged room's own off-grid origin alone (#322)", () => {
+    // A room origin can be deliberately off-grid — edge-aligned to another room
+    // — and snapRoomChildrenToGrid re-snaps its devices after the move.
+    const nodes = offGridRoomScene();
+    const moves = snapGroupRestPositions(nodes, new Set(["room-1", "dev-off"]), { dx: 0, dy: 0 }, "dev-off");
+    expect(moves.has("room-1")).toBe(false);
+    expect(moves.get("dev-off")).toEqual({ x: 400, y: 400 });
+  });
+
+  it("leaves stubs on their port-centred sub-grid position", () => {
+    const stub = {
+      ...device("stub-1", 64, 30.5, "room-1"),
+      type: "stub-label",
+    } as SchematicNode;
+    const nodes = [...offGridRoomScene(), stub];
+    const moves = snapGroupRestPositions(nodes, new Set(["dev-1", "stub-1"]), { dx: 0, dy: 0 }, "dev-1");
+    expect(moves.has("stub-1")).toBe(false);
+  });
+
+  it("reports no moves when the whole group already rests on the absolute grid", () => {
+    const nodes = [room("room-2", 96, 48), device("dev-4", 64, 32, "room-2"), device("dev-5", 400, 96)];
+    const moves = snapGroupRestPositions(nodes, new Set(["dev-4", "dev-5"]), { dx: 0, dy: 0 }, "dev-5");
+    expect(moves.size).toBe(0);
+  });
+
+  it("still applies the alignment delta when the anchor is not in the node list", () => {
+    const nodes = offGridRoomScene();
+    const moves = snapGroupRestPositions(nodes, new Set(["dev-3"]), { dx: GRID_SIZE, dy: 0 }, "gone");
+    expect(moves.get("dev-3")).toEqual({ x: 400 + GRID_SIZE, y: 96 });
   });
 });

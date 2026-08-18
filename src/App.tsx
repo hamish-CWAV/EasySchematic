@@ -58,7 +58,7 @@ import PageTabs from "./components/PageTabs";
 import RackPage from "./components/RackPage";
 import PatchPanelPage from "./components/PatchPanelPage";
 import PrintSheetPage from "./components/PrintSheetPage";
-import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, parentOffsetFromMap, snapParentedRestPosition, type GuideLine } from "./snapUtils";
+import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, parentOffsetFromMap, snapParentedRestPosition, snapGroupRestPositions, type GuideLine } from "./snapUtils";
 import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, SchematicNode, StubLabelData, TextStubData } from "./types";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
@@ -1316,12 +1316,18 @@ function SchematicCanvas() {
         const dx = snap.x - draggedNode.position.x;
         const dy = snap.y - draggedNode.position.y;
         const draggedIds = new Set(draggedNodes.map((n) => n.id));
+        // The anchor delta plus the absolute-grid rest correction (#327): React
+        // Flow lands a group by rounding one reference node onto the grid and
+        // shifting the rest by that offset, which leaves members with a
+        // different sub-grid residue — devices inside an off-grid room — off the
+        // absolute routing grid. The correction re-hangs the group off the
+        // anchor we just snapped, so the reference's residue does not survive.
+        const moves = snapGroupRestPositions(state.nodes, draggedIds, { dx, dy }, draggedNode.id);
         let updatedNodes: SchematicNode[] = state.nodes;
-        if (dx !== 0 || dy !== 0) {
+        if (moves.size > 0) {
           updatedNodes = state.nodes.map((n) => {
-            if (!draggedIds.has(n.id)) return n;
-            if (n.parentId && draggedIds.has(n.parentId)) return n;
-            return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+            const pos = moves.get(n.id);
+            return pos ? { ...n, position: pos } : n;
           }) as SchematicNode[];
           useSchematicStore.setState({ nodes: updatedNodes, isDragging: false, overlapNodeId: null });
           useSchematicStore.getState().saveToLocalStorage();
