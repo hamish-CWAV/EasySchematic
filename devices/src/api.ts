@@ -18,8 +18,13 @@ const API_URL = import.meta.env.VITE_API_URL || "https://api.easyschematic.live"
  * rejecting with a TypeError — should fall back to the offline cache).
  */
 export class ApiError extends Error {
-  constructor(public status: number, message?: string) {
+  // Plain field rather than a constructor parameter property: the root app
+  // tsconfig sets erasableSyntaxOnly, and src/__tests__ imports this module.
+  status: number;
+
+  constructor(status: number, message?: string) {
     super(message ?? `API ${status}`);
+    this.status = status;
     this.name = "ApiError";
   }
 }
@@ -490,7 +495,12 @@ export async function approveSubmission(id: string, data?: Omit<DeviceTemplate, 
     credentials: "include",
     body: data ? JSON.stringify({ data }) : undefined,
   });
-  if (!res.ok) throw new Error(`Failed to approve: ${res.status}`);
+  if (!res.ok) {
+    // The unmapped-deviceType refusal (#315) tells the moderator which file to
+    // edit — swallowing the body for a bare status code loses the whole point.
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error || `Failed to approve: ${res.status}`);
+  }
 }
 
 export async function rejectSubmission(id: string, note?: string): Promise<void> {

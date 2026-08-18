@@ -116,6 +116,52 @@ export const DEVICE_TYPE_TO_CATEGORY: Record<string, string> = {
   "mtr-pc": "Codecs",
   "touch-controller": "Control",
   "occupancy-sensor": "Control",
+  // ── Residential / security (#315) ────────────────────────────────────
+  // Categories follow the live D1 rows of the same type, which are the
+  // convention source — not this catalogue. Four deliberate deviations,
+  // each because D1's value collides with an established different meaning:
+  // "ups" (D1 "Distribution", which here means signal DAs/splitters),
+  // "hard-drive" (D1 "Recording"), "dry-contact" (D1 "Lighting", while its
+  // sibling Control4 bus module sits in "Control"), and "keypad" (D1 is split
+  // Control 2 / Lighting 1 — the odd row out is listed in the #315 SQL draft).
+  "siren": "Monitoring",
+  "door-strike": "Monitoring",
+  "magnetic-sensor": "Monitoring",
+  "v-lock": "Monitoring",
+  "turret-camera": "Monitoring",
+  "pir-sensor": "Control",
+  "keypad": "Control",
+  "dry-contact": "Control",
+  "bus-power-supply": "Control",
+  "24vdc-power-supply": "Control",
+  "dali-power-supply-and-line-break": "Lighting",
+  "ups": "Infrastructure",
+  "hard-drive": "Storage",
+  "rf-to-ethernet-integrator": "Networking",
+  "subwoofer": "Speakers",
+  // ── AV types that were only ever free-typed into D1 (#315) ───────────
+  "hdmi-extender": "KVM / Extenders",
+  "audio-over-cat-extender": "Audio",
+  "audio-matrix": "Audio",
+  "streaming-decoder": "Networking",
+  "streaming-transceiver": "Networking",
+  "video-transceiver": "Networking",
+  "avoip-encoder": "Networking",
+  "avoip-decoder": "Networking",
+  "conferencing-bridge": "Networking",
+  "digital-signage-player": "Media Servers",
+};
+
+/**
+ * Non-canonical device types that D1 rows still carry, mapped to the slug that
+ * won. Kept so importers and the normalisation pass agree on one spelling per
+ * concept instead of cementing the split (#315). Not merged into
+ * DEVICE_TYPE_TO_CATEGORY — these must not be offerable in the picker.
+ */
+export const DEVICE_TYPE_ALIASES: Record<string, string> = {
+  "pir-motion-sensor": "pir-sensor",
+  "passive-subwoofer": "subwoofer",
+  "AVoIP Encoder": "avoip-encoder",
 };
 
 /** Human-readable labels for device types (kebab-case → Title Case with known acronyms) */
@@ -127,8 +173,10 @@ export const DEVICE_TYPE_LABELS: Record<string, string> = Object.fromEntries(
       .map((word) => {
         const upper = word.toUpperCase();
         // Preserve known acronyms
-        if (["ptz", "ccu", "da", "tv", "ndi", "dsp", "kvm", "led", "nas", "usb", "hdmi"].includes(word)) return upper;
+        if (["ptz", "ccu", "da", "tv", "ndi", "dsp", "kvm", "led", "nas", "usb", "hdmi", "ups", "pir", "rf", "dali"].includes(word)) return upper;
         if (word === "av") return "AV";
+        if (word === "avoip") return "AVoIP";
+        if (word === "24vdc") return "24VDC";
         if (word === "ip") return "IP";
         if (word === "wifi") return "Wi-Fi";
         if (word === "hdbaset") return "HDBaseT";

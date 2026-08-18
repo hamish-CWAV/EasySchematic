@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { rowToTemplate, rowToSummary, templateToRow } from "./db";
 import { authMiddleware, sessionMiddleware, requireSession, requireModerator, requireModeratorOrToken, requireAdmin, requireAdminOrToken } from "./auth";
 import type { Env } from "./auth";
-import { validateTemplate } from "./validate";
+import { validateTemplate, checkApprovalDeviceType } from "./validate";
 import { checkRateLimit, cleanupExpiredRateLimits } from "./rateLimiter";
 
 const app = new Hono<Env>();
@@ -1006,10 +1006,21 @@ app.post("/submissions/:id/approve", async (c) => {
 
   // For update actions, snapshot existing template state before mutation (audit log)
   let beforeData: string | null = null;
+  let currentDeviceType: unknown = null;
   if (submission.action === "update" && submission.template_id) {
     const existing = await db.prepare("SELECT * FROM templates WHERE id = ?").bind(submission.template_id).first();
     beforeData = existing ? JSON.stringify(existing) : null;
+    currentDeviceType = existing ? (existing as { device_type?: unknown }).device_type : null;
   }
+
+  // Refuse to mint another orphan device type (#315). The moderator can edit the
+  // type inline via body.data, add the mapping and redeploy, or defer.
+  const typeErr = checkApprovalDeviceType(
+    submission.action,
+    (data as { deviceType?: unknown }).deviceType,
+    currentDeviceType,
+  );
+  if (typeErr) return c.json({ error: typeErr }, 400);
 
   let templateId: string | null = null;
   if (submission.action === "create") {

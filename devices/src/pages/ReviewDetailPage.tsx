@@ -15,6 +15,9 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
   const [existing, setExisting] = useState<DeviceTemplate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Kept apart from `error`, which replaces the whole page: a refused approval
+  // must leave the review — and the Defer button it points at — on screen.
+  const [actionError, setActionError] = useState("");
   const [rejectNote, setRejectNote] = useState("");
   const [showReject, setShowReject] = useState(false);
   const [deferNote, setDeferNote] = useState("");
@@ -98,6 +101,7 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
 
   const handleApprove = async (withEdits?: boolean) => {
     setActing(true);
+    setActionError("");
     try {
       let editedData: Omit<DeviceTemplate, "id" | "version"> | undefined;
       if (withEdits) {
@@ -130,7 +134,7 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
       await approveSubmission(id, editedData);
       setDone("approved");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to approve");
+      setActionError(e instanceof Error ? e.message : "Failed to approve");
     } finally {
       setActing(false);
     }
@@ -138,11 +142,12 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
 
   const handleReject = async () => {
     setActing(true);
+    setActionError("");
     try {
       await rejectSubmission(id, rejectNote || undefined);
       setDone("rejected");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reject");
+      setActionError(e instanceof Error ? e.message : "Failed to reject");
     } finally {
       setActing(false);
     }
@@ -151,11 +156,12 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
   const handleDefer = async () => {
     if (!deferNote.trim()) return;
     setActing(true);
+    setActionError("");
     try {
       await deferSubmission(id, deferNote);
       setDone("deferred");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to defer");
+      setActionError(e instanceof Error ? e.message : "Failed to defer");
     } finally {
       setActing(false);
     }
@@ -470,6 +476,12 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
               Cancel Edit
             </button>
           </div>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="mt-4 border border-red-200 rounded-lg p-4 bg-red-50 text-sm text-red-700">
+          {actionError}
         </div>
       )}
 

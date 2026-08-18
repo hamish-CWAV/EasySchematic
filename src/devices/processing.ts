@@ -822,7 +822,12 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-00f8-4000-8000-000000000324",
+    // Re-ided 2026-08-18 (#300): this adapter used to share
+    // c0a80101-00f8-4000-8000-000000000324 with BMD Video Assist 12G HDR 7in in
+    // src/devices/recording.ts. D1 was seeded from the collided id and kept the
+    // recorder, so effectiveTemplates() (dedupe by id, D1 wins) hid the adapter
+    // from the Device Library.
+    id: "c0a80101-030d-4000-8000-000000000735",
     deviceType: "adapter",
     label: "TB (M) → RJ45 (F) Adapter",
     searchTerms: ["thunderbolt", "usb-c", "ethernet", "dongle", "network", "male", "female"],

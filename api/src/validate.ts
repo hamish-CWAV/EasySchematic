@@ -1,3 +1,5 @@
+import { DEVICE_TYPE_TO_CATEGORY, DEVICE_TYPE_ALIASES } from "../../src/deviceTypeCategories";
+
 interface SlotInput {
   id: string;
   label: string;
@@ -66,6 +68,39 @@ function checkString(value: unknown, field: string, maxLen = MAX_STRING): string
   if (value.trim() === "") return `${field} must be non-empty`;
   if (value.length > maxLen) return `${field} must be ${maxLen} characters or fewer`;
   return null;
+}
+
+/**
+ * Approval-time gate (#315). DeviceForm's "Other — suggest new type" lets a
+ * submitter free-type any slug and nothing ever forced the moderator to add the
+ * matching entry, so approvals silently minted orphan types: unpickable in the
+ * grouped picker, no category auto-fill, and a hard `Unmapped deviceType` throw
+ * in api/seed/import-vendor.ts. Returns an error string, or null when mapped.
+ * Deliberately not folded into validateTemplate — submission and public
+ * template writes still accept free strings; only approval is gated.
+ */
+export function checkDeviceTypeMapped(deviceType: unknown): string | null {
+  if (typeof deviceType === "string" && Object.hasOwn(DEVICE_TYPE_TO_CATEGORY, deviceType)) return null;
+  if (typeof deviceType === "string" && Object.hasOwn(DEVICE_TYPE_ALIASES, deviceType)) {
+    return `deviceType ${JSON.stringify(deviceType)} is a non-canonical spelling. Edit the submission to use "${DEVICE_TYPE_ALIASES[deviceType]}" and approve again.`;
+  }
+  return `deviceType ${JSON.stringify(deviceType)} has no entry in DEVICE_TYPE_TO_CATEGORY. Add it to src/deviceTypeCategories.ts and deploy before approving, or defer the submission.`;
+}
+
+/**
+ * The gate as the approval route applies it (#315). Only a type that is new to
+ * the target row is checked: an `update` leaving an already-unmapped type
+ * untouched mints no orphan, and refusing it would make every live template
+ * that predates this rule — a power figure, a port typo — unfixable until the
+ * normalisation pass has been run by hand.
+ */
+export function checkApprovalDeviceType(
+  action: string,
+  approvedDeviceType: unknown,
+  currentDeviceType: unknown,
+): string | null {
+  if (action !== "create" && approvedDeviceType === currentDeviceType) return null;
+  return checkDeviceTypeMapped(approvedDeviceType);
 }
 
 export function validateTemplate(body: unknown): ValidationResult {

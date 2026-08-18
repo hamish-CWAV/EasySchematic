@@ -1,6 +1,6 @@
 import type { DeviceTemplate, Port } from "../types";
 import { SIGNAL_LABELS, CONNECTOR_LABELS } from "../types";
-import { DEVICE_TYPE_TO_CATEGORY } from "../deviceTypeCategories";
+import { DEVICE_TYPE_TO_CATEGORY, DEVICE_TYPE_ALIASES } from "../deviceTypeCategories";
 
 const VALID_SIGNAL_TYPES = new Set(Object.keys(SIGNAL_LABELS));
 const VALID_CONNECTOR_TYPES = new Set(Object.keys(CONNECTOR_LABELS));
@@ -35,7 +35,12 @@ export function validateTemplate(t: Partial<DeviceTemplate>): TemplateValidation
   if (!isStr(t.deviceType)) {
     errors.push("deviceType is required");
   } else if (!VALID_DEVICE_TYPES.has(t.deviceType)) {
-    errors.push(`Unknown deviceType "${t.deviceType}"`);
+    const canonical = DEVICE_TYPE_ALIASES[t.deviceType];
+    errors.push(
+      canonical
+        ? `Unknown deviceType "${t.deviceType}" — use "${canonical}"`
+        : `Unknown deviceType "${t.deviceType}"`,
+    );
   }
 
   const isGeneric = isStr(t.manufacturer) && t.manufacturer.trim().toLowerCase() === "generic";
