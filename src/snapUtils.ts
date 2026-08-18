@@ -1,4 +1,4 @@
-import type { DeviceData, SchematicNode } from "./types";
+import type { ConnectionEdge, DeviceData, SchematicNode } from "./types";
 import { portSide } from "./types";
 
 import { GRID_SIZE } from "./gridConstants";
@@ -462,6 +462,8 @@ export function computeSnap(
   draggedNode: SchematicNode,
   allNodes: SchematicNode[],
   displayDefaults: DisplayDefaults = DEFAULT_DISPLAY,
+  /** Connections — only read for stub labels, to find the port a tag belongs to (#323). */
+  allEdges: ConnectionEdge[] = [],
 ): SnapResult {
   // Build nodeMap with a for-loop (skips the intermediate tuple array that
   // `new Map(allNodes.map(...))` would allocate).
@@ -469,7 +471,7 @@ export function computeSnap(
   for (const n of allNodes) nodeMap.set(n.id, n);
 
   if (draggedNode.type === "stub-label") {
-    return computeStubSnap(draggedNode, allNodes, nodeMap, displayDefaults);
+    return computeStubSnap(draggedNode, allNodes, nodeMap, displayDefaults, allEdges);
   }
 
   // Generic path: rooms snap to other rooms; devices snap to cross-room peers
@@ -542,16 +544,51 @@ function pushBoxCandidates(
 }
 
 /**
- * Stub labels snap to (1) ports of nearby devices (primary), (2) edges/centers of
- * nearby other stubs (so vertical columns of stubs align), (3) center-snapped grid
- * as a fallback. Device-edge alignment is intentionally absent — stubs care about
+ * Find the device port a stub tag belongs to: the far end of the tag's own leg (#323).
+ * Returns null for a tag with no leg, or one whose handle no longer resolves to a port.
+ */
+function ownPortOfStub(
+  stubNode: SchematicNode,
+  nodeMap: Map<string, SchematicNode>,
+  allEdges: ConnectionEdge[],
+  displayDefaults: DisplayDefaults,
+): { port: PortPosition; deviceRect: Rect } | null {
+  let deviceId: string | undefined;
+  let handleId: string | null | undefined;
+  for (const e of allEdges) {
+    if (e.source === stubNode.id) { deviceId = e.target; handleId = e.targetHandle; break; }
+    if (e.target === stubNode.id) { deviceId = e.source; handleId = e.sourceHandle; break; }
+  }
+  if (!deviceId) return null;
+  const device = nodeMap.get(deviceId);
+  if (!device || device.type !== "device") return null;
+  const ports = getPortAbsolutePositions(device, nodeMap, displayDefaults);
+  // Same bare↔directional healing the router does — a port that became bidirectional
+  // renders `-in`/`-out` handles the leg's stored id may predate.
+  const bare = (handleId ?? "").replace(/-(in|out)$/, "");
+  const port = ports.find((p) => p.handleId === handleId) ?? ports.find((p) => p.portId === bare);
+  return port ? { port, deviceRect: absRect(device, nodeMap) } : null;
+}
+
+/**
+ * Stub labels snap to (1) the port of the connector they belong to (primary), (2) edges/
+ * centers of nearby other stubs (so vertical columns of stubs align), (3) center-snapped
+ * grid as a fallback. Device-edge alignment is intentionally absent — stubs care about
  * ports, not bounding boxes.
+ *
+ * Only the tag's OWN port gets to snap (#323). Offering every port of every device within
+ * MAX_SNAP_DISTANCE meant the nearest coincidental port row won — `pickBest` ranks all
+ * port candidates equally — so dragging a tag near its device would just as happily latch
+ * it onto an unrelated device's port across the page. When the own port can't be resolved
+ * (an orphaned tag), fall back to the nearby-devices scan so there is still something to
+ * align to.
  */
 function computeStubSnap(
   stubNode: SchematicNode,
   allNodes: SchematicNode[],
   nodeMap: Map<string, SchematicNode>,
   displayDefaults: DisplayDefaults,
+  allEdges: ConnectionEdge[],
 ): SnapResult {
   const stubW = (stubNode.measured?.width as number | undefined) ?? STUB_W_EST;
   const stubH = (stubNode.measured?.height as number | undefined) ?? STUB_H_EST;
@@ -568,43 +605,54 @@ function computeStubSnap(
   const xCands: AxisCandidate[] = [];
   const yCands: AxisCandidate[] = [];
 
-  // 1. Port targets on nearby devices — single-pass top-K, no wrappers.
-  const deviceTopRects: Rect[] = [];
-  const deviceTopDistsSq: number[] = [];
-  const deviceTopNodes: SchematicNode[] = [];
-  for (const n of allNodes) {
-    if (n.type !== "device") continue;
-    const r = absRect(n, nodeMap);
-    const dSq = bboxDistSq(stubAbs, r);
-    if (dSq > MAX_SNAP_DISTANCE_SQ) continue;
-    // Custom inline insertion that also tracks the underlying node (we need it
-    // to enumerate ports for survivors).
-    insertTopKWithNode(deviceTopNodes, deviceTopRects, deviceTopDistsSq, NEAREST_K_STUB, n, r, dSq);
-  }
-  for (let i = 0; i < deviceTopNodes.length; i++) {
-    const ports = getPortAbsolutePositions(deviceTopNodes[i], nodeMap, displayDefaults);
-    const tRect = deviceTopRects[i];
-    for (const p of ports) {
-      yCands.push({
-        delta: p.absY - stubAbs.centerY,
-        guideAbsPos: p.absY,
-        anchorAbsRect: tRect,
-        kind: "port",
-      });
-      const targetCenterX =
-        p.side === "right"
-          ? p.absX + STUB_PORT_GAP + stubW / 2
-          : p.absX - STUB_PORT_GAP - stubW / 2;
-      xCands.push({
-        delta: targetCenterX - stubAbs.centerX,
-        guideAbsPos: p.absX,
-        anchorAbsRect: tRect,
-        kind: "port",
-      });
+  // 1. Port targets. The tag's own port when we can resolve it; otherwise the ports of
+  //    nearby devices (single-pass top-K, no wrappers).
+  const pushPortCandidates = (p: PortPosition, tRect: Rect) => {
+    yCands.push({
+      delta: p.absY - stubAbs.centerY,
+      guideAbsPos: p.absY,
+      anchorAbsRect: tRect,
+      kind: "port",
+    });
+    const targetCenterX =
+      p.side === "right"
+        ? p.absX + STUB_PORT_GAP + stubW / 2
+        : p.absX - STUB_PORT_GAP - stubW / 2;
+    xCands.push({
+      delta: targetCenterX - stubAbs.centerX,
+      guideAbsPos: p.absX,
+      anchorAbsRect: tRect,
+      kind: "port",
+    });
+  };
+
+  const own = ownPortOfStub(stubNode, nodeMap, allEdges, displayDefaults);
+  if (own) {
+    pushPortCandidates(own.port, own.deviceRect);
+  } else {
+    const deviceTopRects: Rect[] = [];
+    const deviceTopDistsSq: number[] = [];
+    const deviceTopNodes: SchematicNode[] = [];
+    for (const n of allNodes) {
+      if (n.type !== "device") continue;
+      const r = absRect(n, nodeMap);
+      const dSq = bboxDistSq(stubAbs, r);
+      if (dSq > MAX_SNAP_DISTANCE_SQ) continue;
+      // Custom inline insertion that also tracks the underlying node (we need it
+      // to enumerate ports for survivors).
+      insertTopKWithNode(deviceTopNodes, deviceTopRects, deviceTopDistsSq, NEAREST_K_STUB, n, r, dSq);
+    }
+    for (let i = 0; i < deviceTopNodes.length; i++) {
+      const ports = getPortAbsolutePositions(deviceTopNodes[i], nodeMap, displayDefaults);
+      for (const p of ports) pushPortCandidates(p, deviceTopRects[i]);
     }
   }
 
-  // 2. Other-stub alignment (column / row of stubs).
+  // 2. Other-stub alignment (column / row of stubs). Still the full MAX_SNAP_DISTANCE
+  //    scan: a stub dragged more than SNAP_THRESHOLD off its own port row has no port
+  //    candidate left to win, so a far-but-in-range stub can still claim it (#323). That
+  //    radius is what makes deliberate stub columns work, so tightening it needs its own
+  //    visual pass — not folded in here.
   const stubTopRects: Rect[] = [];
   const stubTopDistsSq: number[] = [];
   for (const n of allNodes) {

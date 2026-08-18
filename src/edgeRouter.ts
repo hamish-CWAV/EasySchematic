@@ -31,7 +31,7 @@ import {
 } from "./pathfinding";
 import { computePageGrid } from "./printPageGrid";
 import { packOrdered, laneCount } from "./routing";
-import { STUB_W_EST } from "./stubPlacement";
+import { STUB_W_EST, nearestStubHandleSide } from "./stubPlacement";
 import {
   type Orientation,
   getPaperSize,
@@ -683,8 +683,7 @@ export function routeAllEdges(
     fallback: HandlePos,
   ): HandlePos => {
     const pos = getAbsPos(node, nodeMap);
-    const centerX = pos.x + (node.measured?.width ?? STUB_W_EST) / 2;
-    const side = towardX < centerX ? "l" : "r";
+    const side = nearestStubHandleSide(pos.x, node.measured?.width ?? STUB_W_EST, towardX);
     return handleMap.get(`${node.id}:${side}`) ?? fallback;
   };
 

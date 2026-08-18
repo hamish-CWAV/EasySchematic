@@ -603,8 +603,12 @@ export const handlers: Record<CommandType, (params: Record<string, unknown>) => 
     if (!connectionId) throw new CommandError("connectionId is required.");
     const plan = planConnectionRemoval(st().edges, connectionId);
     if (!plan.ok) throw new CommandError(plan.error);
-    st().deleteConnection(plan.removeId);
-    return { deleted: true, connectionId };
+    const { removedStubLinks } = st().deleteConnection(plan.removeId);
+    // Deleting one half of a stubbed connection takes the other half and both stub
+    // labels with it (#318) — say so, rather than reporting only the requested id back.
+    return removedStubLinks > 0
+      ? { deleted: true, connectionId, cascadedStubConnection: true }
+      : { deleted: true, connectionId };
   },
 
   add_devices: async (params) => {

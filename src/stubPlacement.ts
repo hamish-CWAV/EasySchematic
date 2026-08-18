@@ -5,7 +5,7 @@
 //   - StubLabelNode.tsx re-exports the constants for cohesion
 
 import { GRID_SIZE } from "./gridConstants";
-import type { SchematicNode, ConnectionEdge } from "./types";
+import type { SchematicNode, ConnectionEdge, StubLabelData } from "./types";
 import type { HandleSnapshot } from "./routing/handleSnapshot";
 
 export const STUB_GAP = 64;       // gap between device port and the stub box edge facing it
@@ -96,6 +96,96 @@ export function midCustomLabelPlacement(
   // has both ends on stub nodes; guard by treating that as "not a stub leg".)
   if (sourceIsStub === targetIsStub) return { mode: "midpoint" };
   return { mode: "stub-end", fromSource: sourceIsStub };
+}
+
+/**
+ * Which side of a stub box faces `towardX` — the side the wire has to enter.
+ *
+ * The l/r handle stored on a stub leg is only the creation-time guess; dragging the tag
+ * (or its device) to the other side leaves it stale, so both route builders re-derive the
+ * side from live geometry and MUST agree: `nearestStubHandle` in edgeRouter (auto-route)
+ * and `computeSimpleRoutes` in store (auto-route off). Ties (`towardX` exactly at the box
+ * centre) resolve to "r", matching the original inequality.
+ */
+export function nearestStubHandleSide(
+  boxLeft: number,
+  boxWidth: number,
+  towardX: number,
+): "l" | "r" {
+  return towardX < boxLeft + boxWidth / 2 ? "l" : "r";
+}
+
+/** Exactly one end of the edge is a stub-label node → it is one leg of a stubbed connection. */
+function isStubLeg(edge: ConnectionEdge, stubIds: Set<string>): boolean {
+  return stubIds.has(edge.source) !== stubIds.has(edge.target);
+}
+
+/**
+ * Drop the wreckage of a half-removed stubbed connection (#318).
+ *
+ * A stubbed connection is TWO legs sharing a linkedConnectionId plus the two stub-label
+ * tags they terminate at. Removing one leg on its own — dragging its reconnect handle into
+ * empty space, or Delete on a single selected leg — left the partner leg and both tags in
+ * place: the surviving tag can no longer find a partner edge, the orphaned tag has no edge
+ * at all, and StubLabelNode renders "?" at BOTH ends. Run the survivors through here after
+ * any edge removal so a link is either whole or gone.
+ *
+ * Removes: legs of a link that no longer has both halves, and stub tags left with no leg.
+ * Pure; returns the same array refs when nothing needed removing.
+ */
+export function reconcileStubPairs(
+  nodes: SchematicNode[],
+  edges: ConnectionEdge[],
+): { nodes: SchematicNode[]; edges: ConnectionEdge[]; removedLinks: number } {
+  const stubIds = new Set(nodes.filter((n) => n.type === "stub-label").map((n) => n.id));
+  if (stubIds.size === 0) return { nodes, edges, removedLinks: 0 };
+
+  // Which stub tags each link still has a leg for. A link keyed off the EDGE's
+  // linkedConnectionId; a leg missing that id can only be matched by its tag, so fall
+  // back to the tag's own copy (they are written together and never diverge).
+  const linkOf = (edge: ConnectionEdge, stubId: string): string | undefined =>
+    edge.data?.linkedConnectionId ??
+    (nodes.find((n) => n.id === stubId)?.data as StubLabelData | undefined)?.linkedConnectionId;
+
+  const tagsWithLeg = new Set<string>();
+  const legStubsByLink = new Map<string, Set<string>>();
+  for (const e of edges) {
+    if (!isStubLeg(e, stubIds)) continue;
+    const stubId = stubIds.has(e.source) ? e.source : e.target;
+    tagsWithLeg.add(stubId);
+    const link = linkOf(e, stubId);
+    if (!link) continue;
+    let set = legStubsByLink.get(link);
+    if (!set) { set = new Set(); legStubsByLink.set(link, set); }
+    set.add(stubId);
+  }
+
+  // A link is whole only when both of its legs are present, each on its own tag.
+  const brokenLinks = new Set<string>();
+  for (const [link, tags] of legStubsByLink) {
+    if (tags.size < 2) brokenLinks.add(link);
+  }
+
+  const linkOfNode = (n: SchematicNode): string | undefined =>
+    n.type === "stub-label" ? (n.data as StubLabelData).linkedConnectionId : undefined;
+
+  const dropTag = (n: SchematicNode): boolean => {
+    if (n.type !== "stub-label") return false;
+    const link = linkOfNode(n);
+    return (link !== undefined && brokenLinks.has(link)) || !tagsWithLeg.has(n.id);
+  };
+  const dropEdge = (e: ConnectionEdge): boolean => {
+    if (!isStubLeg(e, stubIds)) return false;
+    const link = linkOf(e, stubIds.has(e.source) ? e.source : e.target);
+    return link !== undefined && brokenLinks.has(link);
+  };
+
+  const nextNodes = nodes.filter((n) => !dropTag(n));
+  const nextEdges = edges.filter((e) => !dropEdge(e));
+  if (nextNodes.length === nodes.length && nextEdges.length === edges.length) {
+    return { nodes, edges, removedLinks: 0 };
+  }
+  return { nodes: nextNodes, edges: nextEdges, removedLinks: brokenLinks.size };
 }
 
 /**

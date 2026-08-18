@@ -38,7 +38,7 @@ import type {
 } from "./types";
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
-import { defaultStubPlacement, healStubPortAlignment, STUB_W_EST } from "./stubPlacement";
+import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
 import { getPortAbsolutePositions, parentOffsetFromMap } from "./snapUtils";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, portSide } from "./types";
@@ -355,7 +355,10 @@ interface SchematicState {
 
   // Actions
   addDevice: (template: DeviceTemplate, position: { x: number; y: number }) => void;
-  removeSelected: () => void;
+  /** removedStubLinks counts whole stubbed connections (both halves + both labels)
+   *  cascaded away because only one half was selected — callers that need to report
+   *  the cascade (the MCP bridge) can use it; UI callers ignore it. */
+  removeSelected: () => { removedStubLinks: number };
   deleteNode: (nodeId: string) => void;
   deleteNodeAndChildren: (nodeId: string) => void;
   /** Reposition a single node within its current parent (one undo step). Does not
@@ -364,7 +367,7 @@ interface SchematicState {
   /** Remove a single connection by id via the standard removeSelected path (so bundle
    *  GC, junction + waypoint reconciliation all run). Used by the bridge's
    *  delete_connection tool. */
-  deleteConnection: (connectionId: string) => void;
+  deleteConnection: (connectionId: string) => { removedStubLinks: number };
   copySelected: () => void;
   pasteClipboard: () => void;
   alignSelectedNodes: (op: AlignOperation) => void;
@@ -960,6 +963,15 @@ function stripDeadHops(edges: ConnectionEdge[], deadNodeIds: Set<string>): Conne
     delete (data as Record<string, unknown>).patchSegments;
     return { ...e, data };
   });
+}
+
+/** Deleting one half of a stub connection takes the other half with it (#318). The user
+ *  only asked for one, so say what else went — mirrors the rack-placement cascade toast. */
+function reportStubCascade(addToast: (m: string, k: "info") => void, links: number) {
+  addToast(
+    `Removed ${links} stub connection${links > 1 ? "s" : ""} — both halves of a stub go together`,
+    "info",
+  );
 }
 
 /** Sync rack-related counters from pages data. */
@@ -1981,8 +1993,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     }
     const newEdges = applyEdgeChanges(changes, get().edges) as ConnectionEdge[];
     if (hasRemove) {
-      // Removed edges may have had waypoint nodes — reconcile them away.
-      set({ edges: newEdges, nodes: reconcileWaypointNodes(get().nodes, newEdges) });
+      // Losing one leg of a stubbed connection also strands its partner leg and both
+      // tags (#318) — cascade that first, so the waypoint reconcile below sees the final
+      // edge list and doesn't leave path handles behind for the cascaded leg.
+      const healed = reconcileStubPairs(get().nodes, newEdges);
+      set({ edges: healed.edges, nodes: reconcileWaypointNodes(healed.nodes, healed.edges) });
+      if (healed.removedLinks > 0) reportStubCascade(get().addToast, healed.removedLinks);
     } else {
       set({ edges: newEdges });
     }
@@ -2264,10 +2280,16 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         return n;
       });
 
+    // Deleting ONE leg of a stubbed connection (or one of its two tags) leaves the other
+    // half behind rendering "?" — drop the whole link instead (#318). This runs before
+    // every other reconciler below so they all see the final node/edge lists; run last it
+    // would leave path handles, bundle membership and hops behind for the cascaded leg.
+    const stubHealed = reconcileStubPairs(remainingNodes, edgesAfterSplice);
+
     // Cascade-remove text stubs (#196) whose anchor device was deleted — they carry no
     // edge, so the edge-based orphan pruning above never touches them.
-    const survivingNodeIds = new Set(remainingNodes.map((n) => n.id));
-    const remainingNodesPruned = remainingNodes.filter(
+    const survivingNodeIds = new Set(stubHealed.nodes.map((n) => n.id));
+    const remainingNodesPruned = stubHealed.nodes.filter(
       (n) => n.type !== "text-stub" || survivingNodeIds.has((n.data as import("./types").TextStubData).anchorNodeId),
     );
 
@@ -2299,7 +2321,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     // After deleting nodes/edges, waypoint node ids may be stale (indices shifted
     // or owning edges removed). Reconcile against the new canonical edges.
-    const reconciledNodes = reconcileWaypointNodes(remainingNodesPruned, edgesAfterSplice);
+    const reconciledNodes = reconcileWaypointNodes(remainingNodesPruned, stubHealed.edges);
 
     // Purge any pairwise distances referencing a deleted room (#146).
     let nextDistances = state.roomDistances;
@@ -2315,7 +2337,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     }
 
     // Deleting members may drop a bundle below 2 — GC dangling membership + empty bundles.
-    const gc = gcBundles(edgesAfterSplice, state.bundles);
+    const gc = gcBundles(stubHealed.edges, state.bundles);
     // Drop junction anchors orphaned by a dissolved bundle (and re-heal a live bundle whose
     // anchor was itself in the deleted selection).
     const healedNodes = reconcileBundleJunctions(reconciledNodes, gc.edges);
@@ -2330,7 +2352,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       pages,
       ...(nextDistances !== state.roomDistances ? { roomDistances: nextDistances } : {}),
     });
+    if (stubHealed.removedLinks > 0) reportStubCascade(get().addToast, stubHealed.removedLinks);
     get().saveToLocalStorage();
+    return { removedStubLinks: stubHealed.removedLinks };
   },
 
   deleteNode: (nodeId: string) => {
@@ -2357,14 +2381,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   deleteConnection: (connectionId: string) => {
     const state = get();
-    if (!state.edges.some((e) => e.id === connectionId)) return;
+    if (!state.edges.some((e) => e.id === connectionId)) return { removedStubLinks: 0 };
     // Select only this edge, deselect everything else, then removeSelected — the same
     // path the UI uses, so undo, bundle GC, junction + waypoint reconciliation all run.
     set({
       nodes: state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
       edges: state.edges.map((e) => ({ ...e, selected: e.id === connectionId })),
     });
-    get().removeSelected();
+    return get().removeSelected();
   },
 
   deleteNodeAndChildren: (nodeId: string) => {
@@ -6815,6 +6839,32 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     }
     const bundleGroups = new Map<string, BundleEndpoint[]>();
 
+    // Handle resolution has to match the A* router's (edgeRouter.getHandlePositions +
+    // resolveHandle + nearestStubHandle) or the same schematic terminates its wires
+    // somewhere else the moment auto-route is switched off.
+    type Bound = { id?: string | null; x: number; y: number; width: number; height: number };
+    /** Heal a stale bare↔directional handle ref. A port that became bidirectional renders
+     *  `-in`/`-out`; an edge authored against the bare id would otherwise miss entirely and
+     *  the connection would render as nothing at all. */
+    const resolveBound = (
+      bounds: { source?: Bound[] | null; target?: Bound[] | null } | null | undefined,
+      handleId: string | null | undefined,
+      role: "source" | "target",
+    ): Bound | undefined => {
+      if (handleId == null) return undefined;
+      const all = [...(bounds?.source ?? []), ...(bounds?.target ?? [])];
+      const preferred = role === "source" ? "-out" : "-in";
+      const other = role === "source" ? "-in" : "-out";
+      return (
+        all.find((h) => h.id === handleId) ??
+        all.find((h) => h.id === `${handleId}${preferred}`) ??
+        all.find((h) => h.id === `${handleId}${other}`) ??
+        (/-(in|out)$/.test(handleId)
+          ? all.find((h) => h.id === handleId.replace(/-(in|out)$/, ""))
+          : undefined)
+      );
+    };
+
     for (const edge of state.edges) {
       const srcInternal = rfInstance.getInternalNode(edge.source);
       const tgtInternal = rfInstance.getInternalNode(edge.target);
@@ -6826,14 +6876,47 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       const tgtAbs = tgtInternal.internals.positionAbsolute;
 
       // Find the handle positions
-      const srcHandle = [...(srcBounds?.source ?? []), ...(srcBounds?.target ?? [])].find((h) => h.id === edge.sourceHandle);
-      const tgtHandle = [...(tgtBounds?.source ?? []), ...(tgtBounds?.target ?? [])].find((h) => h.id === edge.targetHandle);
+      let srcHandle = resolveBound(srcBounds, edge.sourceHandle, "source");
+      let tgtHandle = resolveBound(tgtBounds, edge.targetHandle, "target");
       if (!srcHandle || !tgtHandle) continue;
 
+      // Stub labels: the stored l/r handle is only the creation-time guess, so re-pick the
+      // side facing the adjacent route point — otherwise the wire crosses over the label
+      // box to reach the stale side. The label's connecting handle is vertically centred
+      // by construction (top: 50% of the box), which is exact where the DOM's sub-pixel
+      // bounds are not. Toward-X must be the same point edgeRouter's nearestStubHandle
+      // uses (first/last path handle when the connection is hand-routed, far handle
+      // otherwise) or the two builders pick opposite sides on the same schematic.
+      const srcIsStub = srcInternal.type === "stub-label";
+      const tgtIsStub = tgtInternal.type === "stub-label";
+      const centerXOf = (b: Bound, abs: { x: number }) => abs.x + b.x + b.width / 2;
+      const mw = edge.data?.manualWaypoints;
+      if (srcIsStub) {
+        const side = nearestStubHandleSide(
+          srcAbs.x,
+          srcInternal.measured?.width ?? STUB_W_EST,
+          mw?.length ? mw[0].x : centerXOf(tgtHandle, tgtAbs),
+        );
+        srcHandle = resolveBound(srcBounds, side, "source") ?? srcHandle;
+      }
+      if (tgtIsStub) {
+        const side = nearestStubHandleSide(
+          tgtAbs.x,
+          tgtInternal.measured?.width ?? STUB_W_EST,
+          mw?.length ? mw[mw.length - 1].x : centerXOf(srcHandle, srcAbs),
+        );
+        tgtHandle = resolveBound(tgtBounds, side, "target") ?? tgtHandle;
+      }
+      const handleCenterY = (
+        b: Bound, abs: { y: number }, isStub: boolean, measuredH: number | undefined,
+      ) => (isStub && (b.id === "l" || b.id === "r")
+        ? abs.y + (measuredH ?? STUB_H_EST) / 2
+        : abs.y + b.y + b.height / 2);
+
       const sx = Math.round(srcAbs.x + srcHandle.x + srcHandle.width / 2);
-      const sy = Math.round(srcAbs.y + srcHandle.y + srcHandle.height / 2);
+      const sy = Math.round(handleCenterY(srcHandle, srcAbs, srcIsStub, srcInternal.measured?.height));
       const tx = Math.round(tgtAbs.x + tgtHandle.x + tgtHandle.width / 2);
-      const ty = Math.round(tgtAbs.y + tgtHandle.y + tgtHandle.height / 2);
+      const ty = Math.round(handleCenterY(tgtHandle, tgtAbs, tgtIsStub, tgtInternal.measured?.height));
 
       // Bundle members defer to the shared-trunk pass below.
       const bid = edge.data?.bundleId;

@@ -928,21 +928,47 @@ function SchematicCanvas() {
   );
 
   // Reconnection via React Flow's reconnection path (connected handle drags)
+  // No snapshot here: a re-route can end without changing anything (dropped in space on a
+  // stub half, or cancelled outright), and pushUndo doesn't dedupe — an identical snapshot
+  // would cost the user an extra Ctrl+Z to reach their previous real edit. The two paths
+  // that actually write take the snapshot themselves.
   const onReconnectStart = useCallback((_event: React.MouseEvent, edge: Edge) => {
     reconnectingRef.current = true;
     setReconnectingEdgeId(edge.id);
-    pushSnapshot();
-  }, [pushSnapshot]);
+  }, []);
+
+  /** Exactly one end on a stub-label node → this connection is one half of a stubbed pair. */
+  const stubLegEnd = useCallback((edge: { source: string; target: string }) => {
+    const stubIds = new Set(
+      useSchematicStore.getState().nodes.filter((n) => n.type === "stub-label").map((n) => n.id),
+    );
+    const srcIsStub = stubIds.has(edge.source);
+    const tgtIsStub = stubIds.has(edge.target);
+    if (srcIsStub === tgtIsStub) return null;
+    return srcIsStub ? edge.source : edge.target;
+  }, []);
 
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       reconnectingRef.current = false;
       const state = useSchematicStore.getState();
-      const updated = reconnectEdge(oldEdge, newConnection, state.edges);
+      // A stub label is not a port: moving the LABEL end of a stub half onto a device
+      // would leave the label with no connection and render "?" at both ends of the
+      // link (#318). Only the device end of a stub half may be re-routed.
+      const stubId = stubLegEnd(oldEdge);
+      if (stubId && newConnection.source !== stubId && newConnection.target !== stubId) {
+        state.addToast("A stub label can't move to a port — re-route the device end instead", "info");
+        return;
+      }
+      pushSnapshot();
+      // Keep the existing connection id (shouldReplaceId: false). Cable IDs, path handles
+      // and patch hops are all keyed by it, and React Flow's default regenerates the id
+      // from the new endpoints, silently orphaning every one of them.
+      const updated = reconnectEdge(oldEdge, newConnection, state.edges, { shouldReplaceId: false });
       useSchematicStore.setState({ edges: updated as typeof state.edges });
       useSchematicStore.getState().saveToLocalStorage();
     },
-    [],
+    [stubLegEnd, pushSnapshot],
   );
 
   const onReconnectEnd = useCallback(
@@ -952,13 +978,24 @@ function SchematicCanvas() {
       if (reconnectingRef.current) {
         reconnectingRef.current = false;
         const state = useSchematicStore.getState();
+        // Half of a stubbed connection has nowhere to be dropped — the stub-label end
+        // isn't connectable — so a drag that ends in empty space is a fumble, not a
+        // disconnect. Deleting that half on its own stranded the other half and both
+        // labels, which is exactly the "?" at both ends users hit while re-routing a
+        // stub (#318). Cancel instead; removing a stubbed connection stays the job of
+        // Delete, which drops the whole pair.
+        if (stubLegEnd(edge)) {
+          state.addToast("Re-route cancelled — use Delete to remove this connection", "info");
+          return;
+        }
+        pushSnapshot();
         useSchematicStore.setState({
           edges: state.edges.filter((e) => e.id !== edge.id),
         });
         useSchematicStore.getState().saveToLocalStorage();
       }
     },
-    [],
+    [stubLegEnd, pushSnapshot],
   );
 
   // Shared helper: start preview line tracking from a handle
@@ -1226,7 +1263,7 @@ function SchematicCanvas() {
       const snap = computeSnap(draggedNode as SchematicNode, state.nodes, {
         useShortNames: state.useShortNames,
         wrapDeviceLabels: state.wrapDeviceLabels,
-      });
+      }, state.edges);
       setSnapGuides(snap.guides);
 
       // Group drag (#134): snap the anchor and apply that delta uniformly to
@@ -1312,7 +1349,7 @@ function SchematicCanvas() {
         const snap = computeSnap(draggedNode as SchematicNode, state.nodes, {
           useShortNames: state.useShortNames,
           wrapDeviceLabels: state.wrapDeviceLabels,
-        });
+        }, state.edges);
         const dx = snap.x - draggedNode.position.x;
         const dy = snap.y - draggedNode.position.y;
         const draggedIds = new Set(draggedNodes.map((n) => n.id));
@@ -1369,7 +1406,7 @@ function SchematicCanvas() {
       const snap = computeSnap(draggedNode as SchematicNode, state.nodes, {
         useShortNames: state.useShortNames,
         wrapDeviceLabels: state.wrapDeviceLabels,
-      });
+      }, state.edges);
       let finalX = snap.x;
       let finalY = snap.y;
 
