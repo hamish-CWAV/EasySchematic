@@ -305,7 +305,7 @@ export default function DeviceForm({ id, draftId, cloneId, pendingSubmissionId, 
   };
 
   const handleSubmit = async () => {
-    if (!label.trim()) { setError("Label is required"); return; }
+    if (!label.trim()) { setError("Device name is required"); return; }
     const effectiveDeviceType = customDeviceType ? toKebab(customDeviceTypeText) : deviceType.trim();
     if (!effectiveDeviceType) { setError("Device type is required"); return; }
     if (!category.trim()) { setError("Category is required"); return; }
@@ -368,7 +368,7 @@ export default function DeviceForm({ id, draftId, cloneId, pendingSubmissionId, 
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <label>
-          <span className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Label *</span>
+          <span className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Device Name *</span>
           <input value={label} onChange={(e) => setLabel(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </label>
         <div>

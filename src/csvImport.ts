@@ -132,14 +132,36 @@ const COLUMN_KEYWORDS: Record<keyof ColumnMapping, string[]> = {
   destRoom: ["dest room", "destination room", "tgt room", "to room", "dest location"],
 };
 
-function scoreHeader(header: string, keywords: string[]): number {
+// `priority` is only ever comparable within a single role — keyword lists differ in
+// length between roles, so mixing it into `score` would silently reorder cross-role
+// ties (a bare "Room" would flip from sourceRoom to destRoom). detectColumns keeps
+// the two separate for exactly that reason.
+function scoreHeader(header: string, keywords: string[]): { score: number; priority: number } {
   const h = header.toLowerCase().trim();
-  for (const kw of keywords) {
-    if (h === kw) return 100; // exact match
-    if (h.includes(kw)) return 60; // contains
-    if (kw.includes(h) && h.length > 2) return 40; // header is substring of keyword
-  }
-  return 0;
+  // Take the BEST match across all keywords, not the first one that matches. A header
+  // could easily win a weak match against keyword N ("Source" is a substring of the
+  // earlier keyword "source device") before ever reaching its own exact keyword later
+  // in the list — which used to return 40 for "Source" instead of the 100 it deserves,
+  // and let a weaker column (e.g. "Src Conn", also containing "src") win the role
+  // instead. That misdetected the app's own cable-schedule export headers (#331).
+  let best = 0;
+  // Earlier keywords are the more specific/primary spelling of the role, so when two
+  // columns tie in the same tier — e.g. "Signal" and "Cable Type" both exactly matching
+  // a signalType keyword, which the app's own export ships as separate columns — the
+  // one matching the earlier keyword wins.
+  let priority = 0;
+  keywords.forEach((kw, i) => {
+    const rank = keywords.length - i;
+    let s = 0;
+    if (h === kw) s = 100;
+    else if (h.includes(kw)) s = 60;
+    else if (kw.includes(h) && h.length > 2) s = 40;
+    if (s > best || (s === best && s > 0 && rank > priority)) {
+      best = s;
+      priority = rank;
+    }
+  });
+  return { score: best, priority };
 }
 
 export function detectColumns(headers: string[]): ColumnMapping {
@@ -155,16 +177,27 @@ export function detectColumns(headers: string[]): ColumnMapping {
   };
 
   // Build score matrix
-  const scores: { role: keyof ColumnMapping; col: number; score: number }[] = [];
+  const scores: { role: keyof ColumnMapping; col: number; score: number; priority: number }[] = [];
   for (const role of roles) {
     for (let col = 0; col < headers.length; col++) {
-      const s = scoreHeader(headers[col], COLUMN_KEYWORDS[role]);
-      if (s > 0) scores.push({ role, col, score: s });
+      const { score, priority } = scoreHeader(headers[col], COLUMN_KEYWORDS[role]);
+      if (score > 0) scores.push({ role, col, score, priority });
     }
   }
 
-  // Greedy assignment: highest score first
-  scores.sort((a, b) => b.score - a.score);
+  // Greedy assignment: highest score first, then role-declaration order — a tie across
+  // roles has always been settled that way (so a bare "Room" stays on sourceRoom,
+  // matching the fallback below). Keyword priority only breaks ties between two columns
+  // competing for the SAME role; comparing it across roles is meaningless, since the
+  // keyword lists differ in length.
+  const roleOrder = new Map(roles.map((r, i) => [r, i]));
+  scores.sort(
+    (a, b) =>
+      b.score - a.score ||
+      roleOrder.get(a.role)! - roleOrder.get(b.role)! ||
+      b.priority - a.priority ||
+      a.col - b.col,
+  );
   const usedCols = new Set<number>();
   const usedRoles = new Set<string>();
   for (const { role, col } of scores) {

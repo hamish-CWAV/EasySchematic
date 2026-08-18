@@ -29,6 +29,7 @@ import { templateIdentityPatch } from "../inventoryKey";
 import LoginDialog from "./LoginDialog";
 import CardCreatorDialog from "./CardCreatorDialog";
 import TemplateSyncDialog from "./TemplateSyncDialog";
+import ConfirmDialog from "./ConfirmDialog";
 import { isValidIpv4, isValidSubnetMask, isValidVlan, findDuplicateIps } from "../networkValidation";
 import IpInput from "./IpInput";
 import FacePlateEditor from "./FacePlateEditor";
@@ -247,6 +248,9 @@ export default function DeviceEditor() {
   // Login dialog for community submission
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showSyncDialog, setShowSyncDialog] = useState(false);
+  // In-app stand-in for window.confirm() on the "update N other instances?" prompts (#328) —
+  // native confirm() clashed with the app's design language and blocked agentic testing.
+  const [pendingInstanceUpdate, setPendingInstanceUpdate] = useState<{ message: string; run: () => void } | null>(null);
 
   // Face-plate editor
   const [showFacePlateEditor, setShowFacePlateEditor] = useState(false);
@@ -473,14 +477,19 @@ export default function DeviceEditor() {
     close();
   }, [editingNodeId, buildDeviceData, updateDevice, setCreatingNodeId, close]);
 
-  // Ctrl+Enter anywhere in the editor → Apply & Close
+  // Ctrl+Enter anywhere in the editor → Apply & Close. The confirm dialog nests INSIDE
+  // this wrapper, so its own handlers can never beat this capture-phase one; while it is
+  // open the shortcut has to stand down, or the editor saves and unmounts underneath it
+  // and the stashed instance update is dropped without ever running. (window.confirm()
+  // got this for free by blocking the page — #328.)
   const onCtrlEnter = useCallback((e: React.KeyboardEvent) => {
+    if (pendingInstanceUpdate) return;
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
       handleSave();
     }
-  }, [handleSave]);
+  }, [handleSave, pendingInstanceUpdate]);
 
   // Shared builder for the "save as template", "update template" and "fork built-in" flows.
   // `overrides` carries the id (always) and, for updates/forks, version + a renamed label.
@@ -568,20 +577,28 @@ export default function DeviceEditor() {
     const others = nodes.filter(
       (n) => n.type === "device" && (n.data as DeviceData).templateId === templateId && n.id !== editingNodeId,
     ).length;
-    if (others > 0 && !confirm(`Update ${others} other instance${others === 1 ? "" : "s"} of this device on the current schematic?`)) {
+
+    const apply = () => {
+      updateCustomTemplate(templateId, template);
+      // Persist the edited device with the bumped version so it doesn't read as drifted.
+      const data = buildDeviceData({ templateVersion: nextVersion });
+      if (data) updateDevice(editingNodeId, data);
+      setCreatingNodeId(null);
+      if (others > 0) {
+        const { updated } = propagateTemplateToInstances(templateId, template, editingNodeId);
+        if (updated > 0) addToast(`Updated ${updated} other instance${updated === 1 ? "" : "s"} on this schematic`, "success");
+      }
+      close();
+    };
+
+    if (others > 0) {
+      setPendingInstanceUpdate({
+        message: `Update ${others} other instance${others === 1 ? "" : "s"} of this device on the current schematic?`,
+        run: apply,
+      });
       return;
     }
-
-    updateCustomTemplate(templateId, template);
-    // Persist the edited device with the bumped version so it doesn't read as drifted.
-    const data = buildDeviceData({ templateVersion: nextVersion });
-    if (data) updateDevice(editingNodeId, data);
-    setCreatingNodeId(null);
-    if (others > 0) {
-      const { updated } = propagateTemplateToInstances(templateId, template, editingNodeId);
-      if (updated > 0) addToast(`Updated ${updated} other instance${updated === 1 ? "" : "s"} on this schematic`, "success");
-    }
-    close();
+    apply();
   }, [node, editingNodeId, customTemplates, buildTemplateFromForm, nodes, updateCustomTemplate, buildDeviceData, updateDevice, setCreatingNodeId, propagateTemplateToInstances, addToast, close]);
 
   // Built-in device: fork it into a "(Custom)" user template, re-point the edited device at
@@ -595,23 +612,31 @@ export default function DeviceEditor() {
     const others = nodes.filter(
       (n) => n.type === "device" && (n.data as DeviceData).templateId === builtInId && n.id !== editingNodeId,
     ).length;
-    if (others > 0 && !confirm(`Create a "(Custom)" user template and update ${others} other instance${others === 1 ? "" : "s"} on the current schematic?`)) {
+
+    const apply = () => {
+      const template = buildTemplateFromForm({ id: newId, version: 1, label: forkLabel });
+      addCustomTemplate(template);
+      // Re-point the edited device at the fork (keeping its instance-level fields).
+      const data = buildDeviceData({ templateId: newId, templateVersion: 1 });
+      if (data) updateDevice(editingNodeId, data);
+      setCreatingNodeId(null);
+      if (others > 0) {
+        const { updated } = propagateTemplateToInstances(builtInId, template, editingNodeId);
+        addToast(`Created "${forkLabel}"${updated > 0 ? ` and updated ${updated} other instance${updated === 1 ? "" : "s"}` : ""}`, "success");
+      } else {
+        addToast(`Created "${forkLabel}"`, "success");
+      }
+      close();
+    };
+
+    if (others > 0) {
+      setPendingInstanceUpdate({
+        message: `Create a "(Custom)" user template and update ${others} other instance${others === 1 ? "" : "s"} on the current schematic?`,
+        run: apply,
+      });
       return;
     }
-
-    const template = buildTemplateFromForm({ id: newId, version: 1, label: forkLabel });
-    addCustomTemplate(template);
-    // Re-point the edited device at the fork (keeping its instance-level fields).
-    const data = buildDeviceData({ templateId: newId, templateVersion: 1 });
-    if (data) updateDevice(editingNodeId, data);
-    setCreatingNodeId(null);
-    if (others > 0) {
-      const { updated } = propagateTemplateToInstances(builtInId, template, editingNodeId);
-      addToast(`Created "${forkLabel}"${updated > 0 ? ` and updated ${updated} other instance${updated === 1 ? "" : "s"}` : ""}`, "success");
-    } else {
-      addToast(`Created "${forkLabel}"`, "success");
-    }
-    close();
+    apply();
   }, [node, editingNodeId, label, nodes, buildTemplateFromForm, addCustomTemplate, buildDeviceData, updateDevice, setCreatingNodeId, propagateTemplateToInstances, addToast, close]);
 
   const handleSubmitToCommunity = useCallback(async () => {
@@ -1896,6 +1921,19 @@ export default function DeviceEditor() {
             setShowSyncDialog(false);
           }}
           onCancel={() => setShowSyncDialog(false)}
+        />
+      )}
+      {pendingInstanceUpdate && (
+        <ConfirmDialog
+          title="Update Other Instances?"
+          message={pendingInstanceUpdate.message}
+          confirmLabel="Update"
+          onConfirm={() => {
+            const { run } = pendingInstanceUpdate;
+            setPendingInstanceUpdate(null);
+            run();
+          }}
+          onCancel={() => setPendingInstanceUpdate(null)}
         />
       )}
     </div>

@@ -66,6 +66,13 @@ the fixture, a test fails rather than a test pass quietly losing coverage.
 - **Owned gear in all three stock states.** Surplus (4 owned, 1 placed), exact
   (1/1) and short (1 owned, 2 placed). Without any owned gear the Devices
   report's Owned/Need columns don't render at all.
+- **A device genuinely placed from a bundled template.** `BMD SDI→Audio 12G`
+  (`device-21`, in TECH TABLE) carries a real `templateId` and ports cloned
+  from `DEVICE_TEMPLATES` with `templatePortId` set — every other device in
+  the fixture is synthetic, so without this one the device editor's
+  template-family actions (Update as Custom, Save as Preset, Revert to
+  Template) have nothing to render for. One of its ports is hidden relative
+  to the template so it also opens dirty, reaching Revert to Template.
 
 ## Adding to it
 

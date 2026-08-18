@@ -922,12 +922,12 @@
       },
       "style": {
         "width": 512,
-        "height": 400
+        "height": 576
       },
       "zIndex": -1,
       "measured": {
         "width": 512,
-        "height": 400
+        "height": 576
       }
     },
     {
@@ -1160,6 +1160,117 @@
         "manufacturer": "TestCo",
         "modelNumber": "LT-16",
         "powerDrawW": 90,
+        "auxiliaryData": [
+          {
+            "text": "{{deviceType}}",
+            "position": "header"
+          }
+        ]
+      }
+    },
+    {
+      "id": "device-21",
+      "type": "device",
+      "position": {
+        "x": 304,
+        "y": 400
+      },
+      "parentId": "room-3",
+      "measured": {
+        "width": 176,
+        "height": 128
+      },
+      "data": {
+        "label": "BMD SDI→Audio 12G",
+        "ports": [
+          {
+            "id": "device-21-0",
+            "label": "SDI In",
+            "signalType": "sdi",
+            "direction": "input",
+            "connectorType": "bnc",
+            "templatePortId": "port-1823"
+          },
+          {
+            "id": "device-21-1",
+            "label": "SDI Loop",
+            "signalType": "sdi",
+            "direction": "output",
+            "connectorType": "bnc",
+            "templatePortId": "port-1824"
+          },
+          {
+            "id": "device-21-2",
+            "label": "Analog Out L",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "xlr-3",
+            "templatePortId": "port-1825"
+          },
+          {
+            "id": "device-21-3",
+            "label": "Analog Out R",
+            "signalType": "analog-audio",
+            "direction": "output",
+            "connectorType": "xlr-3",
+            "templatePortId": "port-1826"
+          },
+          {
+            "id": "device-21-4",
+            "label": "AES Out 1-2",
+            "signalType": "aes",
+            "direction": "output",
+            "connectorType": "xlr-3",
+            "templatePortId": "port-1827"
+          },
+          {
+            "id": "device-21-5",
+            "label": "AES Out 3-4",
+            "signalType": "aes",
+            "direction": "output",
+            "connectorType": "xlr-3",
+            "templatePortId": "port-1828"
+          },
+          {
+            "id": "device-21-6",
+            "label": "AC Power",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec",
+            "templatePortId": "port-1829"
+          },
+          {
+            "id": "device-21-7",
+            "label": "S/PDIF Out",
+            "signalType": "spdif",
+            "direction": "output",
+            "connectorType": "toslink",
+            "templatePortId": "port-1830"
+          }
+        ],
+        "deviceType": "audio-embedder",
+        "model": "BMD SDI→Audio 12G",
+        "baseLabel": "BMD SDI→Audio 12G",
+        "templateId": "c0a80101-0031-4000-8000-000000000049",
+        "manufacturer": "Blackmagic Design",
+        "modelNumber": "Teranex Mini SDI to Audio 12G",
+        "referenceUrl": "https://www.blackmagicdesign.com/products/teranexmini/techspecs/W-TERAMIN-05",
+        "category": "Audio I/O",
+        "powerDrawW": 16,
+        "searchTerms": [
+          "blackmagic",
+          "teranex",
+          "de-embedder",
+          "deembed",
+          "audio extract"
+        ],
+        "heightMm": 45,
+        "widthMm": 140,
+        "depthMm": 170,
+        "weightKg": 0.6,
+        "hiddenPorts": [
+          "device-21-7"
+        ],
         "auxiliaryData": [
           {
             "text": "{{deviceType}}",

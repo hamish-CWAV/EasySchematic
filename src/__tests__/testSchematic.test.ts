@@ -231,6 +231,34 @@ describe("test schematic — #307 coverage", () => {
     expect(Math.max(...lengths)).toBeGreaterThanOrEqual(40);
   });
 
+  it("instantiates at least one device genuinely from a bundled template", () => {
+    // #332: every other fixture device is synthetic (no templateId), so the device
+    // editor's template-family actions (Update as Custom, Save as Preset, Revert to
+    // Template) had no fixture device to exercise them on.
+    const templated = devices.find((d) => d.data.templateId);
+    expect(templated, "no fixture device carries a templateId").toBeDefined();
+    const template = DEVICE_TEMPLATES.find((t) => t.id === templated!.data.templateId);
+    expect(template, `${templated!.id} points at an unknown template`).toBeDefined();
+    // Ports must be genuine clones (new ids, but traceable back via templatePortId),
+    // not the template's own port objects reused verbatim.
+    expect(templated!.data.ports.length).toBe(template!.ports.length);
+    for (const [i, p] of templated!.data.ports.entries()) {
+      expect(p.id).not.toBe(template!.ports[i].id);
+      expect(p.templatePortId).toBe(template!.ports[i].id);
+    }
+    // Dirty relative to the template (a hidden port) so Revert to Template is
+    // reachable too, not just Update as Custom / Save as Preset.
+    expect(templated!.data.hiddenPorts?.length ?? 0).toBeGreaterThan(0);
+    // Metadata addDevice copies off the template. `category` in particular is set on
+    // the template by deviceLibrary at import time, not present in the seed data, so
+    // it's easy to omit and it silently degrades "Update as Custom".
+    expect(templated!.data.category).toBe(template!.category);
+    expect(templated!.data.manufacturer).toBe(template!.manufacturer);
+    expect(templated!.data.modelNumber).toBe(template!.modelNumber);
+    expect(templated!.data.searchTerms).toEqual(template!.searchTerms);
+    expect(templated!.data.templateVersion).toBe(template!.version);
+  });
+
   it("carries owned gear in all three stock states", () => {
     const owned = fixture.ownedGear ?? [];
     expect(owned.length).toBeGreaterThanOrEqual(3);

@@ -25,6 +25,10 @@
  *     invisible without a header aux row, because HEADER_BAND_MIN_PX clamps it
  *   - owned gear in all three stock states (surplus, exact, short), without
  *     which the Devices report's inventory columns don't render at all
+ *   - one device genuinely placed from a bundled template (templateId, ports
+ *     cloned with templatePortId, one port hidden so it opens dirty) — every
+ *     other device here is synthetic, so without this one the device
+ *     editor's template-family actions have nothing to render for (#332)
  *
  * Positions are computed from the real DeviceNode height contract
  * (`deviceContentHeight`), so devices never overlap and rooms always fit their
@@ -36,11 +40,13 @@
 import { CURRENT_SCHEMA_VERSION } from "../migrations";
 import { GRID_SIZE } from "../gridConstants";
 import { deviceContentHeight } from "../routingHarness/deviceHandleLayout";
+import { DEVICE_TEMPLATES } from "../deviceLibrary";
 import type {
   ConnectionData,
   ConnectionEdge,
   ConnectorType,
   DeviceData,
+  DeviceTemplate,
   OwnedGearItem,
   Port,
   PortDirection,
@@ -98,6 +104,14 @@ function through(
     frontConnectorType: front,
     ...extra,
   };
+}
+
+/** Clone a bundled template's ports for a placed instance, the same shape the store's
+ *  addDevice produces (new port ids, `templatePortId` pointing back at the template port)
+ *  but with deterministic ids so the fixture regenerates byte-identical every run instead
+ *  of drifting on addDevice's Date.now()-based ones. (#332) */
+function cloneTemplatePorts(template: DeviceTemplate, idPrefix: string): Port[] {
+  return template.ports.map((p, i) => ({ ...p, id: `${idPrefix}-${i}`, templatePortId: p.id }));
 }
 
 /** Handle id for the source end of a connection — mirrors DeviceNode's Handle ids. */
@@ -295,6 +309,16 @@ const probeLan = port("probe-lan", "LAN", "ethernet", "bidirectional", "rj45", {
   networkConfig: { ip: "10.20.0.50", subnetMask: "255.255.255.0", gateway: "10.20.0.1" },
 });
 const probePower = port("probe-power", "AC In", "power", "input", "edison");
+
+// A genuine template instance (#332) — every other device above is synthetic (no
+// templateId), so the editor's template-family actions (Update as Custom, Save as
+// Preset, Revert to Template) never appear for them. This one is placed the way
+// addDevice places it: ports cloned from the bundled template with templatePortId
+// set, templateId pointing back at it. One port is hidden relative to the template
+// so it also opens dirty, exercising Revert to Template.
+const BMD_AUDIO_EMBEDDER = DEVICE_TEMPLATES.find((t) => t.id === "c0a80101-0031-4000-8000-000000000049")!;
+const bmdPorts = cloneTemplatePorts(BMD_AUDIO_EMBEDDER, "device-21");
+const bmdHiddenPortId = bmdPorts.find((p) => p.label === "S/PDIF Out")!.id;
 
 // ─── Rooms ───────────────────────────────────────────────────────────
 
@@ -628,6 +652,33 @@ const techTable: RoomSpec = {
           manufacturer: "TestCo",
           modelNumber: "LT-16",
           powerDrawW: 90,
+          auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
+        },
+      },
+      {
+        // Placed from the bundled BMD template (#332) — see BMD_AUDIO_EMBEDDER above.
+        id: "device-21",
+        label: BMD_AUDIO_EMBEDDER.label,
+        ports: bmdPorts,
+        data: {
+          deviceType: BMD_AUDIO_EMBEDDER.deviceType,
+          model: BMD_AUDIO_EMBEDDER.label,
+          baseLabel: BMD_AUDIO_EMBEDDER.label,
+          templateId: BMD_AUDIO_EMBEDDER.id,
+          manufacturer: BMD_AUDIO_EMBEDDER.manufacturer,
+          modelNumber: BMD_AUDIO_EMBEDDER.modelNumber,
+          referenceUrl: BMD_AUDIO_EMBEDDER.referenceUrl,
+          // deviceLibrary mutates `category` onto every template at import time, so a
+          // real placement carries it; without it "Update as Custom" on this fixture
+          // device would mint an uncategorised template the real flow never produces.
+          category: BMD_AUDIO_EMBEDDER.category,
+          powerDrawW: BMD_AUDIO_EMBEDDER.powerDrawW,
+          searchTerms: [...(BMD_AUDIO_EMBEDDER.searchTerms ?? [])],
+          heightMm: BMD_AUDIO_EMBEDDER.heightMm,
+          widthMm: BMD_AUDIO_EMBEDDER.widthMm,
+          depthMm: BMD_AUDIO_EMBEDDER.depthMm,
+          weightKg: BMD_AUDIO_EMBEDDER.weightKg,
+          hiddenPorts: [bmdHiddenPortId],
           auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
         },
       },

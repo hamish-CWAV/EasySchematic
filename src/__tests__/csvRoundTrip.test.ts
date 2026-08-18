@@ -5,6 +5,8 @@
 // NAMED in uppercase. The CSV now carries raw stored names (computeCableScheduleForCsv)
 // and may legitimately differ from on-screen casing; this file pins the round trip.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect, afterEach } from "vitest";
 import { computeCableSchedule, computeCableScheduleForCsv, buildCableScheduleCsv } from "../cableSchedule";
 import { parseCsv, detectColumns, extractConnections, matchDevices, buildImportResult, type ColumnMapping } from "../csvImport";
@@ -169,6 +171,80 @@ describe("cable-schedule CSV round trip (#309)", () => {
     expect(mapping.destDevice).toBeGreaterThanOrEqual(0);
     const connections = extractConnections(parsed.rows, mapping);
     expect(connections.length).toBeGreaterThan(0);
+  });
+
+  it("auto-maps the export's own headers to the RIGHT column, not just any column (#331)", () => {
+    // scoreHeader used to return on the first keyword that matched at all, so "Source"
+    // scored only 40 (a substring of the earlier keyword "source device") instead of
+    // the 100 its own exact keyword deserved, and a weaker column like "Src Conn" (which
+    // also contains "src") could win the sourceDevice role instead. Every column here is
+    // one the app's own cable-schedule export ships, side by side with the columns that
+    // used to steal its role.
+    const headers = [
+      "Cable ID", "Source", "Src Port", "Src Conn",
+      "Target", "Tgt Port", "Tgt Conn",
+      "Cable Type", "Signal", "Length", "Est. Length",
+      "Gauge (AWG)", "Alias", "Tested", "Use",
+      "Src Room", "Tgt Room", "Snake", "Bundle",
+    ];
+    const mapping = detectColumns(headers);
+    expect(headers[mapping.sourceDevice]).toBe("Source");
+    expect(headers[mapping.sourcePort]).toBe("Src Port");
+    expect(headers[mapping.destDevice]).toBe("Target");
+    expect(headers[mapping.destPort]).toBe("Tgt Port");
+    // "Cable Type" and "Signal" both exactly match a signalType keyword — the more
+    // specific "Signal" column must win over the "cable type" alias.
+    expect(headers[mapping.signalType]).toBe("Signal");
+    expect(headers[mapping.sourceRoom]).toBe("Src Room");
+    expect(headers[mapping.destRoom]).toBe("Tgt Room");
+  });
+
+  it("a single bare room column still lands on the SOURCE room", () => {
+    // Keyword priority breaks ties between two columns competing for one role — it must
+    // never leak across roles, or one unqualified "Room" column (the common shape in
+    // hand-written schedules, incl. docs/public/examples/broadcast-control-room.csv)
+    // tips into destRoom and every device imports with no room at all. Source is the
+    // convention the "room"/"location"/"area" fallback in detectColumns also codifies.
+    for (const room of ["Room", "Location", "Area"]) {
+      const mapping = detectColumns([
+        "Source Device", "Source Port", "Destination Device", "Destination Port", "Signal Type", room,
+      ]);
+      expect([mapping.sourceRoom, mapping.destRoom]).toEqual([5, -1]);
+    }
+  });
+
+  it("the sample CSV linked from the docs imports as advertised (#331)", () => {
+    // The file is a user-facing download, so read the shipped bytes rather than a copy —
+    // otherwise the sample and the importer drift apart without anything failing.
+    const csv = readFileSync(
+      fileURLToPath(new URL("../../docs/public/examples/cable-schedule-sample.csv", import.meta.url)),
+      "utf8",
+    );
+    const parsed = parseCsv(csv);
+    const mapping = detectColumns(parsed.headers);
+    const connections = extractConnections(parsed.rows, mapping);
+    expect(connections).toHaveLength(6);
+
+    const result = buildImportResult(connections, matchDevices(connections, []));
+    const devices = result.nodes.filter((n) => n.type === "device") as DeviceNode[];
+    expect(devices.map((d) => d.data.label).sort()).toEqual([
+      "Amp Rack", "FOH Console", "Lobby Display", "Network Switch",
+      "Stage Camera", "Video Switcher", "Wireless AP",
+    ]);
+
+    // The Room > Subroom paths must land as real nesting, at both depths in the file.
+    const rooms = result.nodes.filter((n) => n.type === "room");
+    const byLabel = new Map(rooms.map((r) => [(r.data as RoomData).label, r]));
+    expect([...byLabel.keys()].sort()).toEqual(["FOH", "Lobby", "Rack Room", "Sanctuary", "Stage"]);
+    const sanctuary = byLabel.get("Sanctuary")!;
+    expect(sanctuary.parentId).toBeUndefined();
+    expect(byLabel.get("FOH")!.parentId).toBe(sanctuary.id);
+    expect(byLabel.get("Stage")!.parentId).toBe(sanctuary.id);
+    expect(byLabel.get("Rack Room")!.parentId).toBeUndefined();
+
+    expect(devices.find((d) => d.data.label === "FOH Console")!.parentId).toBe(byLabel.get("FOH")!.id);
+    expect(devices.find((d) => d.data.label === "Stage Camera")!.parentId).toBe(byLabel.get("Stage")!.id);
+    expect(devices.find((d) => d.data.label === "Video Switcher")!.parentId).toBe(byLabel.get("Rack Room")!.id);
   });
 
   it("withRawLabels restores the transform afterwards, even on throw", () => {

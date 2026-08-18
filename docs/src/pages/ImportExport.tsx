@@ -87,6 +87,11 @@ export default function ImportExportPage() {
         Import a cable schedule spreadsheet to auto-generate a schematic with devices, rooms, and connections.
         Access it via <strong>File</strong> menu → <strong>Import Cable Schedule...</strong>
       </p>
+      <p>
+        <a href="/examples/cable-schedule-sample.csv" download>cable-schedule-sample.csv</a> —
+        a small schedule with a handful of realistic rows, including the <code>Room &gt; Subroom</code> path
+        syntax described below. Download it, or open the link to inspect the column layout.
+      </p>
       <p>The import wizard has two steps:</p>
       <ol>
         <li>

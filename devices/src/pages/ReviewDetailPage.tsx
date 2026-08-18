@@ -297,7 +297,7 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
           <h2 className="text-lg font-semibold text-blue-700 mb-4">Edit Before Approving</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <label className="sm:col-span-2">
-              <span className="block text-sm font-medium text-slate-700 mb-1">Label *</span>
+              <span className="block text-sm font-medium text-slate-700 mb-1">Device Name *</span>
               <input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             <label>
