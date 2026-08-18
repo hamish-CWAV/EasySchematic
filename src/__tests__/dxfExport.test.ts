@@ -7,7 +7,8 @@ import { DEFAULT_LABEL_CASE } from "../types";
 import { useSchematicStore } from "../store";
 import { DxfWriter } from "../dxfExport/writer";
 import { buildDxf } from "../dxfExport";
-import { emitDevice, emitRoom } from "../dxfExport/nodes";
+import { emitAnnotation, emitDevice, emitRoom } from "../dxfExport/nodes";
+import { emitLegend } from "../dxfExport/legend";
 import {
   CAP_HEIGHT_RATIO,
   DPI,
@@ -89,9 +90,9 @@ function instanceFor(nodes: SchematicNode[]): ReactFlowInstance {
 interface RawEntity { type: string; layer: string; pairs: [string, string][] }
 
 /** Every entity in the ENTITIES section, in emission order, walking the (group code,
- *  value) pairs directly. dxf-parser silently drops HATCH, so anything asserting about
- *  fills — or about where a fill sits relative to the text it masks — has to read the
- *  stream itself. */
+ *  value) pairs directly. dxf-parser normalizes and reorders what it keeps, so anything
+ *  asserting about raw group codes — or about where a fill sits relative to the text it
+ *  masks — has to read the stream itself. */
 function rawEntityStream(dxf: string): RawEntity[] {
   const lines = dxf.split("\r\n");
   const out: RawEntity[] = [];
@@ -117,18 +118,19 @@ function rawEntityStream(dxf: string): RawEntity[] {
   return out;
 }
 
-/** Bounding box (DXF inches) of a solid HATCH's polyline boundary. The boundary
- *  vertices are the 10/20 pairs after group 93 (vertex count) and before 97. */
-function hatchBounds(e: RawEntity): { x1: number; y1: number; x2: number; y2: number } {
-  const xs: number[] = [], ys: number[] = [];
-  let inBoundary = false;
-  for (const [code, value] of e.pairs) {
-    if (code === "93") { inBoundary = true; continue; }
-    if (!inBoundary) continue;
-    if (code === "97") break;
-    if (code === "10") xs.push(Number(value));
-    else if (code === "20") ys.push(Number(value));
-  }
+/** The four corners of a SOLID, in DXF group order (10/11/12/13). */
+function solidCorners(e: RawEntity): { x: number; y: number }[] {
+  const byCode = new Map(e.pairs.map(([code, value]) => [code, Number(value)]));
+  return ["10", "11", "12", "13"].map((code, i) => ({
+    x: byCode.get(code)!,
+    y: byCode.get(String(20 + i))!,
+  }));
+}
+
+/** Bounding box (DXF inches) of an opaque mask — a SOLID quad. */
+function maskBounds(e: RawEntity): { x1: number; y1: number; x2: number; y2: number } {
+  const corners = solidCorners(e);
+  const xs = corners.map((c) => c.x), ys = corners.map((c) => c.y);
   return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
 }
 
@@ -871,8 +873,8 @@ describe("buildDxf — connection label draw order and masking (#298)", () => {
   it("masks a cable ID's own connection line with an opaque chip", () => {
     const stream = rawEntityStream(exportEdges());
     const chips = stream
-      .filter((e) => e.type === "HATCH" && e.layer === CANONICAL_LAYERS.LABELS)
-      .map(hatchBounds);
+      .filter((e) => e.type === "SOLID" && e.layer === CANONICAL_LAYERS.LABELS)
+      .map(maskBounds);
     expect(chips.length).toBe(2);
 
     // The midpoint of the first connection, in DXF inches.
@@ -892,7 +894,7 @@ describe("buildDxf — connection label draw order and masking (#298)", () => {
       .map((e) => (e.type === "LINE" || e.type === "ARC") && e.layer.startsWith("EasySchematic-Connections-"))
       .lastIndexOf(true);
     const firstChip = stream.findIndex(
-      (e) => e.type === "HATCH" && e.layer === CANONICAL_LAYERS.LABELS,
+      (e) => e.type === "SOLID" && e.layer === CANONICAL_LAYERS.LABELS,
     );
     const firstCableId = stream.findIndex(
       (e) => e.type === "MTEXT" && e.pairs.some(([c, v]) => c === "1" && v === "C-001"),
@@ -915,8 +917,148 @@ describe("buildDxf — connection label draw order and masking (#298)", () => {
 
   it("chips endpoint-mode cable IDs too, at both ends", () => {
     const chips = rawEntityStream(exportEdges({ cableIdLabelMode: "endpoint" }))
-      .filter((e) => e.type === "HATCH" && e.layer === CANONICAL_LAYERS.LABELS);
+      .filter((e) => e.type === "SOLID" && e.layer === CANONICAL_LAYERS.LABELS);
     expect(chips.length).toBe(4); // 2 connections x 2 ends
+  });
+
+  // #333. The chip first shipped as a HATCH, which put a HATCH under every cable ID in
+  // every export — until then HATCH was only reachable through opt-in fills (a room
+  // colour, the colour key) so nobody had one. Illustrator and the Autodesk viewer both
+  // refused the whole file: an AutoCAD-lineage reader that dislikes one HATCH group
+  // discards the entire drawing, not the entity. The mask is a SOLID now — four corners,
+  // no options, R12-era — and these pin the shape so the finicky entity can't creep back.
+  describe("mask entity shape (#333)", () => {
+    it("emits no HATCH anywhere in the document", () => {
+      expect(rawEntityStream(exportEdges()).some((e) => e.type === "HATCH")).toBe(false);
+    });
+
+    // The cable-ID chip fixture above has no room colour, no device header colour, no
+    // annotations and the colour key off — exactly the opt-in paths that were the
+    // pre-existing HATCH landmine (a room fill, a header band, an annotation fill, the
+    // legend ground). Exercise all of them together so a HATCH creeping back into any one
+    // emitter can't hide behind a fixture that never reaches it.
+    it("still emits no HATCH with a coloured room, a coloured device header, every annotation shape and the colour key all in play", () => {
+      const rf = (node: SchematicNode): ReactFlowInstance => ({
+        getInternalNode: () => ({
+          internals: {
+            positionAbsolute: { x: node.position.x, y: node.position.y },
+            handleBounds: { source: [], target: [] },
+          },
+        }),
+      }) as unknown as ReactFlowInstance;
+
+      const dxf = buildMinimalDxf((w) => {
+        const room = {
+          id: "r1", type: "room", position: { x: 0, y: 0 },
+          measured: { width: 400, height: 300 },
+          data: { label: "Booth", color: "#ff0000" },
+        } as unknown as SchematicNode;
+        emitRoom(w, room, rf(room));
+
+        const device = {
+          id: "d1", type: "device", position: { x: 0, y: 400 },
+          measured: { width: 144, height: 80 },
+          data: {
+            label: "Rack", headerColor: "#0000ff",
+            ports: [{ id: "p1", label: "In", direction: "input", signalType: "hdmi" }],
+          },
+        } as unknown as SchematicNode;
+        emitDevice(w, device, rf(device), [], undefined, "USD", {});
+
+        for (const shape of ["rectangle", "ellipse", "circle", "diamond", "triangle"] as const) {
+          const ann = {
+            id: `a-${shape}`, type: "annotation", position: { x: 500, y: 0 },
+            measured: { width: 100, height: 80 },
+            data: { shape, color: "#00ff00" },
+          } as unknown as SchematicNode;
+          emitAnnotation(w, ann, rf(ann));
+        }
+
+        emitLegend(
+          w,
+          [{
+            id: "e1", source: "d1", target: "d1", sourceHandle: "p1", targetHandle: "p1",
+            data: { signalType: "hdmi" },
+          }] as unknown as ConnectionEdge[],
+          undefined, undefined, undefined,
+          { x: 0, y: 0 }, { x: 10, y: 10 },
+        );
+      });
+
+      const stream = rawEntityStream(dxf);
+      expect(stream.some((e) => e.type === "HATCH")).toBe(false);
+      // Confirms every opt-in path above actually fired a fill, not just that HATCH is
+      // absent because nothing tried to fill anything.
+      expect(stream.filter((e) => e.type === "SOLID").length).toBeGreaterThanOrEqual(8);
+    });
+
+    it("writes each chip as a SOLID carrying the AcDbTrace subclass and four corners", () => {
+      const chip = rawEntityStream(exportEdges())
+        .find((e) => e.type === "SOLID" && e.layer === CANONICAL_LAYERS.LABELS);
+      expect(chip).toBeDefined();
+      const codes = chip!.pairs.map(([c]) => c);
+      // AcDbEntity then AcDbTrace — a missing subclass marker is an instant reject.
+      expect(chip!.pairs.filter(([c]) => c === "100").map(([, v]) => v))
+        .toEqual(["AcDbEntity", "AcDbTrace"]);
+      // All four corners, each with its full x/y/z triple.
+      for (const corner of [["10", "20", "30"], ["11", "21", "31"], ["12", "22", "32"], ["13", "23", "33"]]) {
+        for (const code of corner) expect(codes.filter((c) => c === code).length).toBe(1);
+      }
+    });
+
+    it("orders the corners so the quad is a rectangle, not a bow tie", () => {
+      const chip = rawEntityStream(exportEdges())
+        .find((e) => e.type === "SOLID" && e.layer === CANONICAL_LAYERS.LABELS)!;
+      // SOLID paints 10 → 11 → 13 → 12. Writing outline order straight through swaps the
+      // far edge and the fill crosses itself, leaving the text half masked.
+      const [c0, c1, c2, c3] = solidCorners(chip);
+      expect(c0.y).toBeCloseTo(c1.y, 9); // 10-11 is one full edge
+      expect(c2.y).toBeCloseTo(c3.y, 9); // 12-13 is the opposite edge
+      expect(c0.x).toBeCloseTo(c2.x, 9); // and they run the same direction
+      expect(c1.x).toBeCloseTo(c3.x, 9);
+      expect(c0.y).not.toBeCloseTo(c2.y, 6);
+    });
+  });
+});
+
+describe("DxfWriter — solid fills (#333)", () => {
+  function entities(emit: (w: DxfWriter) => void) {
+    return rawEntityStream(buildMinimalDxf(emit));
+  }
+
+  it("fills a convex polygon with SOLID quads covering the whole shape", () => {
+    // A diamond, the shape an annotation uses.
+    const pts = [{ x: 2, y: 0 }, { x: 4, y: 2 }, { x: 2, y: 4 }, { x: 0, y: 2 }];
+    const solids = entities((w) => w.addSolidFillPolygon("TEST", pts));
+    expect(solids.map((e) => e.type)).toEqual(["SOLID"]);
+    const b = maskBounds(solids[0]);
+    expect(b).toEqual({ x1: 0, y1: 0, x2: 4, y2: 4 });
+  });
+
+  it("fans an odd-cornered polygon into quad + triangle, never a HATCH", () => {
+    const pts = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 1 }, { x: 2, y: 2 }, { x: 0, y: 2 }];
+    const solids = entities((w) => w.addSolidFillPolygon("TEST", pts));
+    expect(solids.map((e) => e.type)).toEqual(["SOLID", "SOLID"]);
+    // The tail triangle repeats its last corner, which is how SOLID spells a triangle.
+    const tail = solidCorners(solids[1]);
+    expect(tail[2]).toEqual(tail[3]);
+  });
+
+  it("polygonises an ellipse fill rather than emitting a HATCH boundary", () => {
+    const solids = entities((w) => w.addSolidFillEllipse("TEST", 5, 5, 2, 0, 0.5));
+    expect(solids.length).toBeGreaterThan(4);
+    expect(solids.every((e) => e.type === "SOLID")).toBe(true);
+    const xs = solids.flatMap((e) => solidCorners(e).map((c) => c.x));
+    const ys = solids.flatMap((e) => solidCorners(e).map((c) => c.y));
+    expect(Math.min(...xs)).toBeCloseTo(3, 3);
+    expect(Math.max(...xs)).toBeCloseTo(7, 3);
+    expect(Math.min(...ys)).toBeCloseTo(4, 3);
+    expect(Math.max(...ys)).toBeCloseTo(6, 3);
+  });
+
+  it("ignores degenerate input instead of writing a two-corner fill", () => {
+    expect(entities((w) => w.addSolidFillPolygon("TEST", [{ x: 0, y: 0 }, { x: 1, y: 1 }]))).toEqual([]);
+    expect(entities((w) => w.addSolidFillEllipse("TEST", 0, 0, 0, 0, 1))).toEqual([]);
   });
 });
 
@@ -1018,11 +1160,11 @@ describe("buildDxf — stub labels (#319)", () => {
     expect(texts).toContain(escapeForMText("← Rack Switch"));
   });
 
-  /** Index of the HATCH whose bounds are the given stub node's box, or -1. */
+  /** Index of the mask whose bounds are the given stub node's box, or -1. */
   function stubPillIndex(stream: ReturnType<typeof rawEntityStream>, x: number, y: number, w: number, h: number) {
     return stream.findIndex((e) => {
-      if (e.type !== "HATCH" || e.layer !== CANONICAL_LAYERS.LABELS) return false;
-      const b = hatchBounds(e);
+      if (e.type !== "SOLID" || e.layer !== CANONICAL_LAYERS.LABELS) return false;
+      const b = maskBounds(e);
       return Math.abs(b.x1 - x / DPI) < 1e-6 && Math.abs(b.y1 + (y + h) / DPI) < 1e-6
         && Math.abs(b.x2 - b.x1 - w / DPI) < 1e-6 && Math.abs(b.y2 - b.y1 - h / DPI) < 1e-6;
     });

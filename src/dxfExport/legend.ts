@@ -40,7 +40,7 @@ export function emitLegend(
   const layer = CANONICAL_LAYERS.LEGEND;
 
   // Background fill (white)
-  writer.addSolidHatchRect(
+  writer.addSolidFillRect(
     layer,
     legendX, legendBottom, geometry.width, geometry.height,
     { trueColor: rgbToTrueColor(255, 255, 255) },

@@ -356,6 +356,9 @@ const CHIP_RADIUS_IN = 2 / 96;
  * has no fill area, so glyphs never occlude what is under them however late they are
  * written. MTEXT background fill would mask it in AutoCAD/TrueView but LibreCAD
  * ignores that group, which is why the issue asks for a real mask entity.
+ *
+ * The ground is a SOLID, not a HATCH: it goes under every cable ID in every export,
+ * so it has to be an entity no consumer can refuse (#333).
  */
 function emitLabelChip(
   writer: DxfWriter,
@@ -371,7 +374,7 @@ function emitLabelChip(
   const w = pxToIn(wPx);
   const h = pxToIn(hPx);
 
-  writer.addSolidHatchRect(CANONICAL_LAYERS.LABELS, x, y, w, h, { trueColor: 0xffffff });
+  writer.addSolidFillRect(CANONICAL_LAYERS.LABELS, x, y, w, h, { trueColor: 0xffffff });
   writer.addRoundedRect(
     CANONICAL_LAYERS.LABELS, x, y, w, h, CHIP_RADIUS_IN,
     { trueColor, linetype: "CONTINUOUS" },

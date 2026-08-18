@@ -672,9 +672,35 @@ export class DxfWriter {
     }
   }
 
-  /** Solid hatch fill over a single closed rectangular boundary. */
-  addSolidHatchRect(layer: string, x: number, y: number, w: number, h: number, style?: EntityStyle) {
-    this.addSolidHatchPolygon(layer, [
+  /**
+   * Opaque filled quad as a SOLID (AcDbTrace) entity.
+   *
+   * Every opaque fill this exporter draws goes through here rather than through a
+   * HATCH. HATCH is the entity AutoCAD-lineage readers are strictest about — the
+   * boundary-path block, the associativity/seed/pixel-size groups and the pattern
+   * groups all have to line up or the reader reports an undefined group code and
+   * discards the WHOLE drawing, not just the entity (#333). SOLID predates all of
+   * that: four corners, no options, understood by every consumer including the
+   * RealDWG-based importer Illustrator switched to.
+   *
+   * Pass the corners in outline order. SOLID stores the last two swapped — the
+   * quad it paints is 10 → 11 → 13 → 12 — so writing outline order straight
+   * through would draw a bow tie. Three corners emit a triangle (13 repeats 12).
+   */
+  addSolidQuad(layer: string, points: { x: number; y: number }[], style?: EntityStyle) {
+    if (points.length < 3) return;
+    const p0 = points[0], p1 = points[1], p2 = points[2], p3 = points[3] ?? points[2];
+    this.s(0, "SOLID");
+    this.writeEntityPreamble("AcDbTrace", layer, style);
+    this.r(10, p0.x); this.r(20, p0.y); this.r(30, 0);
+    this.r(11, p1.x); this.r(21, p1.y); this.r(31, 0);
+    this.r(12, p3.x); this.r(22, p3.y); this.r(32, 0);
+    this.r(13, p2.x); this.r(23, p2.y); this.r(33, 0);
+  }
+
+  /** Opaque fill over an axis-aligned rectangle. */
+  addSolidFillRect(layer: string, x: number, y: number, w: number, h: number, style?: EntityStyle) {
+    this.addSolidQuad(layer, [
       { x, y },
       { x: x + w, y },
       { x: x + w, y: y + h },
@@ -682,63 +708,46 @@ export class DxfWriter {
     ], style);
   }
 
-  /** Solid hatch fill over a single closed polygon boundary. */
-  addSolidHatchPolygon(layer: string, points: { x: number; y: number }[], style?: EntityStyle) {
+  /**
+   * Opaque fill over a convex polygon, as a fan of SOLID quads anchored on the
+   * first corner. Every shape this exporter fills — rectangle, diamond, triangle,
+   * polygonised ellipse — is convex, so a fan covers it exactly with no overlap.
+   */
+  addSolidFillPolygon(layer: string, points: { x: number; y: number }[], style?: EntityStyle) {
     if (points.length < 3) return;
-    this.s(0, "HATCH");
-    this.writeEntityPreamble("AcDbHatch", layer, style);
-    this.r(10, 0); this.r(20, 0); this.r(30, 0); // elevation
-    this.r(210, 0); this.r(220, 0); this.r(230, 1); // extrusion
-    this.s(2, "SOLID");
-    this.i(70, 1); // solid fill
-    this.i(71, 0); // associativity: non-associative
-    this.i(91, 1); // number of boundary paths
-    // Boundary path: external (1) + polyline (2) = 3
-    this.i(92, 3);
-    this.i(72, 0); // has bulge = 0
-    this.i(73, 1); // closed
-    this.i(93, points.length);
-    for (const p of points) {
-      this.r(10, p.x); this.r(20, p.y);
+    for (let i = 1; i + 1 < points.length; i += 2) {
+      const corners = [points[0], points[i], points[i + 1]];
+      if (i + 2 < points.length) corners.push(points[i + 2]);
+      this.addSolidQuad(layer, corners, style);
     }
-    this.i(97, 0); // source boundary objects count
-    this.i(75, 0); // hatch style: odd parity
-    this.i(76, 1); // hatch pattern type: predefined
-    this.r(47, 1); // pixel size
-    this.i(98, 0); // seed points
   }
 
-  /** Solid hatch over an ellipse boundary. */
-  addSolidHatchEllipse(
+  /**
+   * Opaque fill over an ellipse, polygonised. `majorX`/`majorY` is the major-axis
+   * endpoint relative to the centre and `ratio` the minor/major ratio — the same
+   * arguments `addEllipse` takes, so a fill and its outline stay in step.
+   */
+  addSolidFillEllipse(
     layer: string,
     cx: number, cy: number,
     majorX: number, majorY: number,
     ratio: number,
     style?: EntityStyle,
   ) {
-    this.s(0, "HATCH");
-    this.writeEntityPreamble("AcDbHatch", layer, style);
-    this.r(10, 0); this.r(20, 0); this.r(30, 0);
-    this.r(210, 0); this.r(220, 0); this.r(230, 1);
-    this.s(2, "SOLID");
-    this.i(70, 1);
-    this.i(71, 0);
-    this.i(91, 1);
-    this.i(92, 1); // external, non-polyline
-    this.i(93, 1); // number of edges
-    // Edge: ellipse (type 3)
-    this.i(72, 3);
-    this.r(10, cx); this.r(20, cy);
-    this.r(11, majorX); this.r(21, majorY);
-    this.r(40, ratio);
-    this.r(50, 0);
-    this.r(51, 360);
-    this.i(73, 1); // CCW
-    this.i(97, 0);
-    this.i(75, 0);
-    this.i(76, 1);
-    this.r(47, 1);
-    this.i(98, 0);
+    const SEGMENTS = 48; // sagitta ~0.2% of the radius (r*(1-cos(pi/48))) — invisible in print
+    const major = Math.hypot(majorX, majorY);
+    if (major <= 0) return;
+    const minor = major * ratio;
+    const rot = Math.atan2(majorY, majorX);
+    const cos = Math.cos(rot), sin = Math.sin(rot);
+    const points: { x: number; y: number }[] = [];
+    for (let i = 0; i < SEGMENTS; i++) {
+      const t = (i / SEGMENTS) * 2 * Math.PI;
+      const ex = major * Math.cos(t);
+      const ey = minor * Math.sin(t);
+      points.push({ x: cx + ex * cos - ey * sin, y: cy + ex * sin + ey * cos });
+    }
+    this.addSolidFillPolygon(layer, points, style);
   }
 
   // ─── OBJECTS ─────────────────────────────────────────────────────────

@@ -97,7 +97,7 @@ export function emitRoom(
   if (data.color) {
     const tinted = tintToWhite(data.color, 0.85);
     const tc = hexToTrueColor(tinted);
-    writer.addSolidHatchRect(CANONICAL_LAYERS.ROOMS_FILL, rect.x, rect.y, rect.w, rect.h, {
+    writer.addSolidFillRect(CANONICAL_LAYERS.ROOMS_FILL, rect.x, rect.y, rect.w, rect.h, {
       trueColor: tc,
     });
   }
@@ -173,7 +173,7 @@ export function emitDevice(
   const headerPadTop = Math.floor(headerPad / 2);
   const headerRect = toDxfRect(ax, ay, w, bandH);
   if (data.headerColor) {
-    writer.addSolidHatchRect(
+    writer.addSolidFillRect(
       CANONICAL_LAYERS.DEVICES_HEADER,
       headerRect.x, headerRect.y, headerRect.w, headerRect.h,
       { trueColor: hexToTrueColor(data.headerColor) },
@@ -418,7 +418,7 @@ export function emitAnnotation(
     const majorRadius = data.shape === "circle" ? Math.min(rect.w, rect.h) / 2 : rect.w / 2;
     const ratio = data.shape === "circle" ? 1 : Math.min(1, rect.h / rect.w);
     if (data.color) {
-      writer.addSolidHatchEllipse(
+      writer.addSolidFillEllipse(
         CANONICAL_LAYERS.ANNOTATIONS_FILL,
         cx, cy, majorRadius, 0, ratio,
         { trueColor: annotationFillToTrueColor(data.color) },
@@ -435,7 +435,7 @@ export function emitAnnotation(
       { x: rect.x, y: cy },
     ];
     if (data.color) {
-      writer.addSolidHatchPolygon(CANONICAL_LAYERS.ANNOTATIONS_FILL, pts, { trueColor: annotationFillToTrueColor(data.color) });
+      writer.addSolidFillPolygon(CANONICAL_LAYERS.ANNOTATIONS_FILL, pts, { trueColor: annotationFillToTrueColor(data.color) });
     }
     writer.addPolyline(CANONICAL_LAYERS.ANNOTATIONS, pts, true, borderStyle);
   } else if (data.shape === "triangle") {
@@ -445,12 +445,12 @@ export function emitAnnotation(
       { x: rect.x, y: rect.y + rect.h },
     ];
     if (data.color) {
-      writer.addSolidHatchPolygon(CANONICAL_LAYERS.ANNOTATIONS_FILL, pts, { trueColor: annotationFillToTrueColor(data.color) });
+      writer.addSolidFillPolygon(CANONICAL_LAYERS.ANNOTATIONS_FILL, pts, { trueColor: annotationFillToTrueColor(data.color) });
     }
     writer.addPolyline(CANONICAL_LAYERS.ANNOTATIONS, pts, true, borderStyle);
   } else {
     if (data.color) {
-      writer.addSolidHatchRect(
+      writer.addSolidFillRect(
         CANONICAL_LAYERS.ANNOTATIONS_FILL,
         rect.x, rect.y, rect.w, rect.h,
         { trueColor: annotationFillToTrueColor(data.color) },
@@ -531,7 +531,7 @@ export function emitStubLabel(
 
   // Opaque fill, like the canvas box — the leg terminates at the pill's edge, and any
   // connection routed past it must not read through the text.
-  writer.addSolidHatchRect(
+  writer.addSolidFillRect(
     CANONICAL_LAYERS.LABELS,
     rect.x, rect.y, rect.w, rect.h,
     { trueColor: 0xffffff },
