@@ -56,10 +56,14 @@ export function parseCsv(text: string): CsvParseResult {
   // Normalize line endings
   t = t.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-  // Auto-detect delimiter: count tabs vs commas in first line
-  const firstLine = t.split("\n")[0] ?? "";
-  const tabCount = (firstLine.match(/\t/g) ?? []).length;
-  const commaCount = (firstLine.match(/,/g) ?? []).length;
+  // Auto-detect delimiter. Probe the first few lines, not just the first one —
+  // report exports open with a title/date preamble that carries no delimiters.
+  let tabCount = 0;
+  let commaCount = 0;
+  for (const line of t.split("\n").slice(0, 5)) {
+    tabCount = Math.max(tabCount, (line.match(/\t/g) ?? []).length);
+    commaCount = Math.max(commaCount, (line.match(/,/g) ?? []).length);
+  }
   const delim = tabCount > commaCount ? "\t" : ",";
 
   const rows: string[][] = [];
@@ -101,7 +105,19 @@ export function parseCsv(text: string): CsvParseResult {
   if (currentRow.some((f) => f.length > 0)) rows.push(currentRow);
 
   if (rows.length === 0) return { headers: [], rows: [] };
-  return { headers: rows[0], rows: rows.slice(1) };
+
+  // The first row is not always the header row: our own cable-schedule export
+  // (and many vendor schedules) lead with title/date lines. Take the first row
+  // that maps both device columns; fall back to row 0 for plain files.
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const m = detectColumns(rows[i]);
+    if (m.sourceDevice >= 0 && m.destDevice >= 0) {
+      headerIdx = i;
+      break;
+    }
+  }
+  return { headers: rows[headerIdx], rows: rows.slice(headerIdx + 1) };
 }
 
 // ---------- Column Detection ----------

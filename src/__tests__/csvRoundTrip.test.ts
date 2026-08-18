@@ -7,7 +7,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { computeCableSchedule, computeCableScheduleForCsv, buildCableScheduleCsv } from "../cableSchedule";
-import { parseCsv, extractConnections, matchDevices, buildImportResult, type ColumnMapping } from "../csvImport";
+import { parseCsv, detectColumns, extractConnections, matchDevices, buildImportResult, type ColumnMapping } from "../csvImport";
 import { transformLabelNow, withRawLabels } from "../labelCaseUtils";
 import { makeDevice, makeEdge, makePort } from "../routingHarness/fixtures";
 import { useSchematicStore } from "../store";
@@ -68,12 +68,12 @@ function mappingFor(headers: string[]): ColumnMapping {
 }
 
 /** Export under the current preference and run the file back through the import
- *  pipeline. The title/date preamble is dropped first, as a user trimming the file
- *  for the wizard would. */
+ *  pipeline, exactly as the wizard receives it — title/date preamble included.
+ *  parseCsv is responsible for locating the real header row (#324 follow-up). */
 function roundTrip(nodes: SchematicNode[], edges: ConnectionEdge[]) {
   const rows = computeCableScheduleForCsv(nodes, edges);
   const csv = buildCableScheduleCsv(rows, "Round Trip", "2026-01-01");
-  const parsed = parseCsv(csv.split("\n").slice(3).join("\n"));
+  const parsed = parseCsv(csv);
   const connections = extractConnections(parsed.rows, mappingFor(parsed.headers));
   return { csv, connections, ...buildImportResult(connections, matchDevices(connections, [])) };
 }
@@ -156,6 +156,19 @@ describe("cable-schedule CSV round trip (#309)", () => {
     const sub = nestedScene();
     const [nested] = computeCableSchedule(sub.nodes, sub.edges);
     expect(nested.targetRoom).toBe("main Sanctuary - FOH mix");
+  });
+
+  it("the wizard auto-maps a raw export, preamble and all (#324 report)", () => {
+    const { nodes, edges } = scene();
+    const csv = buildCableScheduleCsv(computeCableScheduleForCsv(nodes, edges), "Round Trip", "2026-01-01");
+    // What CsvImportWizard does verbatim: parse, then auto-detect the mapping.
+    const parsed = parseCsv(csv);
+    const mapping = detectColumns(parsed.headers);
+    expect(parsed.headers).toContain("Cable ID");
+    expect(mapping.sourceDevice).toBeGreaterThanOrEqual(0);
+    expect(mapping.destDevice).toBeGreaterThanOrEqual(0);
+    const connections = extractConnections(parsed.rows, mapping);
+    expect(connections.length).toBeGreaterThan(0);
   });
 
   it("withRawLabels restores the transform afterwards, even on throw", () => {
