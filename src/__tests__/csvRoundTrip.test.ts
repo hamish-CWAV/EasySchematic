@@ -202,8 +202,8 @@ describe("cable-schedule CSV round trip (#309)", () => {
   it("a single bare room column still lands on the SOURCE room", () => {
     // Keyword priority breaks ties between two columns competing for one role — it must
     // never leak across roles, or one unqualified "Room" column (the common shape in
-    // hand-written schedules, incl. docs/public/examples/broadcast-control-room.csv)
-    // tips into destRoom and every device imports with no room at all. Source is the
+    // hand-written schedules) tips into destRoom and every device imports with no
+    // room at all. Source is the
     // convention the "room"/"location"/"area" fallback in detectColumns also codifies.
     for (const room of ["Room", "Location", "Area"]) {
       const mapping = detectColumns([
