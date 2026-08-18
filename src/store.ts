@@ -2,10 +2,12 @@ import { create } from "zustand";
 import {
   applyNodeChanges,
   applyEdgeChanges,
+  reconnectEdge,
   type OnNodesChange,
   type OnEdgesChange,
   type OnConnect,
   type Connection,
+  type Edge,
 } from "@xyflow/react";
 import type {
   DeviceNode,
@@ -38,7 +40,7 @@ import type {
 } from "./types";
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
-import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
+import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, stubTagEndOf, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
 import { getPortAbsolutePositions, parentOffsetFromMap } from "./snapUtils";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, portSide } from "./types";
@@ -335,6 +337,15 @@ export interface PortEditConflict {
   adapterFailed?: boolean;
 }
 
+/**
+ * What a re-route drag did to the connection it grabbed. "stub-label-end" means the drag
+ * was holding a stub tag rather than a real connection end: the tag is not a port, so
+ * nothing was changed and no undo step was pushed (#318). Both device ends of a stubbed
+ * connection are true ends and behave like any other — dropped on a port they re-route,
+ * dropped in empty space they disconnect.
+ */
+export type ReconnectOutcome = "reconnected" | "deleted" | "stub-label-end" | "none";
+
 interface SchematicState {
   nodes: SchematicNode[];
   edges: ConnectionEdge[];
@@ -368,6 +379,14 @@ interface SchematicState {
    *  GC, junction + waypoint reconciliation all run). Used by the bridge's
    *  delete_connection tool. */
   deleteConnection: (connectionId: string) => { removedStubLinks: number };
+  /** Re-route one end of a connection onto a port the user dropped it on. Keeps the
+   *  connection id — cable IDs, path handles and patch hops are all keyed by it. One
+   *  undo step; a refused drop pushes none. */
+  reconnectConnectionEnd: (oldEdge: Edge, newConnection: Connection) => ReconnectOutcome;
+  /** A re-route drag released over empty space: disconnect the end being held, which
+   *  deletes the connection. `draggedEndNodeId` is the node that end sits on. One undo
+   *  step; a refused drop pushes none. */
+  disconnectConnectionEnd: (edgeId: string, draggedEndNodeId: string | null) => ReconnectOutcome;
   copySelected: () => void;
   pasteClipboard: () => void;
   alignSelectedNodes: (op: AlignOperation) => void;
@@ -965,15 +984,6 @@ function stripDeadHops(edges: ConnectionEdge[], deadNodeIds: Set<string>): Conne
   });
 }
 
-/** Deleting one half of a stub connection takes the other half with it (#318). The user
- *  only asked for one, so say what else went — mirrors the rack-placement cascade toast. */
-function reportStubCascade(addToast: (m: string, k: "info") => void, links: number) {
-  addToast(
-    `Removed ${links} stub connection${links > 1 ? "s" : ""} — both halves of a stub go together`,
-    "info",
-  );
-}
-
 /** Sync rack-related counters from pages data. */
 function syncRackCounters(pages: SchematicPage[]) {
   for (const page of pages) {
@@ -1432,6 +1442,62 @@ function getPortFromHandle(
   return ports.find((p) => p.id === baseId);
 }
 
+/**
+ * Re-route validity for ONE LEG of a stubbed connection, whose tag end is a stub-label
+ * node rather than a port (#318).
+ *
+ * The plain rules below can't judge this: they resolve both ends to ports and a tag has
+ * none, so every leg came back invalid and a drop on a perfectly good port was read as a
+ * release over empty space — deleting the pair. The tag is only a stand-in for the device
+ * at the far end of the logical cable, so validate what the cable really joins: the port
+ * being dropped on against the port on the partner leg's device, in the leg's own
+ * direction. Both legs drop out of the edge list first — they ARE this cable, so they
+ * must not count against the handle-occupancy guards.
+ */
+function validateStubLegConnection(
+  nodes: SchematicNode[],
+  edges: ConnectionEdge[],
+  connection: Connection,
+  tagId: string,
+  excludeEdgeId: string | null,
+): boolean {
+  const tag = nodes.find((n) => n.id === tagId);
+  if (!tag || tag.type !== "stub-label") return false;
+  const linkId = (tag.data as import("./types").StubLabelData).linkedConnectionId;
+  if (!linkId) return false;
+
+  // The partner leg carries the far device. Without it the link is already half-dead
+  // (reconcileStubPairs is about to drop it) and there is nothing to re-route onto.
+  const partner = edges.find(
+    (e) => e.data?.linkedConnectionId === linkId && e.source !== tagId && e.target !== tagId,
+  );
+  if (!partner) return false;
+  const partnerTagId = stubTagEndOf(partner, nodes);
+  if (!partnerTagId) return false;
+
+  // A leg runs device → tag on the source side and tag → device on the target side, so
+  // each leg's orientation names which half of the logical cable it is. The two must
+  // disagree; if they don't, the pair is malformed.
+  const draggedIsSourceSide = connection.target === tagId;
+  const partnerIsSourceSide = partner.target === partnerTagId;
+  if (draggedIsSourceSide === partnerIsSourceSide) return false;
+
+  const dropped = draggedIsSourceSide
+    ? { node: connection.source, handle: connection.sourceHandle ?? null }
+    : { node: connection.target, handle: connection.targetHandle ?? null };
+  const far = partnerIsSourceSide
+    ? { node: partner.source, handle: partner.sourceHandle ?? null }
+    : { node: partner.target, handle: partner.targetHandle ?? null };
+
+  const straightThrough: Connection = draggedIsSourceSide
+    ? { source: dropped.node, sourceHandle: dropped.handle, target: far.node, targetHandle: far.handle }
+    : { source: far.node, sourceHandle: far.handle, target: dropped.node, targetHandle: dropped.handle };
+
+  const ownLegIds = new Set(edges.filter((e) => e.data?.linkedConnectionId === linkId).map((e) => e.id));
+  if (excludeEdgeId) ownLegIds.add(excludeEdgeId);
+  return validateConnection(nodes, edges.filter((e) => !ownLegIds.has(e.id)), straightThrough, null);
+}
+
 /** Connect-time validity rules, shared by the store's isValidConnection and port-edit
  *  revalidation (#306). `excludeEdgeId` is left out of the duplicate-handle checks. */
 function validateConnection(
@@ -1440,6 +1506,12 @@ function validateConnection(
   connection: Connection,
   excludeEdgeId: string | null,
 ): boolean {
+  // Exactly one end on a stub tag means a stub leg is being re-routed — judged against
+  // the far device instead, since a tag is not a port. (Tag handles are not connectable,
+  // so this is only ever reached from a reconnect drag, never a fresh one.)
+  const tagId = stubTagEndOf(connection, nodes);
+  if (tagId) return validateStubLegConnection(nodes, edges, connection, tagId, excludeEdgeId);
+
   const sourcePort = getPortFromHandle(
     nodes,
     connection.source,
@@ -1998,7 +2070,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       // edge list and doesn't leave path handles behind for the cascaded leg.
       const healed = reconcileStubPairs(get().nodes, newEdges);
       set({ edges: healed.edges, nodes: reconcileWaypointNodes(healed.nodes, healed.edges) });
-      if (healed.removedLinks > 0) reportStubCascade(get().addToast, healed.removedLinks);
     } else {
       set({ edges: newEdges });
     }
@@ -2352,7 +2423,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       pages,
       ...(nextDistances !== state.roomDistances ? { roomDistances: nextDistances } : {}),
     });
-    if (stubHealed.removedLinks > 0) reportStubCascade(get().addToast, stubHealed.removedLinks);
     get().saveToLocalStorage();
     return { removedStubLinks: stubHealed.removedLinks };
   },
@@ -2389,6 +2459,60 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       edges: state.edges.map((e) => ({ ...e, selected: e.id === connectionId })),
     });
     return get().removeSelected();
+  },
+
+  reconnectConnectionEnd: (oldEdge: Edge, newConnection: Connection) => {
+    const state = get();
+    // reconnectEdge is a no-op for an edge that is already gone — bail before the
+    // snapshot rather than leave a dead undo step behind.
+    if (!state.edges.some((e) => e.id === oldEdge.id)) return "none";
+    // A stub tag is not a port: dropping the TAG end on one would leave the tag with no
+    // leg and render "?" at both ends of the link (#318). The device end of a stub leg
+    // is a true end and re-routes like any other — the pair keeps its linkedConnectionId,
+    // so both tags stay whole and re-derive their text from the new endpoint.
+    const tagId = stubTagEndOf(oldEdge, state.nodes);
+    if (tagId && newConnection.source !== tagId && newConnection.target !== tagId) {
+      return "stub-label-end";
+    }
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    // Keep the existing connection id (shouldReplaceId: false). Cable IDs, path handles
+    // and patch hops are all keyed by it, and React Flow's default regenerates the id
+    // from the new endpoints, silently orphaning every one of them.
+    const updated = reconnectEdge(oldEdge, newConnection, state.edges, { shouldReplaceId: false });
+    // A stub tag exists to sit beside its port, so moving the leg's device end takes the
+    // tag along — clearing `placed` re-runs the same one-shot auto-place a device move
+    // uses (#182), which re-anchors the box and its l/r handle to the new port. A tag the
+    // user has dragged into place keeps that position, as it does on a device move.
+    let nodes = state.nodes;
+    if (tagId) {
+      nodes = state.nodes.map((n) => {
+        if (n.id !== tagId || n.type !== "stub-label") return n;
+        const d = n.data as import("./types").StubLabelData;
+        return d.userMoved || d.placed !== true ? n : { ...n, data: { ...d, placed: false } };
+      });
+    }
+    set({ edges: updated as ConnectionEdge[], ...(nodes === state.nodes ? {} : { nodes }) });
+    get().saveToLocalStorage();
+    return "reconnected";
+  },
+
+  disconnectConnectionEnd: (edgeId: string, draggedEndNodeId: string | null) => {
+    const state = get();
+    const edge = state.edges.find((e) => e.id === edgeId);
+    if (!edge) return "none";
+    // Releasing a stub TAG over empty space is always a fumble — the tag's handles are
+    // not connectable, so that drag could never have landed anywhere (#318).
+    const tagId = stubTagEndOf(edge, state.nodes);
+    if (tagId && draggedEndNodeId === tagId) return "stub-label-end";
+    // Everything else disconnects: the same path Delete takes, so a stub leg drops its
+    // partner leg and both tags via reconcileStubPairs, and waypoint / bundle / junction
+    // reconciliation all run. removeSelected pushes the single undo step — but only after
+    // deleteConnection has rewritten every selection flag to isolate this edge, so hand it
+    // the pre-drag state to snapshot instead; otherwise one Ctrl+Z brings the connection
+    // back selected, with the user's own selection gone, primed for the next Delete.
+    get().setPendingUndoSnapshot();
+    get().deleteConnection(edgeId);
+    return "deleted";
   },
 
   deleteNodeAndChildren: (nodeId: string) => {

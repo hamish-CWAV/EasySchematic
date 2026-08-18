@@ -39,14 +39,13 @@ export function healStubPortAlignment(
   edges: ConnectionEdge[],
   handles: HandleSnapshot,
 ): SchematicNode[] | null {
-  const stubIds = new Set(nodes.filter((n) => n.type === "stub-label").map((n) => n.id));
+  const stubIds = stubLabelIds(nodes);
   if (stubIds.size === 0) return null;
 
   const fixes = new Map<string, number>(); // stub node id → absolute dy to apply
   for (const e of edges) {
+    if (!isStubLeg(e, stubIds)) continue;
     const srcIsStub = stubIds.has(e.source);
-    const tgtIsStub = stubIds.has(e.target);
-    if (srcIsStub === tgtIsStub) continue; // not a stub leg
     const stubId = srcIsStub ? e.source : e.target;
     if (fixes.has(stubId)) continue;
     const devId = srcIsStub ? e.target : e.source;
@@ -116,8 +115,32 @@ export function nearestStubHandleSide(
 }
 
 /** Exactly one end of the edge is a stub-label node → it is one leg of a stubbed connection. */
-function isStubLeg(edge: ConnectionEdge, stubIds: Set<string>): boolean {
+function isStubLeg(edge: { source: string; target: string }, stubIds: Set<string>): boolean {
   return stubIds.has(edge.source) !== stubIds.has(edge.target);
+}
+
+/** Ids of every stub-label node, for the whole-graph passes below. */
+function stubLabelIds(nodes: SchematicNode[]): Set<string> {
+  return new Set(nodes.filter((n) => n.type === "stub-label").map((n) => n.id));
+}
+
+/**
+ * The stub tag this connection terminates at, or null when it is not one leg of a stubbed
+ * connection. The OTHER end is the leg's true end — the device port — and re-routes or
+ * disconnects like any ordinary connection end; the tag end does neither (a tag is not a
+ * port, and its handles are not connectable).
+ *
+ * Called per pointer-move while a connection is being dragged, so it looks up only the two
+ * endpoints rather than sweeping every node the way the whole-graph passes do.
+ */
+export function stubTagEndOf(
+  edge: { source: string; target: string },
+  nodes: SchematicNode[],
+): string | null {
+  const isTag = (id: string) => nodes.find((n) => n.id === id)?.type === "stub-label";
+  const srcIsStub = isTag(edge.source);
+  if (srcIsStub === isTag(edge.target)) return null;
+  return srcIsStub ? edge.source : edge.target;
 }
 
 /**
@@ -137,7 +160,7 @@ export function reconcileStubPairs(
   nodes: SchematicNode[],
   edges: ConnectionEdge[],
 ): { nodes: SchematicNode[]; edges: ConnectionEdge[]; removedLinks: number } {
-  const stubIds = new Set(nodes.filter((n) => n.type === "stub-label").map((n) => n.id));
+  const stubIds = stubLabelIds(nodes);
   if (stubIds.size === 0) return { nodes, edges, removedLinks: 0 };
 
   // Which stub tags each link still has a leg for. A link keyed off the EDGE's

@@ -14,10 +14,10 @@ import {
   useStoreApi,
   useUpdateNodeInternals,
   useViewport,
-  reconnectEdge,
   type Node,
   type Edge,
   type Connection,
+  type HandleType,
 } from "@xyflow/react";
 import { useSchematicStore, GRID_SIZE, setReconnectingEdgeId } from "./store";
 import { normalizeShortcutKey } from "./keyUtils";
@@ -229,6 +229,9 @@ function AutoRouteConfirmDialog() {
   );
 }
 
+/** A stub tag isn't a connection end — both re-route paths refuse a drag holding one. */
+const STUB_TAG_END_MSG = "A stub label isn't a connection end — re-route the device end instead";
+
 function SchematicCanvas() {
   const {
     nodes,
@@ -243,7 +246,6 @@ function SchematicCanvas() {
     removeSelected,
     copySelected,
     pasteClipboard,
-    pushSnapshot,
     setPendingUndoSnapshot,
     flushPendingSnapshot,
     reparentNode,
@@ -928,74 +930,44 @@ function SchematicCanvas() {
   );
 
   // Reconnection via React Flow's reconnection path (connected handle drags)
-  // No snapshot here: a re-route can end without changing anything (dropped in space on a
-  // stub half, or cancelled outright), and pushUndo doesn't dedupe — an identical snapshot
-  // would cost the user an extra Ctrl+Z to reach their previous real edit. The two paths
-  // that actually write take the snapshot themselves.
+  // No snapshot here: a re-route can end without changing anything (a stub tag dragged
+  // nowhere, or a cancelled drag), and pushUndo doesn't dedupe — an identical snapshot
+  // would cost the user an extra Ctrl+Z to reach their previous real edit. The store
+  // actions below take the snapshot on the paths that actually write.
   const onReconnectStart = useCallback((_event: React.MouseEvent, edge: Edge) => {
     reconnectingRef.current = true;
     setReconnectingEdgeId(edge.id);
-  }, []);
-
-  /** Exactly one end on a stub-label node → this connection is one half of a stubbed pair. */
-  const stubLegEnd = useCallback((edge: { source: string; target: string }) => {
-    const stubIds = new Set(
-      useSchematicStore.getState().nodes.filter((n) => n.type === "stub-label").map((n) => n.id),
-    );
-    const srcIsStub = stubIds.has(edge.source);
-    const tgtIsStub = stubIds.has(edge.target);
-    if (srcIsStub === tgtIsStub) return null;
-    return srcIsStub ? edge.source : edge.target;
   }, []);
 
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       reconnectingRef.current = false;
       const state = useSchematicStore.getState();
-      // A stub label is not a port: moving the LABEL end of a stub half onto a device
-      // would leave the label with no connection and render "?" at both ends of the
-      // link (#318). Only the device end of a stub half may be re-routed.
-      const stubId = stubLegEnd(oldEdge);
-      if (stubId && newConnection.source !== stubId && newConnection.target !== stubId) {
-        state.addToast("A stub label can't move to a port — re-route the device end instead", "info");
-        return;
+      if (state.reconnectConnectionEnd(oldEdge, newConnection) === "stub-label-end") {
+        state.addToast(STUB_TAG_END_MSG, "info");
       }
-      pushSnapshot();
-      // Keep the existing connection id (shouldReplaceId: false). Cable IDs, path handles
-      // and patch hops are all keyed by it, and React Flow's default regenerates the id
-      // from the new endpoints, silently orphaning every one of them.
-      const updated = reconnectEdge(oldEdge, newConnection, state.edges, { shouldReplaceId: false });
-      useSchematicStore.setState({ edges: updated as typeof state.edges });
-      useSchematicStore.getState().saveToLocalStorage();
     },
-    [stubLegEnd, pushSnapshot],
+    [],
   );
 
   const onReconnectEnd = useCallback(
-    (_event: MouseEvent | TouchEvent, edge: Edge) => {
+    (_event: MouseEvent | TouchEvent, edge: Edge, handleType: HandleType) => {
       setReconnectingEdgeId(null);
       // If the edge wasn't reconnected, delete it (disconnect)
       if (reconnectingRef.current) {
         reconnectingRef.current = false;
+        // React Flow reports the handle that stayed PUT (the anchor opposite the one
+        // being dragged), so the end the user is holding is the other one. A stub leg's
+        // device end is a true source/target and disconnects like any other connection —
+        // the store cascades the partner leg and both tags with it (#318).
+        const draggedEndNodeId = handleType === "source" ? edge.target : edge.source;
         const state = useSchematicStore.getState();
-        // Half of a stubbed connection has nowhere to be dropped — the stub-label end
-        // isn't connectable — so a drag that ends in empty space is a fumble, not a
-        // disconnect. Deleting that half on its own stranded the other half and both
-        // labels, which is exactly the "?" at both ends users hit while re-routing a
-        // stub (#318). Cancel instead; removing a stubbed connection stays the job of
-        // Delete, which drops the whole pair.
-        if (stubLegEnd(edge)) {
-          state.addToast("Re-route cancelled — use Delete to remove this connection", "info");
-          return;
+        if (state.disconnectConnectionEnd(edge.id, draggedEndNodeId) === "stub-label-end") {
+          state.addToast(STUB_TAG_END_MSG, "info");
         }
-        pushSnapshot();
-        useSchematicStore.setState({
-          edges: state.edges.filter((e) => e.id !== edge.id),
-        });
-        useSchematicStore.getState().saveToLocalStorage();
       }
     },
-    [stubLegEnd, pushSnapshot],
+    [],
   );
 
   // Shared helper: start preview line tracking from a handle
