@@ -3,6 +3,7 @@ import type {
   AnnotationData,
   ConnectionEdge,
   DeviceData,
+  Port,
   RoomData,
   SchematicNode,
   SignalType,
@@ -10,7 +11,7 @@ import type {
   StubLabelPageMode,
 } from "../types";
 import type { DxfWriter, EntityStyle } from "./writer";
-import { cssFontPxToDxfHeight, pxToIn, tintToWhite, hexToRgb, rgbToTrueColor, truncateToWidth } from "./units";
+import { ACI_NEAR_BLACK, ACI_WHITE, cssFontPxToDxfHeight, pxToIn, tintToWhite, hexToRgb, rgbToTrueColor, truncateToWidth } from "./units";
 import { CANONICAL_LAYERS, hexToTrueColor, resolveSignalColor } from "./layers";
 import {
   auxBlockHeight,
@@ -29,6 +30,19 @@ import { STUB_H_EST, STUB_W_EST } from "../stubPlacement";
 
 /** Matches Tailwind `rounded-lg` on the canvas DeviceNode (8px = 0.083"). */
 const DEVICE_CORNER_RADIUS_IN = 8 / 96;
+
+/**
+ * Ink for structural linework and for names that carry no colour of their own —
+ * device boxes, device names, room borders, section rules.
+ *
+ * These used to be emitted with no colour at all, i.e. BYLAYER, which put them
+ * at the mercy of the layer colour. That was ACI 7, the adaptive white/black
+ * pseudo-colour, so anything reading it literally painted them white and they
+ * disappeared against a white page. Naming the colour outright — slate-900,
+ * matching the canvas, with a non-adaptive ACI fallback — takes the layer out
+ * of the decision entirely.
+ */
+const INK = { trueColor: 0x1e293b, aci: ACI_NEAR_BLACK } as const;
 
 interface HandlePos {
   id: string;
@@ -65,6 +79,25 @@ function getHandlePositions(
     }
   }
   return result;
+}
+
+/**
+ * Resolve the port a React Flow handle belongs to.
+ *
+ * A bidirectional port owns two handles named `<id>-in` and `<id>-out`, and a
+ * passthrough port owns `<id>-rear` and `<id>-front`, so a handle id has to be
+ * stripped back to its port id. But plenty of ports are NAMED that way —
+ * `spk-xlr-in`, `combo-ts-out`, `laptop-hdmi-out` — and stripping those
+ * unconditionally asked the map for a port that does not exist, so the label was
+ * dropped and the port vanished from the drawing (14 of them in the seeded
+ * fixture alone). Match the handle id exactly first and only strip when that
+ * fails, the same precedence the port-edit revalidation settled on in #306.
+ */
+function portForHandle(handleId: string, portMap: Map<string, Port>): Port | undefined {
+  const exact = portMap.get(handleId);
+  if (exact) return exact;
+  const stripped = handleId.replace(/-(in|out|rear|front)$/, "");
+  return stripped === handleId ? undefined : portMap.get(stripped);
 }
 
 /** Convert screen-px rect to DXF-inch rect (Y flipped, bottom-left origin). */
@@ -107,12 +140,10 @@ export function emitRoom(
     data.borderStyle === "solid" ? "CONTINUOUS" :
     data.borderStyle === "dotted" ? "ES_DOTTED" :
     "ES_DASHED";
-  const borderStyle: EntityStyle = { linetype: borderLt };
-  if (data.borderColor) {
-    borderStyle.trueColor = hexToTrueColor(data.borderColor);
-  } else if (data.color) {
-    borderStyle.trueColor = hexToTrueColor(data.color);
-  }
+  const borderHex = data.borderColor ?? data.color;
+  const borderStyle: EntityStyle = borderHex
+    ? { linetype: borderLt, trueColor: hexToTrueColor(borderHex) }
+    : { linetype: borderLt, ...INK };
   writer.addRect(CANONICAL_LAYERS.ROOMS, rect.x, rect.y, rect.w, rect.h, borderStyle);
 
   // Label — just inside the top-left corner.
@@ -132,9 +163,7 @@ export function emitRoom(
       {
         height: heightIn,
         align: "left",
-        style: borderStyle.trueColor !== undefined
-          ? { trueColor: borderStyle.trueColor }
-          : undefined,
+        style: borderHex ? { trueColor: hexToTrueColor(borderHex) } : { ...INK },
       },
     );
   }
@@ -185,6 +214,7 @@ export function emitDevice(
     CANONICAL_LAYERS.DEVICES,
     rect.x, rect.y, rect.w, rect.h,
     DEVICE_CORNER_RADIUS_IN,
+    { ...INK },
   );
 
   // Header separator (bottom edge of the band)
@@ -192,6 +222,7 @@ export function emitDevice(
     CANONICAL_LAYERS.DEVICES,
     rect.x, rect.y + rect.h - pxToIn(bandH),
     rect.x + rect.w, rect.y + rect.h - pxToIn(bandH),
+    { ...INK },
   );
 
   // Canvas uses `px-3` (12px each side). Match exactly or text will spill past the box.
@@ -215,7 +246,7 @@ export function emitDevice(
       pxToIn(ax + w / 2),
       -pxToIn(labelBaselineY),
       truncateToWidth(transformLabelNow(resolvedLabel.text), labelAvailIn, labelHeight),
-      { height: labelHeight, align: "center" },
+      { height: labelHeight, align: "center", style: { ...INK } },
     );
   }
 
@@ -257,6 +288,7 @@ export function emitDevice(
       CANONICAL_LAYERS.DEVICES,
       rect.x, -pxToIn(blockTopY),
       rect.x + rect.w, -pxToIn(blockTopY),
+      { ...INK },
     );
     let cursor = blockTopY + 1 + padTop;
     for (const row of rows) {
@@ -293,11 +325,9 @@ export function emitDevice(
   const portTextHeight = cssFontPxToDxfHeight(10); // matches canvas text-[10px]
 
   for (const hp of handles) {
-    let portId = hp.id;
-    if (portId.endsWith("-in") || portId.endsWith("-out")) portId = portId.replace(/-(in|out)$/, "");
-    else if (portId.endsWith("-rear") || portId.endsWith("-front")) portId = portId.replace(/-(rear|front)$/, "");
-    const port = portMap.get(portId);
+    const port = portForHandle(hp.id, portMap);
     if (!port) continue;
+    const portId = port.id;
 
     const hex = resolveSignalColor(port.signalType, signalColors);
     const [r, g, b] = hexToRgb(hex);
@@ -332,19 +362,20 @@ export function emitDevice(
     for (const { section, handleY } of list) {
       if (section && section !== lastSec && lastSec !== undefined) {
         const sepY = -pxToIn(handleY - 6);
-        const sepStyle: EntityStyle = { linetype: "ES_DASHED" };
+        const sepStyle: EntityStyle = { linetype: "ES_DASHED", ...INK };
         // I/O section headers follow the case preference, the same as the canvas renders
         // them (DeviceNode's `displayLabel(item.name)`) — #294.
         const sectionText = transformLabelNow(section);
+        const sectionTextOpts = { height: cssFontPxToDxfHeight(8), style: { ...INK } };
         if (dir === "input") {
           writer.addLine(CANONICAL_LAYERS.DEVICES, rect.x, sepY, rect.x + rect.w / 2, sepY, sepStyle);
-          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + pxToIn(4), sepY + pxToIn(1), sectionText, { height: cssFontPxToDxfHeight(8) });
+          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + pxToIn(4), sepY + pxToIn(1), sectionText, sectionTextOpts);
         } else if (dir === "output") {
           writer.addLine(CANONICAL_LAYERS.DEVICES, rect.x + rect.w / 2, sepY, rect.x + rect.w, sepY, sepStyle);
-          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w - pxToIn(4), sepY + pxToIn(1), sectionText, { height: cssFontPxToDxfHeight(8), align: "right" });
+          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w - pxToIn(4), sepY + pxToIn(1), sectionText, { ...sectionTextOpts, align: "right" });
         } else {
           writer.addLine(CANONICAL_LAYERS.DEVICES, rect.x, sepY, rect.x + rect.w, sepY, sepStyle);
-          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w / 2, sepY + pxToIn(1), sectionText, { height: cssFontPxToDxfHeight(8), align: "center" });
+          writer.addText(CANONICAL_LAYERS.LABELS, rect.x + rect.w / 2, sepY + pxToIn(1), sectionText, { ...sectionTextOpts, align: "center" });
         }
       }
       lastSec = section;
@@ -409,8 +440,9 @@ export function emitAnnotation(
   const h = node.measured?.height ?? 80;
   const rect = toDxfRect(ax, ay, w, h);
 
-  const borderStyle: EntityStyle = {};
-  if (data.borderColor) borderStyle.trueColor = hexToTrueColor(data.borderColor);
+  const borderStyle: EntityStyle = data.borderColor
+    ? { trueColor: hexToTrueColor(data.borderColor) }
+    : { ...INK };
 
   if (data.shape === "ellipse" || data.shape === "circle") {
     const cx = rect.x + rect.w / 2;
@@ -470,7 +502,7 @@ export function emitAnnotation(
         height: cssFontPxToDxfHeight(data.fontSize ?? 12),
         align: "center",
         vAlign: "middle",
-        style: data.borderColor ? { trueColor: hexToTrueColor(data.borderColor) } : undefined,
+        style: data.borderColor ? { trueColor: hexToTrueColor(data.borderColor) } : { ...INK },
       },
     );
   }
@@ -530,11 +562,14 @@ export function emitStubLabel(
   const trueColor = hexToTrueColor(resolveSignalColor(data.signalType, defaults.signalColors));
 
   // Opaque fill, like the canvas box — the leg terminates at the pill's edge, and any
-  // connection routed past it must not read through the text.
+  // connection routed past it must not read through the text. Grounded the same way the
+  // cable-ID chip is: a SOLID for readers that fill SOLID, plus the MTEXT's own
+  // background fill below for readers that don't, both at plain white (ACI 255) rather
+  // than the adaptive 7.
   writer.addSolidFillRect(
     CANONICAL_LAYERS.LABELS,
     rect.x, rect.y, rect.w, rect.h,
-    { trueColor: 0xffffff },
+    { trueColor: 0xffffff, aci: ACI_WHITE },
   );
   writer.addRoundedRect(
     CANONICAL_LAYERS.LABELS,
@@ -552,6 +587,12 @@ export function emitStubLabel(
     CANONICAL_LAYERS.LABELS,
     rect.x + rect.w / 2, rect.y + rect.h / 2,
     text,
-    { height, attachment: 5, style: { trueColor: STUB_TEXT_TRUECOLOR } },
+    {
+      height,
+      attachment: 5,
+      style: { trueColor: STUB_TEXT_TRUECOLOR },
+      backgroundAci: ACI_WHITE,
+      backgroundScale: 1.2,
+    },
   );
 }

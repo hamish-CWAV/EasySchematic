@@ -2,37 +2,7 @@ import type { LineStyle, SignalType } from "../types";
 import { SIGNAL_LABELS } from "../types";
 import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
 import type { LayerDef, LtypeDef } from "./writer";
-import { hexToRgb, rgbToTrueColor, sanitizeName } from "./units";
-
-/** Pick a crude ACI color code (0..255) from a 24-bit RGB triple.
- *  We also emit true-color (group 420) so this is just a fallback for readers
- *  that ignore 420. */
-export function rgbToAci(r: number, g: number, b: number): number {
-  // Very small palette-match: prefer the closest of the 9 standard ACI colors.
-  // ACI 1..9 approximate colors (from AutoCAD):
-  const ACI_PALETTE: [number, number, number, number][] = [
-    [1, 255, 0, 0],     // red
-    [2, 255, 255, 0],   // yellow
-    [3, 0, 255, 0],     // green
-    [4, 0, 255, 255],   // cyan
-    [5, 0, 0, 255],     // blue
-    [6, 255, 0, 255],   // magenta
-    [7, 255, 255, 255], // white/black
-    [8, 128, 128, 128], // dark gray
-    [9, 192, 192, 192], // light gray
-  ];
-  let best = 7;
-  let bestDist = Infinity;
-  for (const [aci, ar, ag, ab] of ACI_PALETTE) {
-    const dr = r - ar, dg = g - ag, db = b - ab;
-    const d = dr * dr + dg * dg + db * db;
-    if (d < bestDist) {
-      bestDist = d;
-      best = aci;
-    }
-  }
-  return best;
-}
+import { ACI_NEAR_BLACK, hexToRgb, rgbToAci, rgbToTrueColor, sanitizeName } from "./units";
 
 export const CANONICAL_LAYERS = {
   DEFAULT: "0",
@@ -82,18 +52,21 @@ export function buildLayerDefs(
   usedSignalTypes: Set<SignalType>,
   signalColors: Partial<Record<SignalType, string>> | undefined,
 ): LayerDef[] {
+  // Every EasySchematic layer that used to be ACI 7 is 250 now. Layer 0 keeps 7
+  // because that is the DXF convention for it and nothing is drawn there without
+  // its own colour anyway.
   const layers: LayerDef[] = [
     { name: CANONICAL_LAYERS.DEFAULT, color: 7 },
     { name: CANONICAL_LAYERS.ROOMS, color: 9, linetype: "ES_DASHED" },
     { name: CANONICAL_LAYERS.ROOMS_FILL, color: 9 },
-    { name: CANONICAL_LAYERS.DEVICES, color: 7 },
+    { name: CANONICAL_LAYERS.DEVICES, color: ACI_NEAR_BLACK },
     { name: CANONICAL_LAYERS.DEVICES_HEADER, color: 8 },
-    { name: CANONICAL_LAYERS.LABELS, color: 7 },
+    { name: CANONICAL_LAYERS.LABELS, color: ACI_NEAR_BLACK },
     { name: CANONICAL_LAYERS.PORTS, color: 8 },
-    { name: CANONICAL_LAYERS.ANNOTATIONS, color: 7 },
+    { name: CANONICAL_LAYERS.ANNOTATIONS, color: ACI_NEAR_BLACK },
     { name: CANONICAL_LAYERS.ANNOTATIONS_FILL, color: 9 },
-    { name: CANONICAL_LAYERS.TITLE_BLOCK, color: 7 },
-    { name: CANONICAL_LAYERS.LEGEND, color: 7 },
+    { name: CANONICAL_LAYERS.TITLE_BLOCK, color: ACI_NEAR_BLACK },
+    { name: CANONICAL_LAYERS.LEGEND, color: ACI_NEAR_BLACK },
   ];
 
   for (const sig of usedSignalTypes) {

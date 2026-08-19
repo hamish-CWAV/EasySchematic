@@ -173,6 +173,60 @@ export function rgbToTrueColor(r: number, g: number, b: number): number {
   return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
 }
 
+/** ACI 250 — near-black, and NOT adaptive. The exporter's stand-in for "dark ink". */
+export const ACI_NEAR_BLACK = 250;
+/** ACI 255 — plain white, and NOT adaptive. The exporter's stand-in for "white". */
+export const ACI_WHITE = 255;
+
+/**
+ * Pick a crude ACI color code from a 24-bit RGB triple. Every entity also
+ * carries true color (group 420), so this is the fallback for readers that
+ * ignore 420 — Adobe Illustrator being the one that forced the issue.
+ *
+ * The palette is deliberately the saturated hues plus the two greys and white,
+ * and nothing in between. Its whole job is to keep a signal *distinguishable*
+ * when 420 is dropped, so every candidate has to be a colour worth landing on.
+ * A near-black candidate sounds harmless but sits near the centroid of the
+ * mid-dark saturated colours the app actually uses, and it swallowed 20 of the
+ * 73 signal types — NDI green and DigiLink orange both went grey — which is
+ * exactly the fidelity the fallback exists to preserve. Dark things reach 250
+ * by being *asked* for it (see `INK`), never by nearest-match.
+ *
+ * ACI 7 is absent for a different reason: it is the adaptive white/black
+ * pseudo-colour, and a reader that takes it literally paints it white, which is
+ * invisible on Illustrator's white artboard. Only white ever matched it here;
+ * black has always landed on 8. 255 now takes white, and 7 is unreachable.
+ */
+export function rgbToAci(r: number, g: number, b: number): number {
+  const ACI_PALETTE: [number, number, number, number][] = [
+    [1, 255, 0, 0],       // red
+    [2, 255, 255, 0],     // yellow
+    [3, 0, 255, 0],       // green
+    [4, 0, 255, 255],     // cyan
+    [5, 0, 0, 255],       // blue
+    [6, 255, 0, 255],     // magenta
+    [8, 128, 128, 128],   // dark gray
+    [9, 192, 192, 192],   // light gray
+    [ACI_WHITE, 255, 255, 255],
+  ];
+  let best = ACI_NEAR_BLACK; // never survives a non-empty palette; defensive only
+  let bestDist = Infinity;
+  for (const [aci, ar, ag, ab] of ACI_PALETTE) {
+    const dr = r - ar, dg = g - ag, db = b - ab;
+    const d = dr * dr + dg * dg + db * db;
+    if (d < bestDist) {
+      bestDist = d;
+      best = aci;
+    }
+  }
+  return best;
+}
+
+/** ACI fallback for a packed 24-bit true color (group 420). */
+export function aciFromTrueColor(trueColor: number): number {
+  return rgbToAci((trueColor >> 16) & 0xff, (trueColor >> 8) & 0xff, trueColor & 0xff);
+}
+
 /** Mix `hex` toward white by `amount` (0..1). 0 = original, 1 = white. */
 export function tintToWhite(hex: string, amount: number): string {
   const [r, g, b] = hexToRgb(hex);

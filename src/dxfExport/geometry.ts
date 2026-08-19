@@ -2,7 +2,7 @@ import { ARC_R, GAP_HALF } from "../pathfinding";
 import type { RoutedEdge } from "../edgeRouter";
 import type { ConnectionEdge, LineStyle, SignalType } from "../types";
 import type { DxfWriter, EntityStyle } from "./writer";
-import { cssFontPxToDxfHeight, pxToIn } from "./units";
+import { ACI_WHITE, cssFontPxToDxfHeight, pxToIn } from "./units";
 import { CANONICAL_LAYERS } from "./layers";
 
 /** Corner-fillet radius on waypoint turns (matches canvas CORNER_RADIUS=8). */
@@ -359,6 +359,25 @@ const CHIP_RADIUS_IN = 2 / 96;
  *
  * The ground is a SOLID, not a HATCH: it goes under every cable ID in every export,
  * so it has to be an entity no consumer can refuse (#333).
+ *
+ * The MTEXT then carries a background fill as well, so the label is masked twice. The
+ * two mechanisms cover different readers and neither one covers both: LibreCAD fills
+ * SOLID but cannot even parse the background-fill groups (libdxfrw drops 90/63/45/441
+ * before the renderer ever sees them), while readers that decline SOLID have the
+ * background fill to fall back on. Illustrator is the reason this matters and is
+ * undocumented on both counts, so the chip carries both rather than betting on one.
+ * Drawing order is unaffected: the background belongs to the MTEXT itself, so it can
+ * never land under its own glyphs or over a later-emitted connection.
+ *
+ * Both grounds use ACI 255, not 7. ACI 7 is the adaptive white/black pseudo-colour —
+ * an opaque "white" chip written as 7 prints solid BLACK over its own text on white
+ * paper in AutoCAD.
+ *
+ * The SOLID is sized from `estimateBadgeWidth`'s character-advance estimate, the same
+ * one the canvas uses, while the MTEXT background is sized by the reader from the real
+ * glyph metrics. In a reader that honours both, the wider of the two wins and can
+ * overpaint the border by a hair. Cosmetic, and the alternative — dropping one ground —
+ * costs a reader its only mask.
  */
 function emitLabelChip(
   writer: DxfWriter,
@@ -374,7 +393,10 @@ function emitLabelChip(
   const w = pxToIn(wPx);
   const h = pxToIn(hPx);
 
-  writer.addSolidFillRect(CANONICAL_LAYERS.LABELS, x, y, w, h, { trueColor: 0xffffff });
+  writer.addSolidFillRect(
+    CANONICAL_LAYERS.LABELS, x, y, w, h,
+    { trueColor: 0xffffff, aci: ACI_WHITE },
+  );
   writer.addRoundedRect(
     CANONICAL_LAYERS.LABELS, x, y, w, h, CHIP_RADIUS_IN,
     { trueColor, linetype: "CONTINUOUS" },
@@ -383,7 +405,13 @@ function emitLabelChip(
     CANONICAL_LAYERS.LABELS,
     pxToIn(cxPx), -pxToIn(cyPx),
     text,
-    { height: cssFontPxToDxfHeight(fontPx), attachment: 5, style: { trueColor, linetype: "CONTINUOUS" } },
+    {
+      height: cssFontPxToDxfHeight(fontPx),
+      attachment: 5,
+      style: { trueColor, linetype: "CONTINUOUS" },
+      backgroundAci: ACI_WHITE,
+      backgroundScale: 1.2,
+    },
   );
 }
 
@@ -432,7 +460,11 @@ export function emitCableIdLabels(
  *
  *  On a stub leg, `stubEnd` names the endpoint that terminates at the stub-label
  *  box; the middle label is then anchored just inside that end so it reads
- *  between the cable ID and the stub label, matching the canvas (#201). */
+ *  between the cable ID and the stub label, matching the canvas (#201).
+ *
+ *  Custom labels are free text, so their chips lean hardest on the character-advance
+ *  width estimate — see `emitLabelChip` for why a reader honouring both grounds can
+ *  paint the MTEXT background a hair wider than the SOLID and its border. */
 export function emitCustomLabel(
   writer: DxfWriter,
   edge: ConnectionEdge,
@@ -464,7 +496,11 @@ export function emitCustomLabel(
   }
 }
 
-/** Emit a stub end marker (arrow + device name + room + page). */
+/** Emit a stub end marker (arrow + device name + room + page).
+ *
+ *  Currently unreferenced — stub ends became first-class `stub-label` nodes and are
+ *  emitted by `emitStubLabel` instead. Kept, but its background fill uses ACI 255 like
+ *  every other ground here, so wiring it back up can't reintroduce the adaptive 7. */
 export function emitStubEnd(
   writer: DxfWriter,
   endPt: { x: number; y: number },
@@ -511,7 +547,7 @@ export function emitStubEnd(
       height: cssFontPxToDxfHeight(9), // matches canvas 9pt stub label
       attachment: 5,
       style: { trueColor },
-      backgroundAci: 7,
+      backgroundAci: ACI_WHITE,
       backgroundScale: 1.2,
     },
   );

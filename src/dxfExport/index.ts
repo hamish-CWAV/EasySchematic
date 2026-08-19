@@ -28,7 +28,7 @@ import { emitLegend } from "./legend";
 const PADDING_IN = 0.25;
 
 /**
- * Build the DXF (R2000 / AC1015) text for the current schematic, or null when
+ * Build the DXF (R2004 / AC1018) text for the current schematic, or null when
  * there is nothing to draw. Split out from the download so the emitted document
  * — entity order in particular — can be inspected without a DOM.
  */

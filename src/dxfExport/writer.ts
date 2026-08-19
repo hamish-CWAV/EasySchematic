@@ -1,9 +1,17 @@
-import { escapeForMText, escapeForText, fmt } from "./units";
+import { aciFromTrueColor, escapeForMText, escapeForText, fmt } from "./units";
 
 /**
- * Hand-rolled AutoCAD 2000 (AC1015) DXF writer.
+ * Hand-rolled AutoCAD 2004 (AC1018) DXF writer.
  *
- * R2000 requires per-entity handles (group 5), owner refs (group 330), and
+ * The document declares R2004 rather than R2000 because of the group codes it
+ * actually uses: true colour (420) and the MTEXT background-fill block
+ * (90/63/45/441) are both R2004-era, and a strict reader parsing a file that
+ * calls itself R2000 is entitled to drop them. Illustrator's importer is
+ * RealDWG-based and strict; Adobe documents support through AutoCAD 2007, so
+ * R2004 is comfortably inside the range. Nothing else about the output changes
+ * — R2004 is R2000 plus groups we were already writing.
+ *
+ * R2000+ requires per-entity handles (group 5), owner refs (group 330), and
  * AcDb* subclass markers (group 100). Everything that the reader validates
  * is produced here — miss a subclass marker and AutoCAD rejects the file.
  *
@@ -102,9 +110,11 @@ export interface TextStyle {
 }
 
 export interface EntityStyle {
-  /** ACI color (group 62). Defaults to BYLAYER (256). */
+  /** ACI color (group 62). Derived from `trueColor` when omitted; set it
+   *  explicitly only to override that fallback. */
   aci?: number;
-  /** 24-bit true color (group 420). Takes precedence over aci. */
+  /** 24-bit true color (group 420). Takes precedence over aci in any reader
+   *  that understands 420. */
   trueColor?: number;
   /** Linetype name. Defaults to BYLAYER. */
   linetype?: string;
@@ -162,7 +172,7 @@ export class DxfWriter {
 
   writeHeader() {
     this.startSection("HEADER");
-    this.s(9, "$ACADVER"); this.s(1, "AC1015");
+    this.s(9, "$ACADVER"); this.s(1, "AC1018");
     this.s(9, "$DWGCODEPAGE"); this.s(3, "ANSI_1252");
     this.s(9, "$INSBASE");
     this.r(10, 0); this.r(20, 0); this.r(30, 0);
@@ -489,7 +499,13 @@ export class DxfWriter {
     this.s(100, "AcDbEntity");
     this.s(8, layer);
     if (style?.linetype) this.s(6, style.linetype);
+    // Group 62 always accompanies group 420. A reader that ignores 420 — which
+    // is every reader that treats this as an older drawing, Illustrator's
+    // included — otherwise falls back to BYLAYER and paints the entity in the
+    // layer's colour, which is how a whole schematic can come in monochrome or,
+    // on an ACI-7 layer, not come in at all.
     if (style?.aci !== undefined) this.i(62, style.aci);
+    else if (style?.trueColor !== undefined) this.i(62, aciFromTrueColor(style.trueColor));
     if (style?.lineWeight !== undefined) this.i(370, style.lineWeight);
     if (style?.trueColor !== undefined) this.i(420, style.trueColor);
     this.s(100, subclass);
@@ -665,9 +681,12 @@ export class DxfWriter {
     this.s(7, "STANDARD");
     if (opts.rotationDeg) this.r(50, opts.rotationDeg);
     if (opts.backgroundAci !== undefined) {
+      // Group order follows the MTEXT reference — 90, then 45, then 63, then 441.
+      // A lenient reader takes these in any order, but the strict RealDWG-lineage
+      // ones this export has to survive are happier reading them in spec order.
       this.i(90, 1); // background fill flag: use fill color
-      this.i(63, opts.backgroundAci);
       this.r(45, opts.backgroundScale ?? 1.25); // border offset factor
+      this.i(63, opts.backgroundAci);
       this.i(441, 0); // transparency
     }
   }
