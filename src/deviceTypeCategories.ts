@@ -150,6 +150,19 @@ export const DEVICE_TYPE_TO_CATEGORY: Record<string, string> = {
   "avoip-decoder": "Networking",
   "conferencing-bridge": "Networking",
   "digital-signage-player": "Media Servers",
+  // ── New types from the #343 orphan-type sweep ─────────────────────────
+  // "power-supply" covers plain AC/DC bricks and power packs (Infrastructure,
+  // alongside battery/ups/power-distribution) — distinct from the
+  // Control4/security-bus-specific 24vdc-power-supply/bus-power-supply and
+  // the DALI-specific dali-power-supply-and-line-break. "fog-machine" is the
+  // first atmospheric-effects slug; Lighting matches the other DMX-controlled
+  // stage gear (moving-light, led-fixture, dmx-node/-splitter). "camera-tracker"
+  // covers virtual-production tracking hardware (VIVE Mars CamTrack family);
+  // Sources follows the camera-ccu precedent for camera-chain support gear
+  // that carries no video itself.
+  "power-supply": "Infrastructure",
+  "fog-machine": "Lighting",
+  "camera-tracker": "Sources",
 };
 
 /**

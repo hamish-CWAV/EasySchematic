@@ -158,6 +158,45 @@ describe("#315(a) — device types that were only ever free-typed into D1", () =
   });
 });
 
+describe("#343 — orphan-type sweep (power-supply, fog-machine, camera-tracker)", () => {
+  const NEWLY_MAPPED_343 = ["power-supply", "fog-machine", "camera-tracker"];
+
+  it.each(NEWLY_MAPPED_343)("maps %s to a category", (type) => {
+    expect(DEVICE_TYPE_TO_CATEGORY[type]).toBeTruthy();
+  });
+
+  it("reuses existing categories rather than inventing new buckets", () => {
+    expect(DEVICE_TYPE_TO_CATEGORY["power-supply"]).toBe("Infrastructure");
+    expect(DEVICE_TYPE_TO_CATEGORY["fog-machine"]).toBe("Lighting");
+    expect(DEVICE_TYPE_TO_CATEGORY["camera-tracker"]).toBe("Sources");
+    // All three land in categories already live before #343, so the pinned
+    // #315 category set (still the full catalogue) does not grow.
+    expect(ALL_CATEGORIES).toEqual(PRE_315_CATEGORIES);
+  });
+
+  it("does not collide with the scope-specific power-supply slugs already mapped", () => {
+    // The generic power-supply slug must not overwrite the Control4/security-bus
+    // and DALI-specific supplies it was deliberately kept separate from.
+    expect(DEVICE_TYPE_TO_CATEGORY["24vdc-power-supply"]).toBe("Control");
+    expect(DEVICE_TYPE_TO_CATEGORY["bus-power-supply"]).toBe("Control");
+    expect(DEVICE_TYPE_TO_CATEGORY["dali-power-supply-and-line-break"]).toBe("Lighting");
+  });
+
+  it("renders the new slugs as AV labels, not Title Case mush", () => {
+    expect(DEVICE_TYPE_LABELS["power-supply"]).toBe("Power Supply");
+    expect(DEVICE_TYPE_LABELS["fog-machine"]).toBe("Fog Machine");
+    expect(DEVICE_TYPE_LABELS["camera-tracker"]).toBe("Camera Tracker");
+  });
+
+  it("does not let any DEVICE_TYPE_ALIASES key resolve as a canonical type", () => {
+    // Regression guard: #343 must not re-offer pir-motion-sensor,
+    // passive-subwoofer, or "AVoIP Encoder" in the picker.
+    for (const alias of Object.keys(DEVICE_TYPE_ALIASES)) {
+      expect(DEVICE_TYPE_TO_CATEGORY[alias]).toBeUndefined();
+    }
+  });
+});
+
 describe("#315(b) — approval refuses unmapped device types", () => {
   it("accepts a mapped type", () => {
     expect(checkDeviceTypeMapped("streaming-decoder")).toBeNull();
