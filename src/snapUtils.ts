@@ -1,4 +1,4 @@
-import type { ConnectionEdge, DeviceData, SchematicNode } from "./types";
+import type { ConnectionEdge, DeviceData, SchematicNode, TextStubData } from "./types";
 import { portSide } from "./types";
 
 import { GRID_SIZE } from "./gridConstants";
@@ -18,6 +18,15 @@ const SNAP_THRESHOLD = GRID_SIZE;
 const MAX_SNAP_DISTANCE = 800;
 const NEAREST_K_DEVICE = 8;
 const NEAREST_K_STUB = 12;
+
+// How far ACROSS a row the tag-to-tag scan reaches (#342). Column alignment (the
+// vertical-guide candidates) keeps the full MAX_SNAP_DISTANCE — a deliberate column of
+// tags is tall and that reach is what makes it snap. Row alignment (the horizontal-guide
+// candidates) does not: a tag's Y belongs to its own port row, and every port row on the
+// page sits on the same GRID_SIZE pitch, so at 800px there is nearly always SOME
+// unrelated tag whose row falls inside SNAP_THRESHOLD. 20 cells still covers the two tags
+// flanking one device (272px apart at STUB_GAP) and its immediate neighbours.
+const STUB_ROW_REACH = 20 * GRID_SIZE;
 
 export interface DisplayDefaults {
   useShortNames: boolean;
@@ -648,11 +657,15 @@ function computeStubSnap(
     }
   }
 
-  // 2. Other-stub alignment (column / row of stubs). Still the full MAX_SNAP_DISTANCE
-  //    scan: a stub dragged more than SNAP_THRESHOLD off its own port row has no port
-  //    candidate left to win, so a far-but-in-range stub can still claim it (#323). That
-  //    radius is what makes deliberate stub columns work, so tightening it needs its own
-  //    visual pass — not folded in here.
+  // 2. Other-stub alignment, with an axis-asymmetric reach (#342). A stub dragged more
+  //    than SNAP_THRESHOLD off its own port row has no port candidate left to win, so a
+  //    far-but-in-range stub gets to claim it — which is the point when the two form a
+  //    COLUMN (vertical guide: the peer is far below/above but its left/right/centre is
+  //    within a cell) and noise when they only share a ROW (horizontal guide: the peer is
+  //    most of a page to the side and its row happens to fall within a cell, as every port
+  //    row does — they all sit on the same GRID_SIZE pitch). So columns keep the full
+  //    MAX_SNAP_DISTANCE and rows reach only STUB_ROW_REACH. With no row candidate the tag
+  //    falls back to grid-snapping its centre, which lands on that same pitch anyway.
   const stubTopRects: Rect[] = [];
   const stubTopDistsSq: number[] = [];
   for (const n of allNodes) {
@@ -667,6 +680,8 @@ function computeStubSnap(
     xCands.push({ delta: r.left - stubAbs.left, guideAbsPos: r.left, anchorAbsRect: r, kind: "stub" });
     xCands.push({ delta: r.right - stubAbs.right, guideAbsPos: r.right, anchorAbsRect: r, kind: "stub" });
     xCands.push({ delta: r.centerX - stubAbs.centerX, guideAbsPos: r.centerX, anchorAbsRect: r, kind: "stub" });
+    const gapX = Math.max(0, Math.max(stubAbs.left - r.right, r.left - stubAbs.right));
+    if (gapX > STUB_ROW_REACH) continue;
     yCands.push({ delta: r.top - stubAbs.top, guideAbsPos: r.top, anchorAbsRect: r, kind: "stub" });
     yCands.push({ delta: r.bottom - stubAbs.bottom, guideAbsPos: r.bottom, anchorAbsRect: r, kind: "stub" });
     yCands.push({ delta: r.centerY - stubAbs.centerY, guideAbsPos: r.centerY, anchorAbsRect: r, kind: "stub" });
@@ -1198,8 +1213,15 @@ function roundToGrid(v: number): number {
  * deliberately edge-aligned to another room), and snapRoomChildrenToGrid puts
  * its devices back on the absolute grid after the move. A room that is itself
  * the anchor therefore keeps its origin while the devices around it still land
- * on the grid. Stubs keep their port-centred sub-grid position, as everywhere
- * else.
+ * on the grid. Stub tags keep their port-centred sub-grid position, as
+ * everywhere else — but a tag co-dragged with the device it hangs off rides by
+ * that device's CORRECTED shift rather than the raw delta (#334). The residue
+ * correction is up to half a cell, and a tag left behind by it sits up to 8px
+ * off its port row for good: recomputeRoutes reads the offset as a deliberate
+ * placement, healStubPortAlignment only heals strictly under half a cell, and
+ * snapNodesToGrid exempts tags on reload. Moving the pair rigidly means the gap
+ * is never opened. A tag whose device is not part of the drag still moves by
+ * the raw delta — that is the user placing the tag by hand.
  *
  * Returns only the nodes whose position actually changes, keyed by id.
  */
@@ -1208,6 +1230,8 @@ export function snapGroupRestPositions(
   draggedIds: ReadonlySet<string>,
   delta: { dx: number; dy: number },
   anchorId: string,
+  /** Connections — only read to pair a stub tag with the device its leg ends at (#334). */
+  edges: readonly ConnectionEdge[] = [],
 ): Map<string, { x: number; y: number }> {
   const nodeMap = new Map<string, SchematicNode>();
   for (const n of nodes) nodeMap.set(n.id, n);
@@ -1227,22 +1251,52 @@ export function snapGroupRestPositions(
     };
   }
 
+  // Shift actually applied to each member, so tags can inherit their device's (#334).
+  // A member's parent never moves in this pass (children of a dragged parent are
+  // skipped), so its relative shift IS its absolute shift.
+  const shifts = new Map<string, { dx: number; dy: number }>();
+  const tags: SchematicNode[] = [];
+
   for (const n of nodes) {
     if (!draggedIds.has(n.id)) continue;
     // Children of a dragged node ride along in relative coords; a dragged
     // room's children are re-snapped absolutely by snapRoomChildrenToGrid.
     if (n.parentId && draggedIds.has(n.parentId)) continue;
     let rest = { x: n.position.x + delta.dx, y: n.position.y + delta.dy };
-    const exempt = n.type === "room" || n.type === "stub-label" || n.type === "text-stub";
+    const isTag = n.type === "stub-label" || n.type === "text-stub";
+    const exempt = n.type === "room" || isTag;
     if (frame && !exempt) {
       const off = parentOffsetFromMap(n, nodeMap);
       const absX = frame.restX + roundToGrid(n.position.x + off.dx - frame.preX);
       const absY = frame.restY + roundToGrid(n.position.y + off.dy - frame.preY);
       rest = { x: absX - off.dx, y: absY - off.dy };
     }
+    if (isTag) tags.push(n);
+    shifts.set(n.id, { dx: rest.x - n.position.x, dy: rest.y - n.position.y });
     if (rest.x !== n.position.x || rest.y !== n.position.y) moves.set(n.id, rest);
   }
+
+  // Re-hang each co-dragged tag off its own device (#334).
+  for (const t of tags) {
+    const hostId = tagHostId(t, edges);
+    const shift = hostId === undefined ? undefined : shifts.get(hostId);
+    if (!shift) continue;
+    const rest = { x: t.position.x + shift.dx, y: t.position.y + shift.dy };
+    if (rest.x !== t.position.x || rest.y !== t.position.y) moves.set(t.id, rest);
+    else moves.delete(t.id);
+  }
   return moves;
+}
+
+/** The device a tag hangs off: the far end of a stub tag's leg, or a text stub's
+ *  declared anchor. Undefined for a tag with no leg (an orphan awaiting cleanup). */
+function tagHostId(tag: SchematicNode, edges: readonly ConnectionEdge[]): string | undefined {
+  if (tag.type === "text-stub") return (tag.data as TextStubData).anchorNodeId;
+  for (const e of edges) {
+    if (e.source === tag.id) return e.target;
+    if (e.target === tag.id) return e.source;
+  }
+  return undefined;
 }
 
 /**

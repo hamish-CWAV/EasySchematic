@@ -1331,7 +1331,9 @@ function SchematicCanvas() {
         // different sub-grid residue — devices inside an off-grid room — off the
         // absolute routing grid. The correction re-hangs the group off the
         // anchor we just snapped, so the reference's residue does not survive.
-        const moves = snapGroupRestPositions(state.nodes, draggedIds, { dx, dy }, draggedNode.id);
+        // Edges are passed so a co-dragged stub tag rides with the device its leg
+        // ends at instead of being left behind by that correction (#334).
+        const moves = snapGroupRestPositions(state.nodes, draggedIds, { dx, dy }, draggedNode.id, state.edges);
         let updatedNodes: SchematicNode[] = state.nodes;
         if (moves.size > 0) {
           updatedNodes = state.nodes.map((n) => {

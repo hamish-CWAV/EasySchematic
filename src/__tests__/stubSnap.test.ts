@@ -111,3 +111,58 @@ describe("stub tags snap to their own connector, not a neighbour's (#323)", () =
     expect(snap.y + STUB_H_EST / 2).toBe(decoyPort.absY);
   });
 });
+
+/**
+ * #342 — the other half of #323: the tag-to-tag alignment scan.
+ *
+ * A tag dragged more than SNAP_THRESHOLD clear of its own port row has no port candidate
+ * left, so any tag inside the 800px scan radius could claim the drop. Column alignment
+ * needs that radius; row alignment does not, and because every port row on the page sits
+ * on the same 16px pitch there is nearly always SOME far-away tag whose row falls inside
+ * the threshold. Reach is now asymmetric: full radius DOWN a column, 320px ACROSS a row.
+ */
+describe("tag-to-tag alignment reach is axis-asymmetric (#342)", () => {
+  const own = device("dev-switcher", "SWITCHER", 900, 100, [
+    port("p1", "SDI IN 1", "input"),
+    port("p2", "SDI IN 2", "input"),
+  ]);
+  const ownLeg = leg("stub-e1-tgt", "dev-switcher", "p1");
+
+  /** Drop point well clear of the tag's own port on BOTH axes, so section 1 offers
+   *  nothing and only the tag-to-tag scan can decide where this lands. */
+  function droppedFarFromItsPort() {
+    const ownPort = portRow(own, "p1", [own]);
+    const left = ownPort.absX - STUB_GAP - 137 - 400;
+    const top = ownPort.absY + 200;
+    return { dragged: tag("stub-e1-tgt", left, top), left, top };
+  }
+
+  it("still aligns a column peer 600px below", () => {
+    const { dragged, left, top } = droppedFarFromItsPort();
+    // Directly below and 9px out of true — a deliberate column the user is tidying.
+    const peer = tag("stub-column-peer", left + 9, top + 600);
+    const snap = computeSnap(dragged, [own, dragged, peer], undefined, [ownLeg]);
+    expect(snap.x).toBe(left + 9);
+  });
+
+  it("no longer takes the row of an unrelated tag 700px to the side", () => {
+    const { dragged, left, top } = droppedFarFromItsPort();
+    // 700px away with a row 6px off — the accidental latch. 563px of clear space
+    // between the boxes, well past STUB_ROW_REACH.
+    const stranger = tag("stub-stranger", left + 700, top + 6);
+    const snap = computeSnap(dragged, [own, dragged, stranger], undefined, [ownLeg]);
+
+    expect(snap.y).not.toBe(top + 6);
+    // No row candidate left, so the centre falls back to the grid — the same 16px
+    // pitch every port row sits on.
+    expect((snap.y + STUB_H_EST / 2) % 16).toBe(0);
+  });
+
+  it("keeps row alignment for a tag inside the row reach", () => {
+    const { dragged, left, top } = droppedFarFromItsPort();
+    // Two tags flanking one device sit ~272px apart; that case must still snap.
+    const neighbour = tag("stub-neighbour", left + 272, top + 6);
+    const snap = computeSnap(dragged, [own, dragged, neighbour], undefined, [ownLeg]);
+    expect(snap.y).toBe(top + 6);
+  });
+});

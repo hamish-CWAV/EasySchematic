@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { CURRENT_SCHEMA_VERSION } from "../migrations";
 import { GRID_SIZE } from "../gridConstants";
-import { computeSnap, enforceMinSpacing, snapGroupRestPositions, snapParentedRestPosition } from "../snapUtils";
-import type { SchematicFile, SchematicNode } from "../types";
+import { computeSnap, enforceMinSpacing, getPortAbsolutePositions, snapGroupRestPositions, snapParentedRestPosition } from "../snapUtils";
+import { STUB_GAP, STUB_H_EST } from "../stubPlacement";
+import type { ConnectionEdge, SchematicFile, SchematicNode } from "../types";
 
 /**
  * Regression tests for #322 — devices inside a room ("section") must land on the
@@ -426,7 +427,9 @@ describe("group-drag rest positions inside an off-grid room (#327)", () => {
     expect(moves.get("dev-off")).toEqual({ x: 400, y: 400 });
   });
 
-  it("leaves stubs on their port-centred sub-grid position", () => {
+  it("leaves a tag with no leg on its port-centred sub-grid position", () => {
+    // No leg means no device to ride with (#334), so the tag stays exempt from the
+    // absolute-grid correction and rests exactly where the raw delta put it.
     const stub = {
       ...device("stub-1", 64, 30.5, "room-1"),
       type: "stub-label",
@@ -446,5 +449,141 @@ describe("group-drag rest positions inside an off-grid room (#327)", () => {
     const nodes = offGridRoomScene();
     const moves = snapGroupRestPositions(nodes, new Set(["dev-3"]), { dx: GRID_SIZE, dy: 0 }, "gone");
     expect(moves.get("dev-3")).toEqual({ x: 400 + GRID_SIZE, y: 96 });
+  });
+});
+
+describe("co-dragged stub tags ride with their device (#334)", () => {
+  // Room origin at an exact HALF-CELL residue on both axes — what centre-alignment
+  // produces, and the setup #327's verification used. Its device is therefore corrected
+  // by exactly GRID_SIZE/2 = 8px, the one value healStubPortAlignment refuses to heal
+  // (its band is 0.75px ≤ |dy| < 8, strictly exclusive at 8), so a tag left behind by
+  // the correction sits 8px off its port row for good.
+  const HALF = GRID_SIZE / 2;
+
+  function ported(id: string, x: number, y: number, parentId?: string): SchematicNode {
+    return {
+      id,
+      type: "device",
+      position: { x, y },
+      parentId,
+      measured: { width: 144, height: 96 },
+      data: {
+        label: id,
+        deviceType: "misc",
+        ports: [
+          { id: "p1", label: "SDI OUT 1", signalType: "sdi", direction: "output" },
+          { id: "p2", label: "SDI OUT 2", signalType: "sdi", direction: "output" },
+        ],
+      },
+    } as SchematicNode;
+  }
+
+  function tag(id: string, x: number, y: number): SchematicNode {
+    return {
+      id,
+      type: "stub-label",
+      position: { x, y },
+      data: { signalType: "sdi", linkedConnectionId: "link-1", side: "target", placed: true },
+      measured: { width: 137, height: STUB_H_EST },
+    } as unknown as SchematicNode;
+  }
+
+  const leg: ConnectionEdge = {
+    id: "e1-tgt",
+    source: "stub-1",
+    sourceHandle: "l",
+    target: "dev-1",
+    targetHandle: "p1",
+    data: { signalType: "sdi", linkedConnectionId: "link-1" },
+  } as unknown as ConnectionEdge;
+
+  /** Absolute Y of the device's p1 row, for the current node positions. */
+  function portRowY(nodes: SchematicNode[]): number {
+    const map = new Map(nodes.map((n) => [n.id, n] as const));
+    const p = getPortAbsolutePositions(map.get("dev-1")!, map).find((q) => q.handleId === "p1")!;
+    return p.absY;
+  }
+
+  /** Device + its tag, the tag centred on the p1 row exactly as placement leaves it. */
+  function scene(): { nodes: SchematicNode[]; rowY: number } {
+    const base = [room("room-1", HALF, HALF), ported("dev-1", 64, 32, "room-1")];
+    const map = new Map(base.map((n) => [n.id, n] as const));
+    const p = getPortAbsolutePositions(map.get("dev-1")!, map).find((q) => q.handleId === "p1")!;
+    const nodes = [...base, tag("stub-1", p.absX + STUB_GAP, p.absY - STUB_H_EST / 2)];
+    return { nodes, rowY: p.absY };
+  }
+
+  function applyMoves(
+    nodes: SchematicNode[],
+    moves: Map<string, { x: number; y: number }>,
+  ): SchematicNode[] {
+    return nodes.map((n) => {
+      const pos = moves.get(n.id);
+      return pos ? ({ ...n, position: pos } as SchematicNode) : n;
+    });
+  }
+
+  it("keeps the tag on its port row when the device is corrected by exactly half a cell", () => {
+    const { nodes, rowY } = scene();
+    const moves = snapGroupRestPositions(
+      nodes, new Set(["dev-1", "stub-1"]), { dx: 0, dy: 0 }, "dev-1", [leg],
+    );
+
+    // The correction really is the boundary value the heal band excludes.
+    expect(moves.get("dev-1")!.y - 32).toBe(HALF);
+    expect(moves.get("dev-1")!.x - 64).toBe(HALF);
+
+    const rested = applyMoves(nodes, moves);
+    expectOnGrid(absPos(rested, "dev-1"));
+    expect(portRowY(rested)).toBe(rowY + HALF);
+    // Tag centre is still exactly on the row — no 8px orphan gap to heal.
+    expect(absPos(rested, "stub-1").y + STUB_H_EST / 2).toBe(portRowY(rested));
+    expect(absPos(rested, "stub-1").x).toBe(nodes[2].position.x + HALF);
+  });
+
+  it("leaves the tag behind without the pairing — the #334 failure mode", () => {
+    // Same drag with no connections supplied: the tag falls back to the raw delta and
+    // strands itself exactly half a cell off the row.
+    const { nodes } = scene();
+    const moves = snapGroupRestPositions(nodes, new Set(["dev-1", "stub-1"]), { dx: 0, dy: 0 }, "dev-1");
+    const rested = applyMoves(nodes, moves);
+    expect(portRowY(rested) - (absPos(rested, "stub-1").y + STUB_H_EST / 2)).toBe(HALF);
+  });
+
+  it("moves the tag by the raw delta when its device is not in the drag", () => {
+    const { nodes, rowY } = scene();
+    const moves = snapGroupRestPositions(
+      nodes, new Set(["stub-1", "dev-other"]), { dx: 0, dy: GRID_SIZE }, "dev-other", [leg],
+    );
+    const rested = applyMoves(nodes, moves);
+    // Deliberate hand placement: the device stayed put, so the tag leaves the row.
+    expect(portRowY(rested)).toBe(rowY);
+    expect(absPos(rested, "stub-1").y + STUB_H_EST / 2).toBe(rowY + GRID_SIZE);
+  });
+
+  it("rides a text stub with the device named by its anchorNodeId", () => {
+    const { nodes } = scene();
+    const note = {
+      id: "text-stub-1",
+      type: "text-stub",
+      position: { x: 900, y: 300.5 },
+      data: { text: "Client LAN", signalType: "network", anchorNodeId: "dev-1", anchorPortId: "p2", side: "l" },
+    } as unknown as SchematicNode;
+    const moves = snapGroupRestPositions(
+      [...nodes, note], new Set(["dev-1", "text-stub-1"]), { dx: 0, dy: 0 }, "dev-1", [leg],
+    );
+    expect(moves.get("text-stub-1")).toEqual({ x: 900 + HALF, y: 300.5 + HALF });
+  });
+
+  it("keeps the pair rigid when the tag itself is the drag anchor", () => {
+    // Grabbing the tag makes it the frame; the device still lands on the absolute grid
+    // and the tag follows it, so the row survives either grab point.
+    const { nodes } = scene();
+    const moves = snapGroupRestPositions(
+      nodes, new Set(["dev-1", "stub-1"]), { dx: 0, dy: 0 }, "stub-1", [leg],
+    );
+    const rested = applyMoves(nodes, moves);
+    expectOnGrid(absPos(rested, "dev-1"));
+    expect(absPos(rested, "stub-1").y + STUB_H_EST / 2).toBe(portRowY(rested));
   });
 });
