@@ -41,7 +41,7 @@ import type {
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
 import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, stubTagEndOf, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
-import { getPortAbsolutePositions, parentOffsetFromMap } from "./snapUtils";
+import { getPortAbsolutePositions, parentOffsetFromMap, tagHostId } from "./snapUtils";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, portSide } from "./types";
 import { pairKey } from "./roomDistance";
@@ -3962,6 +3962,37 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       if (x !== n.position.x || y !== n.position.y) newPos.set(n.id, { x, y });
     }
     if (newPos.size === 0) return;
+
+    // Carry each tag along with the device it hangs off (#334). The correction above
+    // is up to half a grid cell, and a tag left behind by it sits that far off its
+    // port row for good: this writes nodes directly, so the reanchor pass never runs,
+    // and healStubPortAlignment's band stops strictly short of half a cell. Moving the
+    // pair rigidly means the gap is never opened — on a group drag, on a plain room
+    // drag, and on a left/top-edge resize alike.
+    const absShiftOf = (id: string): { dx: number; dy: number } | undefined => {
+      const n = nodeMap.get(id);
+      if (!n) return undefined;
+      const moved = newPos.get(id) ?? n.position;
+      const pre = parentOffsetFromMap(n, nodeMap);
+      const post = parentOffsetFromMap(n, nodeMap, newPos);
+      return {
+        dx: moved.x + post.dx - (n.position.x + pre.dx),
+        dy: moved.y + post.dy - (n.position.y + pre.dy),
+      };
+    };
+    for (const n of state.nodes) {
+      if (n.type !== "stub-label" && n.type !== "text-stub") continue;
+      const hostId = tagHostId(n, state.edges, state.hiddenAdapterNodeIds);
+      const host = hostId === undefined ? undefined : absShiftOf(hostId);
+      if (!host) continue;
+      // A tag inside the room already travels with its own parent; only the
+      // remainder of its device's shift is still owed.
+      const own = n.parentId ? absShiftOf(n.parentId) : undefined;
+      const dx = host.dx - (own?.dx ?? 0);
+      const dy = host.dy - (own?.dy ?? 0);
+      if (dx === 0 && dy === 0) continue;
+      newPos.set(n.id, { x: n.position.x + dx, y: n.position.y + dy });
+    }
     set({
       nodes: state.nodes.map((n) => {
         const p = newPos.get(n.id);

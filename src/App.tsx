@@ -1333,7 +1333,9 @@ function SchematicCanvas() {
         // anchor we just snapped, so the reference's residue does not survive.
         // Edges are passed so a co-dragged stub tag rides with the device its leg
         // ends at instead of being left behind by that correction (#334).
-        const moves = snapGroupRestPositions(state.nodes, draggedIds, { dx, dy }, draggedNode.id, state.edges);
+        const moves = snapGroupRestPositions(
+          state.nodes, draggedIds, { dx, dy }, draggedNode.id, state.edges, state.hiddenAdapterNodeIds,
+        );
         let updatedNodes: SchematicNode[] = state.nodes;
         if (moves.size > 0) {
           updatedNodes = state.nodes.map((n) => {

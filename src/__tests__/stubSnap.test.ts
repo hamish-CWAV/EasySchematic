@@ -160,9 +160,27 @@ describe("tag-to-tag alignment reach is axis-asymmetric (#342)", () => {
 
   it("keeps row alignment for a tag inside the row reach", () => {
     const { dragged, left, top } = droppedFarFromItsPort();
-    // Two tags flanking one device sit ~272px apart; that case must still snap.
-    const neighbour = tag("stub-neighbour", left + 272, top + 6);
+    // Two tags flanking one device leave ~272px of CLEAR SPACE between the boxes
+    // (device width plus a STUB_GAP each side); that case must still snap. The gap
+    // the reach is compared against is box-to-box, so the peer's left edge goes a
+    // full tag width further out — measuring from `left` alone would test a 135px
+    // gap and pass under a reach 2.4x tighter than the case it names.
+    const neighbour = tag("stub-neighbour", left + 137 + 272, top + 6);
     const snap = computeSnap(dragged, [own, dragged, neighbour], undefined, [ownLeg]);
     expect(snap.y).toBe(top + 6);
+  });
+
+  it("sizes an unmeasured peer as a tag, not as a device", () => {
+    // Before React Flow measures a tag (first render, an import that has not painted
+    // yet) the scan has to estimate its box. Estimating a device's 144x48 puts the
+    // peer's right edge 64px out and its row 17px down, so the column the user can see
+    // does not snap. STUB_W_EST/STUB_H_EST are what placement and the router assume.
+    const { dragged, left, top } = droppedFarFromItsPort();
+    const unmeasured = {
+      ...tag("stub-unmeasured", left + 57, top + 600), // right edge at left + 137 with an 80px box
+      measured: undefined,
+    } as SchematicNode;
+    const snap = computeSnap(dragged, [own, dragged, unmeasured], undefined, [ownLeg]);
+    expect(snap.x).toBe(left);
   });
 });

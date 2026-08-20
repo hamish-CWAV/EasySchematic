@@ -74,9 +74,22 @@ function estimateDeviceHeight(node: SchematicNode): number {
   return 48 + portRows * 16 + totalAuxHeight(data.auxiliaryData, labelZone);
 }
 
+/** Box size before React Flow has measured the DOM. A tag is not device-sized, and
+ *  assuming it is put its right edge 64px out and its row 17px down — the router and
+ *  placement both estimate tags at STUB_W_EST × STUB_H_EST, so match them. */
+function fallbackWidth(node: SchematicNode): number {
+  if (node.type === "room") return 400;
+  return node.type === "stub-label" || node.type === "text-stub" ? STUB_W_EST : 144;
+}
+
+function fallbackHeight(node: SchematicNode): number {
+  if (node.type === "room") return 300;
+  return node.type === "stub-label" || node.type === "text-stub" ? STUB_H_EST : estimateDeviceHeight(node);
+}
+
 function nodeRect(node: SchematicNode): Rect {
-  const w = node.measured?.width ?? (node.width as number) ?? (node.style?.width as number) ?? (node.type === "room" ? 400 : 144);
-  const h = node.measured?.height ?? (node.height as number) ?? (node.style?.height as number) ?? (node.type === "room" ? 300 : estimateDeviceHeight(node));
+  const w = node.measured?.width ?? (node.width as number) ?? (node.style?.width as number) ?? fallbackWidth(node);
+  const h = node.measured?.height ?? (node.height as number) ?? (node.style?.height as number) ?? fallbackHeight(node);
   return {
     left: node.position.x,
     right: node.position.x + w,
@@ -126,8 +139,8 @@ function absoluteNodePos(
 /** Node rect in absolute world coords. Single allocation per call (parent
  *  chain walk inlined; intermediate nodeRect/absoluteNodePos avoided). */
 function absRect(node: SchematicNode, nodeMap: Map<string, SchematicNode>): Rect {
-  const w = node.measured?.width ?? (node.width as number) ?? (node.style?.width as number) ?? (node.type === "room" ? 400 : 144);
-  const h = node.measured?.height ?? (node.height as number) ?? (node.style?.height as number) ?? (node.type === "room" ? 300 : estimateDeviceHeight(node));
+  const w = node.measured?.width ?? (node.width as number) ?? (node.style?.width as number) ?? fallbackWidth(node);
+  const h = node.measured?.height ?? (node.height as number) ?? (node.style?.height as number) ?? fallbackHeight(node);
   let nx = node.position.x;
   let ny = node.position.y;
   let pid = node.parentId;
@@ -1232,6 +1245,9 @@ export function snapGroupRestPositions(
   anchorId: string,
   /** Connections — only read to pair a stub tag with the device its leg ends at (#334). */
   edges: readonly ConnectionEdge[] = [],
+  /** Inline adapters the canvas is hiding, so a leg that ends on one pairs with the
+   *  device the connection visibly runs to instead. */
+  hiddenAdapterIds?: ReadonlySet<string>,
 ): Map<string, { x: number; y: number }> {
   const nodeMap = new Map<string, SchematicNode>();
   for (const n of nodes) nodeMap.set(n.id, n);
@@ -1243,12 +1259,15 @@ export function snapGroupRestPositions(
     const off = parentOffsetFromMap(anchor, nodeMap);
     const preX = anchor.position.x + off.dx;
     const preY = anchor.position.y + off.dy;
-    frame = {
-      preX,
-      preY,
-      restX: delta.dx === 0 ? roundToGrid(preX) : preX + delta.dx,
-      restY: delta.dy === 0 ? roundToGrid(preY) : preY + delta.dy,
-    };
+    // A tag anchor cannot frame the group: computeStubSnap centres it on its port
+    // row, which is a deliberate SUB-GRID rest, so the alignment delta is almost
+    // never zero on either axis and every co-dragged device would inherit that
+    // residue. Grid-round the frame on both axes instead; the anchor tag itself is
+    // exempt below and the pairing pass re-hangs it off its own device (#334). A
+    // ROOM anchor keeps its origin — off-grid there is deliberate (#322).
+    const tagAnchor = anchor.type === "stub-label" || anchor.type === "text-stub";
+    const rest = (pre: number, d: number) => (tagAnchor || d === 0 ? roundToGrid(pre + d) : pre + d);
+    frame = { preX, preY, restX: rest(preX, delta.dx), restY: rest(preY, delta.dy) };
   }
 
   // Shift actually applied to each member, so tags can inherit their device's (#334).
@@ -1278,7 +1297,7 @@ export function snapGroupRestPositions(
 
   // Re-hang each co-dragged tag off its own device (#334).
   for (const t of tags) {
-    const hostId = tagHostId(t, edges);
+    const hostId = tagHostId(t, edges, hiddenAdapterIds);
     const shift = hostId === undefined ? undefined : shifts.get(hostId);
     if (!shift) continue;
     const rest = { x: t.position.x + shift.dx, y: t.position.y + shift.dy };
@@ -1289,14 +1308,39 @@ export function snapGroupRestPositions(
 }
 
 /** The device a tag hangs off: the far end of a stub tag's leg, or a text stub's
- *  declared anchor. Undefined for a tag with no leg (an orphan awaiting cleanup). */
-function tagHostId(tag: SchematicNode, edges: readonly ConnectionEdge[]): string | undefined {
+ *  declared anchor. Undefined for a tag with no leg (an orphan awaiting cleanup).
+ *
+ *  `hiddenAdapterIds` is the canvas's hidden inline adapters. A leg can terminate on
+ *  one — stubbing the device→adapter half of an adapted connection leaves the tag's leg
+ *  pointing at the adapter — and a hidden adapter renders as a 1x1 pointerEvents:none
+ *  placeholder that no selection can contain, while recomputeRoutes draws the leg
+ *  through to the device on its far side. The visible host is that device, so hop. */
+export function tagHostId(
+  tag: SchematicNode,
+  edges: readonly ConnectionEdge[],
+  hiddenAdapterIds?: ReadonlySet<string>,
+): string | undefined {
   if (tag.type === "text-stub") return (tag.data as TextStubData).anchorNodeId;
+  let legId: string | undefined;
+  let host: string | undefined;
   for (const e of edges) {
-    if (e.source === tag.id) return e.target;
-    if (e.target === tag.id) return e.source;
+    if (e.source !== tag.id && e.target !== tag.id) continue;
+    legId = e.id;
+    host = e.source === tag.id ? e.target : e.source;
+    break;
   }
-  return undefined;
+  if (host === undefined || !hiddenAdapterIds?.size) return host;
+  let cur: string = host;
+  const seen = new Set<string>([tag.id]);
+  while (hiddenAdapterIds.has(cur) && !seen.has(cur)) {
+    seen.add(cur);
+    const from = cur;
+    const onward = edges.find((e) => e.id !== legId && (e.source === from || e.target === from));
+    if (!onward) break;
+    legId = onward.id;
+    cur = onward.source === from ? onward.target : onward.source;
+  }
+  return cur;
 }
 
 /**

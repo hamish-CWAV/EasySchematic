@@ -576,14 +576,176 @@ describe("co-dragged stub tags ride with their device (#334)", () => {
   });
 
   it("keeps the pair rigid when the tag itself is the drag anchor", () => {
-    // Grabbing the tag makes it the frame; the device still lands on the absolute grid
-    // and the tag follows it, so the row survives either grab point.
+    // Grabbing the tag makes it the frame — and computeStubSnap rests a tag centred on
+    // its port row, which is deliberately SUB-GRID, so the anchor's alignment delta is
+    // essentially never zero. Framing the group on that rest would hand every co-dragged
+    // device the tag's residue. The nonzero delta is the whole point of this case: with
+    // {0, 0} the frame takes the grid-rounding branch that ANY anchor gets, and the test
+    // asserts coverage it does not have.
     const { nodes } = scene();
     const moves = snapGroupRestPositions(
-      nodes, new Set(["dev-1", "stub-1"]), { dx: 0, dy: 0 }, "stub-1", [leg],
+      nodes, new Set(["dev-1", "stub-1"]), { dx: 5, dy: 3 }, "stub-1", [leg],
     );
     const rested = applyMoves(nodes, moves);
     expectOnGrid(absPos(rested, "dev-1"));
     expect(absPos(rested, "stub-1").y + STUB_H_EST / 2).toBe(portRowY(rested));
+    // Rigid: the tag rode the device's corrected shift, not the raw 5/3 nudge.
+    const devShift = {
+      dx: moves.get("dev-1")!.x - 64,
+      dy: moves.get("dev-1")!.y - 32,
+    };
+    expect(moves.get("stub-1")).toEqual({
+      x: nodes[2].position.x + devShift.dx,
+      y: nodes[2].position.y + devShift.dy,
+    });
+  });
+
+  it("rides the visible device when the leg ends on a hidden inline adapter", () => {
+    // Stubbing the device→adapter half of an adapted connection leaves the tag's leg
+    // pointing at the ADAPTER. Hidden, that adapter is a 1x1 placeholder no selection
+    // can contain, and the leg is drawn through to the device on its far side — so the
+    // pairing has to hop or it silently no-ops for this tag.
+    const { nodes } = scene();
+    const adapter = {
+      ...ported("adapter-1", 400, 32),
+      data: { label: "adapter-1", deviceType: "adapter", ports: [] },
+    } as SchematicNode;
+    const legToAdapter = { ...leg, target: "adapter-1" } as ConnectionEdge;
+    const onward = {
+      id: "e2", source: "adapter-1", sourceHandle: "p1", target: "dev-1", targetHandle: "p1",
+      data: { signalType: "sdi" },
+    } as unknown as ConnectionEdge;
+    const scene2 = [...nodes, adapter];
+
+    const moves = snapGroupRestPositions(
+      scene2, new Set(["dev-1", "stub-1"]), { dx: 0, dy: 0 }, "dev-1",
+      [legToAdapter, onward], new Set(["adapter-1"]),
+    );
+    expect(moves.get("stub-1")).toEqual({
+      x: nodes[2].position.x + HALF,
+      y: nodes[2].position.y + HALF,
+    });
+
+    // A VISIBLE adapter is a real device the user can select, so no hop: the tag hangs
+    // off the adapter, which is not in this drag, and keeps the raw delta.
+    const visible = snapGroupRestPositions(
+      scene2, new Set(["dev-1", "stub-1"]), { dx: 0, dy: 0 }, "dev-1", [legToAdapter, onward],
+    );
+    expect(visible.has("stub-1")).toBe(false);
+  });
+});
+
+describe("room re-snap carries stub tags with their device (#334)", () => {
+  // snapRoomChildrenToGrid pulls a room's devices back onto the ABSOLUTE grid by up to
+  // half a cell whenever the room rests off-grid, and used to skip stub tags entirely.
+  // It writes nodes directly, so the reanchor pass never runs, and half a cell is exactly
+  // the correction healStubPortAlignment refuses to heal — the tag was stranded off its
+  // port row for good. Every caller is covered here: group drag (the #334 fix in
+  // snapGroupRestPositions no-ops when the device's room is in the drag too), plain room
+  // drag, and a left/top-edge resize.
+  function ported(id: string, x: number, y: number, parentId?: string): SchematicNode {
+    return {
+      id,
+      type: "device",
+      position: { x, y },
+      parentId,
+      measured: { width: 144, height: 96 },
+      data: {
+        label: id,
+        deviceType: "misc",
+        ports: [{ id: "p1", label: "SDI OUT 1", signalType: "sdi", direction: "output" }],
+      },
+    } as SchematicNode;
+  }
+
+  function tag(id: string, x: number, y: number, parentId?: string): SchematicNode {
+    return {
+      id,
+      type: "stub-label",
+      position: { x, y },
+      parentId,
+      data: { signalType: "sdi", linkedConnectionId: "link-1", side: "target", placed: true },
+      measured: { width: 137, height: STUB_H_EST },
+    } as unknown as SchematicNode;
+  }
+
+  const leg = {
+    id: "e1-tgt", source: "stub-1", sourceHandle: "l", target: "dev-1", targetHandle: "p1",
+    data: { signalType: "sdi", linkedConnectionId: "link-1" },
+  } as unknown as ConnectionEdge;
+
+  function portRowY(nodes: SchematicNode[]): number {
+    const map = new Map(nodes.map((n) => [n.id, n] as const));
+    return getPortAbsolutePositions(map.get("dev-1")!, map).find((q) => q.handleId === "p1")!.absY;
+  }
+
+  /** Room at `origin`, one device inside it, its tag centred on the p1 row. The tag is
+   *  parented to the room or left top-level, as both occur in the wild. */
+  function scene(origin: { x: number; y: number }, tagInRoom: boolean): SchematicNode[] {
+    const base = [room("room-1", origin.x, origin.y), ported("dev-1", 64, 32, "room-1")];
+    const rowY = portRowY(base);
+    const map = new Map(base.map((n) => [n.id, n] as const));
+    const p = getPortAbsolutePositions(map.get("dev-1")!, map).find((q) => q.handleId === "p1")!;
+    const absX = p.absX + STUB_GAP;
+    const absY = rowY - STUB_H_EST / 2;
+    return [
+      ...base,
+      tagInRoom
+        ? tag("stub-1", absX - origin.x, absY - origin.y, "room-1")
+        : tag("stub-1", absX, absY),
+    ];
+  }
+
+  function expectStillOnRow(nodes: SchematicNode[]) {
+    expect(absPos(nodes, "stub-1").y + STUB_H_EST / 2).toBe(portRowY(nodes));
+  }
+
+  it("keeps the pair on its row when a room+device+tag group drag lands off-grid", () => {
+    // Half-cell room origin — what centre-alignment produces. The group-drag pass skips a
+    // device whose room is in the drag, so the tag finds no host shift there and the
+    // stranding has to be prevented by the room pass App.tsx runs next.
+    const nodes = scene({ x: 8, y: 8 }, true);
+    const groupMoves = snapGroupRestPositions(
+      nodes, new Set(["room-1", "dev-1", "stub-1"]), { dx: 0, dy: 0 }, "room-1", [leg],
+    );
+    expect(groupMoves.size).toBe(0); // nothing corrected yet — the gap the room pass fills
+
+    useSchematicStore.setState({ nodes, edges: [leg] });
+    useSchematicStore.getState().snapRoomChildrenToGrid("room-1");
+
+    const rested = useSchematicStore.getState().nodes;
+    expectOnGrid(absPos(rested, "dev-1"));
+    expect(portRowY(rested) - portRowY(nodes)).toBe(GRID_SIZE / 2); // the unhealable shift
+    expectStillOnRow(rested);
+  });
+
+  it("carries a top-level tag when its room is dragged to an off-grid rest", () => {
+    const nodes = scene({ x: 103, y: 57 }, false);
+    useSchematicStore.setState({ nodes, edges: [leg] });
+    useSchematicStore.getState().snapRoomChildrenToGrid("room-1");
+
+    const rested = useSchematicStore.getState().nodes;
+    expectOnGrid(absPos(rested, "dev-1"));
+    expectStillOnRow(rested);
+  });
+
+  it("carries the tag through a left/top-edge room resize", () => {
+    // Dragging the left edge right by an unsnapped 105px moves the origin, so every
+    // child travels with it and lands off the absolute grid.
+    const nodes = scene({ x: 105, y: 3 }, true);
+    (nodes[0] as SchematicNode).style = { width: 400, height: 300 };
+    useSchematicStore.setState({ nodes, edges: [leg] });
+    useSchematicStore.getState().onRoomResizeEnd("room-1");
+
+    const rested = useSchematicStore.getState().nodes;
+    expectOnGrid(absPos(rested, "dev-1"));
+    expectStillOnRow(rested);
+  });
+
+  it("leaves a tag alone when its own device did not move", () => {
+    const nodes = scene({ x: 96, y: 48 }, false); // room already on-grid
+    useSchematicStore.setState({ nodes, edges: [leg] });
+    useSchematicStore.getState().snapRoomChildrenToGrid("room-1");
+    expect(useSchematicStore.getState().nodes).toBe(nodes);
   });
 });
