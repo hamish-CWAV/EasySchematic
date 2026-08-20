@@ -657,6 +657,11 @@ const techTable: RoomSpec = {
       },
       {
         // Placed from the bundled BMD template (#332) — see BMD_AUDIO_EMBEDDER above.
+        // Renders 7 of its 8 ports on purpose: "S/PDIF Out" is in hiddenPorts below,
+        // which is what makes this device dirty against its template. Counted as a
+        // dropped port twice already (#344, and once while chasing DXF omissions), so
+        // if you are here because a port is missing from the canvas or an export —
+        // that is this, not a layout bug.
         id: "device-21",
         label: BMD_AUDIO_EMBEDDER.label,
         ports: bmdPorts,
