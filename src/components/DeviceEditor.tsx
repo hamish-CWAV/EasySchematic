@@ -1486,7 +1486,7 @@ export default function DeviceEditor() {
           })()}
 
           {/* Power */}
-          {(ports.some((p) => p.signalType === "power") || deviceType.includes("power")) && (
+          {(ports.some((p) => p.signalType === "power") || deviceType.includes("power") || deviceType.includes("company-switch")) && (
             <details className="text-xs">
               <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--color-text)] select-none py-1">
                 Power
@@ -1537,7 +1537,7 @@ export default function DeviceEditor() {
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
-                {deviceType.includes("power-distribution") && (
+                {(deviceType.includes("power-distribution") || deviceType.includes("company-switch") || deviceType.includes("power-supply")) && (
                   <div className="col-span-2">
                     <label className="block text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-0.5">
                       Power Capacity (W)

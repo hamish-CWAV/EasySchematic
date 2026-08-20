@@ -165,4 +165,41 @@ describe("computePowerReport — distro loading", () => {
     const { unconnectedPowerW } = computePowerReport(nodes, edges);
     expect(unconnectedPowerW).toBe(0);
   });
+
+  // (#345) A power-supply's own powerCapacityW must be counted exactly like a
+  // power-distribution or company-switch distro: it gets its own loading row,
+  // it's excluded from "unconnected power", and its capacity is never confused
+  // with the powerDrawW an upstream distro sees it pull.
+  it("treats a power-supply's capacity exactly like a distro's (#345)", () => {
+    const psu = (id: string, capacityW: number, powerDrawW = 0): SchematicNode =>
+      ({
+        id,
+        type: "device",
+        position: { x: 0, y: 0 },
+        data: { label: id, deviceType: "power-supply", powerCapacityW: capacityW, powerDrawW },
+      } as unknown as SchematicNode);
+
+    const nodes = [
+      distro("strip", 1800),
+      psu("psu", 100, 20), // pulls 20W from the strip, outputs up to 100W
+      device("camera", 60),
+    ];
+    const edges = [powerEdge("e1", "strip", "psu"), powerEdge("e2", "psu", "camera")];
+    const { distros, unconnectedPowerW } = computePowerReport(nodes, edges);
+
+    expect(distros).toHaveLength(2);
+    const stripRow = distros.find((d) => d.label === "strip")!;
+    const psuRow = distros.find((d) => d.label === "psu")!;
+
+    // The strip's downstream load is the PSU's own draw (20W) plus everything
+    // behind it (60W) — not the PSU's 100W capacity figure.
+    expect(stripRow.loadW).toBe(80);
+    // The PSU's own row measures its output load (60W) against its own
+    // capacity (100W) — a separate figure from what it draws upstream.
+    expect(psuRow.loadW).toBe(60);
+    expect(psuRow.capacityW).toBe(100);
+    expect(psuRow.loadPercent).toBe(60);
+    // A capacity-bearing device is a distro, not a leaf load — never "unconnected".
+    expect(unconnectedPowerW).toBe(0);
+  });
 });

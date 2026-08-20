@@ -359,11 +359,11 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
               />
               <span className="text-xs text-slate-400 mt-1 block">Leave blank to auto-derive from power draw (W × 3.412)</span>
             </label>
-            {(editDeviceType.includes("power-distribution") || editDeviceType.includes("company-switch")) && (
+            {(editDeviceType.includes("power-distribution") || editDeviceType.includes("company-switch") || editDeviceType.includes("power-supply")) && (
               <label>
                 <span className="block text-sm font-medium text-slate-700 mb-1">Power Capacity (W)</span>
                 <input type="number" min="0" value={editPowerCapacityW} onChange={(e) => setEditPowerCapacityW(e.target.value)} placeholder="e.g. 2400" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <span className="text-xs text-slate-400 mt-1 block">Total supply capacity (distros only)</span>
+                <span className="text-xs text-slate-400 mt-1 block">Total supply/output capacity (distros and power supplies)</span>
               </label>
             )}
             {editPorts.some((p) => p.connectorType === "rj45" || p.connectorType === "ethercon") && (
