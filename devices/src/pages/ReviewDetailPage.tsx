@@ -3,7 +3,7 @@ import { fetchSubmission, fetchTemplate, approveSubmission, rejectSubmission, de
 import type { Submission } from "../api";
 import type { DeviceTemplate, Port, SlotDefinition } from "../../../src/types";
 import { CONNECTOR_LABELS } from "../../../src/types";
-import { DEVICE_TYPE_TO_CATEGORY, ALL_CATEGORIES } from "../../../src/deviceTypeCategories";
+import { DEVICE_TYPE_TO_CATEGORY, ALL_CATEGORIES, carriesPowerCapacity } from "../../../src/deviceTypeCategories";
 import { linkClick } from "../navigate";
 import StatusBadge from "../components/StatusBadge";
 import SignalBadge from "../components/SignalBadge";
@@ -119,7 +119,7 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
           ...(editSlotFamily.trim() && { slotFamily: editSlotFamily.trim() }),
           ...(editHostname.trim() && { hostname: editHostname.trim() }),
           ...(editPowerDrawW.trim() && { powerDrawW: Number(editPowerDrawW) }),
-          ...(editPowerCapacityW.trim() && { powerCapacityW: Number(editPowerCapacityW) }),
+          ...(editPowerCapacityW.trim() && carriesPowerCapacity(editDeviceType) && { powerCapacityW: Number(editPowerCapacityW) }),
           ...(editVoltage.trim() && { voltage: editVoltage.trim() }),
           ...(editThermalBtuh.trim() && { thermalBtuh: Number(editThermalBtuh) }),
           ...(editPoeBudgetW.trim() && { poeBudgetW: Number(editPoeBudgetW) }),
@@ -359,7 +359,7 @@ export default function ReviewDetailPage({ id, currentUserId }: { id: string; cu
               />
               <span className="text-xs text-slate-400 mt-1 block">Leave blank to auto-derive from power draw (W × 3.412)</span>
             </label>
-            {(editDeviceType.includes("power-distribution") || editDeviceType.includes("company-switch") || editDeviceType.includes("power-supply")) && (
+            {carriesPowerCapacity(editDeviceType) && (
               <label>
                 <span className="block text-sm font-medium text-slate-700 mb-1">Power Capacity (W)</span>
                 <input type="number" min="0" value={editPowerCapacityW} onChange={(e) => setEditPowerCapacityW(e.target.value)} placeholder="e.g. 2400" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />

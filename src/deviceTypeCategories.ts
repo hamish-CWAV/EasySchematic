@@ -166,6 +166,27 @@ export const DEVICE_TYPE_TO_CATEGORY: Record<string, string> = {
 };
 
 /**
+ * Device types whose spec sheet states an output wattage, so the editors offer
+ * a "Power Capacity (W)" field and the power report gives them a distribution
+ * loading row (#345).
+ *
+ * Membership is exact, never a substring test: `bus-power-supply`,
+ * `24vdc-power-supply` and `dali-power-supply-and-line-break` are deliberately
+ * separate types (see the #343 note above) that state no distributable output
+ * wattage, and `deviceType.includes("power-supply")` swept all three in.
+ */
+export const POWER_CAPACITY_DEVICE_TYPES: ReadonlySet<string> = new Set([
+  "power-distribution",
+  "company-switch",
+  "power-supply",
+]);
+
+/** Whether this device type carries a Power Capacity (W) figure. */
+export function carriesPowerCapacity(deviceType: string | undefined): boolean {
+  return POWER_CAPACITY_DEVICE_TYPES.has((deviceType ?? "").trim());
+}
+
+/**
  * Non-canonical device types that D1 rows still carry, mapped to the slug that
  * won. Kept so importers and the normalisation pass agree on one spelling per
  * concept instead of cementing the split (#315). Not merged into

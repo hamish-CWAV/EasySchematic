@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEVICE_TEMPLATES, CARD_TEMPLATES } from "../deviceLibrary";
-import { DEVICE_TYPE_TO_CATEGORY, DEVICE_TYPE_ALIASES, ALL_CATEGORIES, DEVICE_TYPE_LABELS } from "../deviceTypeCategories";
+import { DEVICE_TYPE_TO_CATEGORY, DEVICE_TYPE_ALIASES, ALL_CATEGORIES, DEVICE_TYPE_LABELS, POWER_CAPACITY_DEVICE_TYPES, carriesPowerCapacity } from "../deviceTypeCategories";
 import { checkDeviceTypeMapped, checkApprovalDeviceType } from "../../api/src/validate";
 import { validateTemplate } from "../import/validate";
 import { approveSubmission } from "../../devices/src/api";
@@ -321,5 +321,38 @@ describe("#315 — CSV/JSON import points at the canonical spelling too", () => 
     const errors = validateTemplate(templateWith("Camera Tracker")).errors.join(" ");
     expect(errors).toContain('Unknown deviceType "Camera Tracker"');
     expect(errors).not.toContain("use \"");
+  });
+});
+
+describe("#345 — carriesPowerCapacity", () => {
+  it("accepts exactly the three types that state an output wattage", () => {
+    expect([...POWER_CAPACITY_DEVICE_TYPES].sort()).toEqual([
+      "company-switch",
+      "power-distribution",
+      "power-supply",
+    ]);
+    for (const type of POWER_CAPACITY_DEVICE_TYPES) expect(carriesPowerCapacity(type)).toBe(true);
+  });
+
+  it("rejects the scope-specific supplies a substring test used to sweep in", () => {
+    // These three are deliberately separate types (#343) that distribute no
+    // wattage of their own; giving them a capacity produced spurious rows in
+    // the power report's distribution loading table.
+    expect(carriesPowerCapacity("bus-power-supply")).toBe(false);
+    expect(carriesPowerCapacity("24vdc-power-supply")).toBe(false);
+    expect(carriesPowerCapacity("dali-power-supply-and-line-break")).toBe(false);
+  });
+
+  it("rejects unrelated types, blanks, and undefined", () => {
+    expect(carriesPowerCapacity("power-mixer")).toBe(false);
+    expect(carriesPowerCapacity("converter")).toBe(false);
+    expect(carriesPowerCapacity("")).toBe(false);
+    expect(carriesPowerCapacity(undefined)).toBe(false);
+  });
+
+  it("every accepted type is a canonical device type", () => {
+    for (const type of POWER_CAPACITY_DEVICE_TYPES) {
+      expect(DEVICE_TYPE_TO_CATEGORY[type]).toBeTruthy();
+    }
   });
 });

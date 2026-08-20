@@ -192,13 +192,20 @@ export function computePowerReport(
   }
 
   // 3. Calculate unconnected power
+  //
+  // Capacity-bearing devices are NOT exempt here. Being a source for what sits
+  // behind it says nothing about whether the device's own power input is fed,
+  // and it is tested for that exactly like any other device — membership in
+  // `connectedToDistro`, populated by the walk above. This used to be a blanket
+  // skip, harmless while every capacity-bearing device was a distro or company
+  // switch drawing ~0W of its own; a power supply draws real wattage, so an
+  // unwired one silently vanished from the unconnected-power warning (#345).
   let unconnectedPowerW = 0;
   let unconnectedThermalBtuh = 0;
   for (const node of nodes) {
     if (node.type !== "device") continue;
     const data = node.data as DeviceData;
     if (data.isCableAccessory) continue;
-    if (data.powerCapacityW != null && data.powerCapacityW > 0) continue; // skip distros
     const powerDraw = data.powerDrawW ?? 0;
     if (powerDraw > 0 && !connectedToDistro.has(node.id)) {
       unconnectedPowerW += powerDraw;

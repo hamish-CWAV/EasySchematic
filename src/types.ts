@@ -275,6 +275,7 @@ export interface DeviceData {
   integratedWithCable?: boolean;
   slots?: InstalledSlot[];
   powerDrawW?: number;
+  /** Total supply/output capacity in watts — power distribution, company switches, power supplies */
   powerCapacityW?: number;
   voltage?: string;
   /** Thermal load in BTU/h for HVAC sizing; auto-derived from powerDrawW × 3.412 if omitted */
@@ -577,7 +578,7 @@ export interface DeviceTemplate {
   slots?: SlotDefinition[];
   slotFamily?: string;           // only set on expansion card templates
   powerDrawW?: number;           // Max power consumption in watts
-  powerCapacityW?: number;       // Total supply capacity in watts (distros only)
+  powerCapacityW?: number;       // Total supply/output capacity in watts (power distribution, company switches, power supplies)
   voltage?: string;              // Informational: "100-240V", "208V", "120V"
   thermalBtuh?: number;          // Thermal load in BTU/h for HVAC sizing; auto-derived from powerDrawW × 3.412 if omitted
   isVenueProvided?: boolean;     // Venue-owned gear — excluded from pack list

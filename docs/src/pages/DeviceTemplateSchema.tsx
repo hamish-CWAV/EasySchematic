@@ -94,7 +94,7 @@ export default function DeviceTemplateSchemaPage() {
           <tr><td><code>rackForm</code></td><td>string</td><td>Rack-form override — <code>"full"</code>, <code>"half"</code>, or <code>"shelf-only"</code>. Bypasses the size heuristic for edge cases like desktop units with optional rack ears</td></tr>
           <tr><td><code>facePlateLayout</code></td><td>object</td><td>Custom face-plate connector layout (set via the Face-Plate Editor in-app); persists with the template so future placements inherit it</td></tr>
           <tr><td><code>powerDrawW</code></td><td>number</td><td>Max power consumption in watts</td></tr>
-          <tr><td><code>powerCapacityW</code></td><td>number</td><td>For power distros: total capacity in watts</td></tr>
+          <tr><td><code>powerCapacityW</code></td><td>number</td><td>For power distribution, company switches and power supplies: total supply/output capacity in watts</td></tr>
           <tr><td><code>poeBudgetW</code></td><td>number</td><td>For PoE switches: total PoE budget in watts</td></tr>
           <tr><td><code>voltage</code></td><td>string</td><td>e.g. "100-240V" or "12V DC"</td></tr>
           <tr><td><code>thermalBtuh</code></td><td>number</td><td>Thermal load in BTU/h for HVAC sizing. Auto-derived from <code>powerDrawW × 3.412</code> if omitted; specify only when the measured value differs (e.g. devices with low standby dissipation).</td></tr>

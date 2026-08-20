@@ -36,6 +36,7 @@ import FacePlateEditor from "./FacePlateEditor";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
+import { carriesPowerCapacity } from "../deviceTypeCategories";
 import { visibleSaveActions, SAVE_ACTION_LABELS, SAVE_ACTION_TITLES, type SaveActionId } from "../deviceEditorActions";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
@@ -438,7 +439,7 @@ export default function DeviceEditor() {
       // Always persist dhcpServer if set (preserves range config when toggling off)
       ...(dhcpServer ? { dhcpServer } : {}),
       ...(powerDrawW != null ? { powerDrawW } : {}),
-      ...(powerCapacityW != null ? { powerCapacityW } : {}),
+      ...(powerCapacityW != null && carriesPowerCapacity(deviceType) ? { powerCapacityW } : {}),
       ...(poeBudgetW != null ? { poeBudgetW } : {}),
       ...(poeDrawW != null ? { poeDrawW } : {}),
       ...(voltage ? { voltage } : {}),
@@ -516,7 +517,7 @@ export default function DeviceEditor() {
         ...(referenceUrl.trim() ? { referenceUrl: referenceUrl.trim() } : {}),
         ...(hostname.trim() ? { hostname: hostname.trim() } : {}),
         ...(powerDrawW != null ? { powerDrawW } : {}),
-        ...(powerCapacityW != null ? { powerCapacityW } : {}),
+        ...(powerCapacityW != null && carriesPowerCapacity(deviceType) ? { powerCapacityW } : {}),
         ...(voltage ? { voltage } : {}),
         ...(thermalBtuh != null ? { thermalBtuh } : {}),
         ...(poeBudgetW != null ? { poeBudgetW } : {}),
@@ -670,7 +671,7 @@ export default function DeviceEditor() {
       ...(existing?.slotFamily ? { slotFamily: existing.slotFamily } : {}),
       ...(hostname.trim() ? { hostname: hostname.trim() } : {}),
       ...(powerDrawW != null ? { powerDrawW } : {}),
-      ...(powerCapacityW != null ? { powerCapacityW } : {}),
+      ...(powerCapacityW != null && carriesPowerCapacity(dt) ? { powerCapacityW } : {}),
       ...(voltage ? { voltage } : {}),
       ...(thermalBtuh != null ? { thermalBtuh } : {}),
       ...(poeBudgetW != null ? { poeBudgetW } : {}),
@@ -1486,7 +1487,7 @@ export default function DeviceEditor() {
           })()}
 
           {/* Power */}
-          {(ports.some((p) => p.signalType === "power") || deviceType.includes("power") || deviceType.includes("company-switch")) && (
+          {(ports.some((p) => p.signalType === "power") || deviceType.includes("power") || carriesPowerCapacity(deviceType)) && (
             <details className="text-xs">
               <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--color-text)] select-none py-1">
                 Power
@@ -1537,7 +1538,7 @@ export default function DeviceEditor() {
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
-                {(deviceType.includes("power-distribution") || deviceType.includes("company-switch") || deviceType.includes("power-supply")) && (
+                {carriesPowerCapacity(deviceType) && (
                   <div className="col-span-2">
                     <label className="block text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-0.5">
                       Power Capacity (W)

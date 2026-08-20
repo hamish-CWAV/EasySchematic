@@ -7,7 +7,7 @@ import DevicePreview from "./DevicePreview";
 import AutocompleteInput from "./AutocompleteInput";
 import SearchableSelect from "./SearchableSelect";
 import TagInput from "./TagInput";
-import { DEVICE_TYPE_TO_CATEGORY, DEVICE_TYPE_LABELS, ALL_CATEGORIES, DEVICE_TYPES_BY_CATEGORY } from "../../../src/deviceTypeCategories";
+import { DEVICE_TYPE_TO_CATEGORY, DEVICE_TYPE_LABELS, ALL_CATEGORIES, DEVICE_TYPES_BY_CATEGORY, carriesPowerCapacity } from "../../../src/deviceTypeCategories";
 
 const toKebab = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -280,7 +280,7 @@ export default function DeviceForm({ id, draftId, cloneId, pendingSubmissionId, 
         ...(slots.length > 0 && { slots }),
         ...(slotFamily.trim() && { slotFamily: slotFamily.trim() }),
         ...(powerDrawW.trim() && { powerDrawW: Number(powerDrawW) }),
-        ...(powerCapacityW.trim() && { powerCapacityW: Number(powerCapacityW) }),
+        ...(powerCapacityW.trim() && carriesPowerCapacity(effectiveDeviceType) && { powerCapacityW: Number(powerCapacityW) }),
         ...(voltage.trim() && { voltage: voltage.trim() }),
         ...(thermalBtuh.trim() && { thermalBtuh: Number(thermalBtuh) }),
         ...(poeBudgetW.trim() && { poeBudgetW: Number(poeBudgetW) }),
@@ -500,7 +500,7 @@ export default function DeviceForm({ id, draftId, cloneId, pendingSubmissionId, 
           <input type="checkbox" checked={isVenueProvided} onChange={(e) => setIsVenueProvided(e.target.checked)} className="cursor-pointer" />
           <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Venue provided (exclude from pack list)</span>
         </label>
-        {(deviceType.includes("power-distribution") || deviceType.includes("company-switch") || deviceType.includes("power-supply")) && (
+        {carriesPowerCapacity(previewDeviceType) && (
           <label>
             <span className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Power Capacity (W)</span>
             <input type="number" min="0" value={powerCapacityW} onChange={(e) => setPowerCapacityW(e.target.value)} placeholder="e.g. 2400" className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
