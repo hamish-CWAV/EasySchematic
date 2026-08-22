@@ -58,7 +58,7 @@ import PageTabs from "./components/PageTabs";
 import RackPage from "./components/RackPage";
 import PatchPanelPage from "./components/PatchPanelPage";
 import PrintSheetPage from "./components/PrintSheetPage";
-import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, parentOffsetFromMap, snapParentedRestPosition, snapGroupRestPositions, type GuideLine } from "./snapUtils";
+import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, parentOffsetFromMap, snapParentedRestPosition, snapGroupRestPositions, settleTagsAfterMove, type GuideLine } from "./snapUtils";
 import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, SchematicNode, StubLabelData, TextStubData } from "./types";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
@@ -1373,6 +1373,22 @@ function SchematicCanvas() {
             if (dn.type === "room") snapChildren(dn.id);
           }
         }
+
+        // #346: the tag bookkeeping below runs on the single-device path only, and
+        // nothing this branch calls stands in for it — reparentNode early-returns
+        // on an unchanged parent, so the store's copy never fires either. Without
+        // this, a tag whose device was dragged but which was not itself selected
+        // stays where it was, with a dogleg the length of the whole drag. Run it
+        // once the group has settled so it sees final positions, and save: the
+        // `userMoved` it stamps on a tag dragged clear of its device is a user
+        // placement that has to survive a reload.
+        const st = useSchematicStore.getState();
+        const settledNodes = settleTagsAfterMove(st.nodes, st.edges, draggedIds);
+        if (settledNodes) {
+          useSchematicStore.setState({ nodes: settledNodes });
+          useSchematicStore.getState().saveToLocalStorage();
+        }
+
         flushPendingSnapshot();
         return;
       }
@@ -1451,45 +1467,15 @@ function SchematicCanvas() {
         useSchematicStore.getState().snapRoomChildrenToGrid(draggedNode.id);
       }
 
-      // #182: keep stub labels glued to their device. When a device moves, re-anchor its
-      // connected (non-user-positioned) stubs to the moved port by clearing `placed` —
+      // #182: keep tags glued to their device. When a device moves, re-anchor its
+      // connected (non-user-positioned) tags to the moved port by clearing `placed` —
       // StubLabelNode.tryPlace then re-runs and follows the device instead of leaving the
-      // stub stranded with a dogleg. When a stub itself is dragged, mark it `userMoved` so
+      // tag stranded with a dogleg. When a tag itself is dragged, mark it `userMoved` so
       // later device moves leave the user's placement alone.
       if (draggedNode.type === "device") {
         const st = useSchematicStore.getState();
-        const stubIds = new Set(st.nodes.filter((n) => n.type === "stub-label").map((n) => n.id));
-        const followStubs = new Set<string>();
-        for (const e of st.edges) {
-          const srcStub = stubIds.has(e.source);
-          const tgtStub = stubIds.has(e.target);
-          if (srcStub === tgtStub) continue; // not a stub leg
-          const devEnd = srcStub ? e.target : e.source;
-          if (devEnd === draggedNode.id) followStubs.add(srcStub ? e.source : e.target);
-        }
-        // Text stubs (#196) anchor by data.anchorNodeId, not an edge — re-anchor those too.
-        const followTextStubs = new Set(
-          st.nodes
-            .filter((n) => n.type === "text-stub" && (n.data as TextStubData).anchorNodeId === draggedNode.id)
-            .map((n) => n.id),
-        );
-        if (followStubs.size > 0 || followTextStubs.size > 0) {
-          useSchematicStore.setState((prev) => ({
-            nodes: prev.nodes.map((n) => {
-              if (followStubs.has(n.id) && n.type === "stub-label") {
-                const d = n.data as StubLabelData;
-                if (d.userMoved || d.placed !== true) return n; // respect manual placement / pending
-                return { ...n, data: { ...d, placed: false } };
-              }
-              if (followTextStubs.has(n.id) && n.type === "text-stub") {
-                const d = n.data as TextStubData;
-                if (d.userMoved || d.placed !== true) return n;
-                return { ...n, data: { ...d, placed: false } };
-              }
-              return n;
-            }),
-          }));
-        }
+        const settledNodes = settleTagsAfterMove(st.nodes, st.edges, new Set([draggedNode.id]));
+        if (settledNodes) useSchematicStore.setState({ nodes: settledNodes });
       } else if (draggedNode.type === "stub-label") {
         useSchematicStore.setState((prev) => ({
           nodes: prev.nodes.map((n) =>

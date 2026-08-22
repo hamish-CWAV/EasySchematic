@@ -1,4 +1,4 @@
-import type { ConnectionEdge, DeviceData, SchematicNode, TextStubData } from "./types";
+import type { ConnectionEdge, DeviceData, SchematicNode, StubLabelData, TextStubData } from "./types";
 import { portSide } from "./types";
 
 import { GRID_SIZE } from "./gridConstants";
@@ -1331,6 +1331,88 @@ export function tagHostId(
   }
   if (host === undefined || !hiddenAdapterIds?.size) return host;
   return hopHiddenAdapters({ nodeId: host, handleId: null }, legId, nodes, edges, hiddenAdapterIds).nodeId;
+}
+
+/**
+ * Settle the tags around a move (#346) — the one rule for what a moved device does to
+ * its tags, shared by both drag-stop paths, moveDevice and placeDeviceInRoom.
+ *
+ * Two things happen, decided per tag by whether the tag itself was in the move and
+ * whether its device was:
+ *
+ * - Device moved, tag did not: stamp `placed: false`. That is #182's re-anchor —
+ *   StubLabelNode.tryPlace re-runs and re-hangs the tag off the moved port instead of
+ *   leaving it stranded. Only the single-device drag-stop path used to do this; the
+ *   group path returned before reaching it and the store's copy was wired only into
+ *   moveDevice / placeDeviceInRoom, neither of which the group path calls (reparentNode
+ *   early-returns on an unchanged parent). So a tag left out of a multi-device selection
+ *   stayed at its old coordinates for the whole drag distance — orders past the sub-cell
+ *   drift #334 and healStubPortAlignment deal with.
+ * - Tag moved, device did not: stamp `userMoved: true, placed: true`. The user pulled the
+ *   tag off its device deliberately, so later device moves must leave it where it is.
+ *   The single-device path already stamped that; the group path never did, which is what
+ *   makes clearing `placed` safe there.
+ *
+ * A tag that moved WITH its device is left alone — snapGroupRestPositions already rode it
+ * rigidly (#334), and clearing `placed` would throw that away and re-place it. Manually
+ * positioned tags are never re-anchored, matching every other caller.
+ *
+ * "Moved" covers descendants: a dragged room carries its devices in relative coords, and
+ * snapRoomChildrenToGrid nudges them again afterwards.
+ *
+ * The host lookup deliberately does NOT hop a hidden inline adapter the way
+ * snapGroupRestPositions does. Riding a tag rigidly works off whichever device actually
+ * shifted, but re-arming placement hands the tag to tryPlace, which resolves its anchor as
+ * the literal far end of the leg — the adapter. Hopping here would re-arm a tag that the
+ * placer then re-pins to the stationary adapter, moving it away from the device that moved.
+ *
+ * Returns a new nodes array, or null when no tag needs anything.
+ */
+export function settleTagsAfterMove(
+  nodes: readonly SchematicNode[],
+  edges: readonly ConnectionEdge[],
+  movedIds: ReadonlySet<string>,
+): SchematicNode[] | null {
+  if (movedIds.size === 0) return null;
+  const nodeMap = new Map<string, SchematicNode>();
+  for (const n of nodes) nodeMap.set(n.id, n);
+
+  // A node moved if it or any ancestor did. A corrupt save can carry a cyclic parentId
+  // chain — a revisited id ends the walk instead of hanging (as elsewhere).
+  const moved = new Set<string>();
+  for (const n of nodes) {
+    const chain: string[] = [];
+    let cur: string | undefined = n.id;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      chain.push(cur);
+      if (movedIds.has(cur) || moved.has(cur)) {
+        for (const id of chain) moved.add(id);
+        break;
+      }
+      cur = nodeMap.get(cur)?.parentId;
+    }
+  }
+
+  let changed = false;
+  const next = nodes.map((n) => {
+    if (n.type !== "stub-label" && n.type !== "text-stub") return n;
+    const hostId = tagHostId(n, nodes, edges);
+    const hostMoved = hostId !== undefined && moved.has(hostId);
+    const d = n.data as StubLabelData | TextStubData;
+    if (movedIds.has(n.id)) {
+      if (hostMoved) return n; // rode with its device — #334 already placed it
+      if (d.userMoved === true && d.placed === true) return n;
+      changed = true;
+      return { ...n, data: { ...d, userMoved: true, placed: true } } as SchematicNode;
+    }
+    if (!hostMoved) return n;
+    if (d.userMoved || d.placed !== true) return n;
+    changed = true;
+    return { ...n, data: { ...d, placed: false } } as SchematicNode;
+  });
+  return changed ? (next as SchematicNode[]) : null;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { CURRENT_SCHEMA_VERSION } from "../migrations";
 import { GRID_SIZE } from "../gridConstants";
-import { computeSnap, enforceMinSpacing, getPortAbsolutePositions, snapGroupRestPositions, snapParentedRestPosition } from "../snapUtils";
+import { computeSnap, enforceMinSpacing, getPortAbsolutePositions, settleTagsAfterMove, snapGroupRestPositions, snapParentedRestPosition } from "../snapUtils";
 import { STUB_GAP, STUB_H_EST } from "../stubPlacement";
 import type { ConnectionEdge, SchematicFile, SchematicNode } from "../types";
 
@@ -747,5 +747,273 @@ describe("room re-snap carries stub tags with their device (#334)", () => {
     useSchematicStore.setState({ nodes, edges: [leg] });
     useSchematicStore.getState().snapRoomChildrenToGrid("room-1");
     expect(useSchematicStore.getState().nodes).toBe(nodes);
+  });
+});
+
+describe("a group drag settles the tags it left out (#346)", () => {
+  // The tags are NOT in the selection — the case #334 does not cover. Nothing the group
+  // drag-stop path used to run stood in for #182's re-anchor (reparentNode early-returns
+  // on an unchanged parent, so the store's copy never fired either), so the tag stayed at
+  // its old coordinates for the whole drag distance.
+  const DRAG = 10 * GRID_SIZE;
+
+  function ported(id: string, x: number, y: number, parentId?: string): SchematicNode {
+    return {
+      id,
+      type: "device",
+      position: { x, y },
+      parentId,
+      measured: { width: 144, height: 96 },
+      data: {
+        label: id,
+        deviceType: "misc",
+        ports: [
+          { id: "sdi-out-1", label: "SDI OUT 1", signalType: "sdi", direction: "output" },
+          { id: "sdi-out-2", label: "SDI OUT 2", signalType: "sdi", direction: "output" },
+        ],
+      },
+    } as SchematicNode;
+  }
+
+  function tag(id: string, linkId: string, x: number, y: number): SchematicNode {
+    return {
+      id,
+      type: "stub-label",
+      position: { x, y },
+      data: { signalType: "sdi", linkedConnectionId: linkId, side: "target", placed: true },
+      measured: { width: 137, height: STUB_H_EST },
+    } as unknown as SchematicNode;
+  }
+
+  function legTo(deviceId: string, tagId: string, linkId: string): ConnectionEdge {
+    return {
+      id: `${linkId}-tgt`,
+      source: tagId,
+      sourceHandle: "l",
+      target: deviceId,
+      targetHandle: "sdi-out-1",
+      data: { signalType: "sdi", linkedConnectionId: linkId },
+    } as unknown as ConnectionEdge;
+  }
+
+  function portRowY(nodes: SchematicNode[], deviceId: string): number {
+    const map = new Map(nodes.map((n) => [n.id, n] as const));
+    return getPortAbsolutePositions(map.get(deviceId)!, map)
+      .find((q) => q.handleId === "sdi-out-1")!.absY;
+  }
+
+  /** A tag hung where defaultStubPlacement would put it: STUB_GAP out from SDI OUT 1,
+   *  centred on that port row. */
+  function hangTag(nodes: SchematicNode[], deviceId: string, id: string, linkId: string) {
+    const map = new Map(nodes.map((n) => [n.id, n] as const));
+    const p = getPortAbsolutePositions(map.get(deviceId)!, map)
+      .find((q) => q.handleId === "sdi-out-1")!;
+    return tag(id, linkId, p.absX + STUB_GAP, p.absY - STUB_H_EST / 2);
+  }
+
+  /** Two devices, each with its own auto-placed tag. */
+  function scene(): { nodes: SchematicNode[]; edges: ConnectionEdge[] } {
+    const devices = [ported("dev-1", 96, 96), ported("dev-2", 96, 320)];
+    return {
+      nodes: [
+        ...devices,
+        hangTag(devices, "dev-1", "stub-1", "link-1"),
+        hangTag(devices, "dev-2", "stub-2", "link-2"),
+      ],
+      edges: [legTo("dev-1", "stub-1", "link-1"), legTo("dev-2", "stub-2", "link-2")],
+    };
+  }
+
+  /** What React Flow has already committed by drag-stop: every dragged node shifted. */
+  function dragBy(nodes: SchematicNode[], draggedIds: ReadonlySet<string>, dx: number, dy: number) {
+    return nodes.map((n) =>
+      draggedIds.has(n.id)
+        ? ({ ...n, position: { x: n.position.x + dx, y: n.position.y + dy } } as SchematicNode)
+        : n,
+    );
+  }
+
+  function dataOf(nodes: SchematicNode[], id: string): { placed?: boolean; userMoved?: boolean } {
+    return nodes.find((n) => n.id === id)!.data as { placed?: boolean; userMoved?: boolean };
+  }
+
+  function applyMoves(
+    nodes: SchematicNode[],
+    moves: Map<string, { x: number; y: number }>,
+  ): SchematicNode[] {
+    return nodes.map((n) => {
+      const pos = moves.get(n.id);
+      return pos ? ({ ...n, position: pos } as SchematicNode) : n;
+    });
+  }
+
+  it("re-arms placement on both tags when two devices are dragged without them", () => {
+    const { nodes, edges } = scene();
+    const draggedIds = new Set(["dev-1", "dev-2"]);
+    const dragged = dragBy(nodes, draggedIds, DRAG, 2 * GRID_SIZE);
+
+    // The dogleg this is about. The tag started STUB_GAP from its port and centred on
+    // the port row; after the drag it is the whole drag distance out on both axes —
+    // orders past the sub-cell drift healStubPortAlignment will close.
+    const gap = (ns: SchematicNode[]) => absPos(ns, "stub-1").x - absPos(ns, "dev-1").x;
+    expect(gap(nodes) - gap(dragged)).toBe(DRAG);
+    expect(absPos(dragged, "stub-1").y + STUB_H_EST / 2 - portRowY(dragged, "dev-1"))
+      .toBe(-2 * GRID_SIZE);
+
+    const settled = settleTagsAfterMove(dragged, edges, draggedIds);
+    expect(settled).not.toBeNull();
+    expect(dataOf(settled!, "stub-1").placed).toBe(false);
+    expect(dataOf(settled!, "stub-2").placed).toBe(false);
+    // Re-arming only hands the tag back to the placer; it must not move anything itself.
+    expect(absPos(settled!, "stub-1")).toEqual(absPos(dragged, "stub-1"));
+  });
+
+  it("leaves a co-dragged tag placed — it already rode with its device (#334)", () => {
+    const { nodes, edges } = scene();
+    const draggedIds = new Set(["dev-1", "stub-1", "dev-2"]);
+    const dragged = dragBy(nodes, draggedIds, DRAG, 0);
+    const rested = applyMoves(
+      dragged,
+      snapGroupRestPositions(dragged, draggedIds, { dx: 0, dy: 0 }, "dev-1", edges),
+    );
+    // It really did ride: the same delta as its device, still centred on the port row.
+    expect(absPos(rested, "stub-1").x - absPos(nodes, "stub-1").x)
+      .toBe(absPos(rested, "dev-1").x - absPos(nodes, "dev-1").x);
+    expect(absPos(rested, "stub-1").y + STUB_H_EST / 2).toBe(portRowY(rested, "dev-1"));
+
+    const settled = settleTagsAfterMove(rested, edges, draggedIds);
+    expect(dataOf(settled!, "stub-1").placed).toBe(true);
+    expect(dataOf(settled!, "stub-1").userMoved).toBeUndefined();
+    expect(dataOf(settled!, "stub-2").placed).toBe(false);
+  });
+
+  it("marks a tag dragged clear of its stationary device as hand-placed, and honours it later", () => {
+    // Marquee-select two tags on their own and pull them off a cable crossing. The group
+    // path never stamped `userMoved`, so re-arming placement on a later device drag would
+    // have yanked both back to the port anchor.
+    const { nodes, edges } = scene();
+    const tagsOnly = new Set(["stub-1", "stub-2"]);
+    const pulled = settleTagsAfterMove(dragBy(nodes, tagsOnly, 0, 6 * GRID_SIZE), edges, tagsOnly);
+    expect(dataOf(pulled!, "stub-1")).toMatchObject({ userMoved: true, placed: true });
+    expect(dataOf(pulled!, "stub-2")).toMatchObject({ userMoved: true, placed: true });
+
+    const devicesOnly = new Set(["dev-1", "dev-2"]);
+    expect(settleTagsAfterMove(dragBy(pulled!, devicesOnly, DRAG, 0), edges, devicesOnly)).toBeNull();
+  });
+
+  it("leaves a hand-placed tag where the user put it", () => {
+    const { nodes, edges } = scene();
+    const handPlaced = nodes.map((n) =>
+      n.id === "stub-1" ? ({ ...n, data: { ...n.data, userMoved: true } } as SchematicNode) : n,
+    );
+    const draggedIds = new Set(["dev-1", "dev-2"]);
+    const settled = settleTagsAfterMove(dragBy(handPlaced, draggedIds, DRAG, 0), edges, draggedIds);
+    expect(dataOf(settled!, "stub-1").placed).toBe(true);
+    expect(dataOf(settled!, "stub-2").placed).toBe(false);
+  });
+
+  it("leaves a tag whose own device stayed put alone, and reports no change", () => {
+    const { nodes, edges } = scene();
+    const draggedIds = new Set(["dev-1"]);
+    const settled = settleTagsAfterMove(dragBy(nodes, draggedIds, DRAG, 0), edges, draggedIds);
+    expect(dataOf(settled!, "stub-2").placed).toBe(true);
+    expect(settleTagsAfterMove(nodes, edges, new Set(["dev-9"]))).toBeNull();
+    expect(settleTagsAfterMove(nodes, edges, new Set())).toBeNull();
+  });
+
+  it("follows a device carried along by a dragged room", () => {
+    // Only the room is in the selection; its devices ride in relative coords and
+    // snapRoomChildrenToGrid nudges them again afterwards, so their tags moved too.
+    const { edges } = scene();
+    const nodes: SchematicNode[] = [
+      room("room-1", 96, 96),
+      ported("dev-1", 64, 32, "room-1"),
+      ported("dev-2", 96, 320),
+      tag("stub-1", "link-1", 800, 140),
+      tag("stub-2", "link-2", 800, 364),
+    ];
+    const draggedIds = new Set(["room-1"]);
+    const settled = settleTagsAfterMove(dragBy(nodes, draggedIds, DRAG, 0), edges, draggedIds);
+    expect(dataOf(settled!, "stub-1").placed).toBe(false);
+    expect(dataOf(settled!, "stub-2").placed).toBe(true);
+  });
+
+  it("does not re-arm a tag whose leg ends on a hidden inline adapter", () => {
+    // StubLabelNode.tryPlace resolves its anchor as the literal far end of the leg, with
+    // no adapter hop — re-arming here would re-pin the tag to the stationary adapter,
+    // away from the device that moved. snapGroupRestPositions can hop because it rides
+    // the tag by a shift it already knows instead of handing it back to the placer.
+    const { nodes, edges } = scene();
+    const adapter = {
+      ...ported("adapter-1", 500, 96),
+      data: { label: "adapter-1", deviceType: "adapter", ports: [] },
+    } as SchematicNode;
+    const legToAdapter = { ...edges[0], target: "adapter-1" } as ConnectionEdge;
+    const onward = {
+      id: "e-onward", source: "adapter-1", sourceHandle: "sdi-out-1",
+      target: "dev-1", targetHandle: "sdi-out-1", data: { signalType: "sdi" },
+    } as unknown as ConnectionEdge;
+    const draggedIds = new Set(["dev-1"]);
+    const dragged = dragBy([...nodes, adapter], draggedIds, DRAG, 0);
+
+    expect(settleTagsAfterMove(dragged, [legToAdapter, onward, edges[1]], draggedIds)).toBeNull();
+  });
+
+  it("is the settle moveDevice runs too, text stubs (#196) included", () => {
+    // Both drag-stop paths and the store's own move share one rule now — the two
+    // divergent copies are what let the group path miss the re-anchor in the first place.
+    const { nodes, edges } = scene();
+    const note = {
+      id: "text-stub-1",
+      type: "text-stub",
+      position: { x: 900, y: 140 },
+      data: {
+        text: "Client LAN", signalType: "network", anchorNodeId: "dev-1",
+        anchorPortId: "sdi-out-2", side: "l", placed: true,
+      },
+    } as unknown as SchematicNode;
+    useSchematicStore.setState({ nodes: [...nodes, note], edges });
+    useSchematicStore.getState().moveDevice("dev-1", { x: 96 + DRAG, y: 96 });
+
+    const rested = useSchematicStore.getState().nodes;
+    expect(dataOf(rested, "text-stub-1").placed).toBe(false);
+    expect(dataOf(rested, "stub-1").placed).toBe(false);
+    expect(dataOf(rested, "stub-2").placed).toBe(true); // dev-2 never moved
+  });
+
+  it("runs last in the group drag-stop sequence, so the room re-snap's carry survives", () => {
+    // The order App.tsx's group branch runs: snapGroupRestPositions, the reparent pass,
+    // snapRoomChildrenToGrid, then the settle. A room at a half-cell origin makes the
+    // room pass do real work, and the settle must re-arm the tags without undoing it.
+    const base = [
+      room("room-1", 103, 57),
+      ported("dev-1", 64, 32, "room-1"),
+      ported("dev-2", 96, 520),
+    ];
+    const nodes = [
+      ...base,
+      hangTag(base, "dev-1", "stub-1", "link-1"),
+      hangTag(base, "dev-2", "stub-2", "link-2"),
+    ];
+    const edges = [legTo("dev-1", "stub-1", "link-1"), legTo("dev-2", "stub-2", "link-2")];
+    const draggedIds = new Set(["room-1", "dev-2"]);
+
+    const dragged = dragBy(nodes, draggedIds, DRAG, 0);
+    const rested = applyMoves(
+      dragged,
+      snapGroupRestPositions(dragged, draggedIds, { dx: 0, dy: 0 }, "room-1", edges),
+    );
+    useSchematicStore.setState({ nodes: rested, edges });
+    useSchematicStore.getState().snapRoomChildrenToGrid("room-1");
+    const carried = useSchematicStore.getState().nodes;
+    expectOnGrid(absPos(carried, "dev-1"));
+    expect(absPos(carried, "stub-1").y + STUB_H_EST / 2).toBe(portRowY(carried, "dev-1"));
+
+    const settled = settleTagsAfterMove(carried, useSchematicStore.getState().edges, draggedIds);
+    expect(dataOf(settled!, "stub-1").placed).toBe(false);
+    expect(dataOf(settled!, "stub-2").placed).toBe(false);
+    // The #334 carry is intact — the settle re-arms placement, it does not reposition.
+    expect(absPos(settled!, "stub-1")).toEqual(absPos(carried, "stub-1"));
+    expect(absPos(settled!, "dev-1")).toEqual(absPos(carried, "dev-1"));
   });
 });

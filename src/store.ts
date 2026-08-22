@@ -41,7 +41,7 @@ import type {
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
 import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, stubTagEndOf, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
-import { getPortAbsolutePositions, parentOffsetFromMap, tagHostId } from "./snapUtils";
+import { getPortAbsolutePositions, parentOffsetFromMap, settleTagsAfterMove, tagHostId } from "./snapUtils";
 import { resolveHiddenAdapterIds } from "./adapterVisibility";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, portSide } from "./types";
@@ -1395,36 +1395,6 @@ function nodeCenterFromAbsolute(
   return { x: absolutePosition.x + w / 2, y: absolutePosition.y + h / 2 };
 }
 
-/** #182: when a device moves, clear `placed` on its connected auto-placed stub
- *  labels so they re-follow the device's port instead of stranding with a dogleg.
- *  A stub leg is an edge with exactly one stub-label end; the other end is the
- *  device. User-positioned stub labels are left alone. Returns a new nodes array
- *  (or the same array when nothing needs clearing). Shared by moveDevice and
- *  placeDeviceInRoom so the "which stubs follow" logic lives in one place. */
-function reanchorConnectedStubLabels(
-  nodes: SchematicNode[],
-  edges: ConnectionEdge[],
-  deviceId: string,
-): SchematicNode[] {
-  const stubIds = new Set(nodes.filter((n) => n.type === "stub-label").map((n) => n.id));
-  const followStubs = new Set<string>();
-  for (const e of edges) {
-    const srcStub = stubIds.has(e.source);
-    const tgtStub = stubIds.has(e.target);
-    if (srcStub === tgtStub) continue; // not a stub leg
-    const devEnd = srcStub ? e.target : e.source;
-    if (devEnd === deviceId) followStubs.add(srcStub ? e.source : e.target);
-  }
-  if (followStubs.size === 0) return nodes;
-  return nodes.map((n) => {
-    if (followStubs.has(n.id) && n.type === "stub-label") {
-      const d = n.data as import("./types").StubLabelData;
-      if (!d.userMoved && d.placed === true) return { ...n, data: { ...d, placed: false } };
-    }
-    return n;
-  });
-}
-
 function getPortFromHandle(
   nodes: SchematicNode[],
   nodeId: string,
@@ -2441,11 +2411,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     if (!state.nodes.some((n) => n.id === nodeId)) return;
     pushUndo({ nodes: state.nodes, edges: state.edges });
-    // #182: keep stub labels glued to the moved device (mirrors the drag-stop path in
-    // App.tsx so an MCP move_device behaves like a drag).
-    const reanchored = reanchorConnectedStubLabels(state.nodes, state.edges, nodeId);
+    // #182: keep the moved device's tags glued to it — the same helper both drag-stop
+    // paths call, so an MCP move_device behaves like a drag (#346).
+    const settled = settleTagsAfterMove(state.nodes, state.edges, new Set([nodeId])) ?? state.nodes;
     set({
-      nodes: reanchored.map((n) => (n.id === nodeId ? { ...n, position } : n)),
+      nodes: settled.map((n) => (n.id === nodeId ? { ...n, position } : n)),
     });
     get().saveToLocalStorage();
   },
@@ -3846,14 +3816,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       return true;
     }
 
-    // COMMIT: re-anchor connected stub labels (as a drag/move would), move the device
+    // COMMIT: re-anchor the device's tags (as a drag/move would), move the device
     // to the absolute target as a temporarily top-level node, then let reparentNode do
     // the geometric reparent + relative-coord conversion + parent-first sort. Clearing
     // parentId first avoids reparentNode's "parent unchanged" early-return.
     pushUndo({ nodes: state.nodes, edges: state.edges });
-    const reanchored = reanchorConnectedStubLabels(state.nodes, state.edges, nodeId);
+    const settled = settleTagsAfterMove(state.nodes, state.edges, new Set([nodeId])) ?? state.nodes;
     set({
-      nodes: reanchored.map((n) =>
+      nodes: settled.map((n) =>
         n.id === nodeId ? { ...n, parentId: undefined, position: absPos } : n,
       ),
     });
