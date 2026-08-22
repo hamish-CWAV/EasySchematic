@@ -9,6 +9,7 @@ import type {
 import { SIGNAL_LABELS, RACK_TYPE_LABELS } from "./types";
 import { getCableType } from "./cableTypes";
 import { transformLabelNow, labelsAreRaw } from "./labelCaseUtils";
+import { findPortByHandle } from "./portHandles";
 import type { ReportLayout } from "./reportLayout";
 import type { ReportTableData } from "./reportPdf";
 
@@ -247,9 +248,7 @@ export function resolvePortLabel(
 ): string {
   if (!handleId || node.type !== "device") return "";
   const data = node.data as DeviceData;
-  // Strip -in/-out suffix from bidirectional handles
-  const portId = handleId.replace(/-(in|out|rear|front)$/, "");
-  const port = data.ports.find((p) => p.id === portId);
+  const port = findPortByHandle(data, handleId);
   return transformLabelNow(port?.label ?? handleId);
 }
 
@@ -259,8 +258,7 @@ export function resolvePort(
 ) {
   if (!handleId || !node || node.type !== "device") return undefined;
   const data = node.data as DeviceData;
-  const portId = handleId.replace(/-(in|out|rear|front)$/, "");
-  return data.ports.find((p) => p.id === portId);
+  return findPortByHandle(data, handleId);
 }
 
 export function computePackList(

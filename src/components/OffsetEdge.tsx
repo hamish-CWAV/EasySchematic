@@ -5,8 +5,9 @@ import {
   type EdgeProps,
 } from "@xyflow/react";
 import { useSchematicStore } from "../store";
-import { LINE_STYLE_DASHARRAY, type ConnectionEdge, type LineStyle, type DeviceData } from "../types";
+import { LINE_STYLE_DASHARRAY, type ConnectionEdge, type LineStyle } from "../types";
 import { usbcPowerShortfallW } from "../connectorTypes";
+import { resolvePort } from "../packList";
 import { midCustomLabelPlacement } from "../stubPlacement";
 import { computeEdgeLengthEstimate, resolveCableLengthLabel } from "../cableLengthLabel";
 import { showPathEditHint, soleSelectedCableId } from "../pathEditHint";
@@ -79,15 +80,11 @@ function OffsetEdgeComponent({
   const usbcShortfall = useSchematicStore((s) => {
     const edge = s.edges.find((e) => e.id === id);
     if (!edge) return null;
-    const resolvePort = (nodeId: string, handle: string | null | undefined) => {
-      const node = s.nodes.find((n) => n.id === nodeId);
-      if (!node || node.type !== "device") return undefined;
-      const portId = (handle ?? "").replace(/-(in|out|rear|front)$/, "");
-      return (node.data as DeviceData).ports?.find((p) => p.id === portId);
-    };
+    const portFor = (nodeId: string, handle: string | null | undefined) =>
+      resolvePort(s.nodes.find((n) => n.id === nodeId), handle);
     return usbcPowerShortfallW(
-      resolvePort(edge.source, edge.sourceHandle),
-      resolvePort(edge.target, edge.targetHandle),
+      portFor(edge.source, edge.sourceHandle),
+      portFor(edge.target, edge.targetHandle),
     );
   });
 

@@ -142,15 +142,18 @@ export function computePatchPanelSchedule(
   // Metadata patch-hop occupancy (panels routed via edge.data.patchHops, incl. off-canvas panels).
   const hopOccupancy = getPanelOccupancy(nodes, edges);
 
-  // Index edges by (nodeId, portId). Strip -in/-out suffixes so bidirectional handles
-  // match the underlying port. Each port id maps to at most one edge in practice
-  // (the canvas can create only one connection per handle), but we store an array in
-  // case of future-proofing.
+  // Index edges by (nodeId, portId). The legacy paired input/output branch below reads
+  // this index with the port's own id, so the key has to be the id of the port the handle
+  // really names — resolve it rather than blind-stripping the -in/-out/-rear/-front
+  // suffix, which missed every port whose real id ends in one of those tokens (#355).
+  // Each port id maps to at most one edge in practice (the canvas can create only one
+  // connection per handle), but we store an array in case of future-proofing.
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const edgeByPort = new Map<string, ConnectionEdge[]>();
   const key = (nodeId: string, handleId: string | null | undefined) => {
     if (!handleId) return undefined;
-    const portId = handleId.replace(/-(in|out|rear|front)$/, "");
-    return `${nodeId}:${portId}`;
+    const port = resolvePort(nodeById.get(nodeId), handleId);
+    return `${nodeId}:${port?.id ?? handleId}`;
   };
   for (const e of edges) {
     if (e.data?.directAttach) continue;

@@ -1,6 +1,7 @@
 import type { SchematicNode, DeviceData, DhcpServerConfig, SignalType } from "./types";
 import type { ConnectionEdge } from "./types";
 import { NETWORK_SIGNAL_TYPES } from "./connectorTypes";
+import { findPortByHandle } from "./portHandles";
 
 /** Returns true if `ip` is a valid IPv4 address (4 octets, each 0-255). */
 export function isValidIpv4(ip: string): boolean {
@@ -152,9 +153,7 @@ export interface ReachableDhcpServer {
 /** Resolve handleId to a Port on a device node. */
 function resolvePort(node: SchematicNode | undefined, handleId: string | null | undefined) {
   if (!handleId || !node || node.type !== "device") return undefined;
-  const data = node.data as DeviceData;
-  const portId = handleId.replace(/-(in|out|rear|front)$/, "");
-  return data.ports.find((p) => p.id === portId);
+  return findPortByHandle(node.data as DeviceData, handleId);
 }
 
 /** A raw or reassembled connection with real device endpoints on both ends. */

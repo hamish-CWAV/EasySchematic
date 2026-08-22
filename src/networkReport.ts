@@ -3,6 +3,7 @@ import { SIGNAL_LABELS } from "./types";
 import { NETWORK_SIGNAL_TYPES } from "./connectorTypes";
 import { findReachableDhcpServers } from "./networkValidation";
 import { getRoomLabel, escapeCsv } from "./packList";
+import { findPortByHandle } from "./portHandles";
 import { transformLabelNow } from "./labelCaseUtils";
 import type { ReportLayout } from "./reportLayout";
 import type { ReportTableData } from "./reportPdf";
@@ -187,8 +188,7 @@ export function computePoeBudget(nodes: SchematicNode[], edges: ConnectionEdge[]
       const connectedNode = nodeMap.get(connectedNodeId);
       if (!connectedNode || connectedNode.type !== "device") continue;
       const connData = connectedNode.data as DeviceData;
-      const portId = connectedHandle.replace(/-(in|out|rear|front)$/, "");
-      const port = connData.ports.find((p) => p.id === portId);
+      const port = findPortByHandle(connData, connectedHandle);
       if (port?.poeDrawW) loadW += port.poeDrawW;
     }
 

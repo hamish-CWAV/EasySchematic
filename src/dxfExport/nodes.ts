@@ -10,6 +10,7 @@ import type {
   StubLabelData,
   StubLabelPageMode,
 } from "../types";
+import { strippedHandleId } from "../portHandles";
 import type { DxfWriter, EntityStyle } from "./writer";
 import { ACI_NEAR_BLACK, ACI_WHITE, cssFontPxToDxfHeight, pxToIn, tintToWhite, hexToRgb, rgbToTrueColor, truncateToWidth } from "./units";
 import { CANONICAL_LAYERS, hexToTrueColor, resolveSignalColor } from "./layers";
@@ -92,12 +93,15 @@ function getHandlePositions(
  * dropped and the port vanished from the drawing (14 of them in the seeded
  * fixture alone). Match the handle id exactly first and only strip when that
  * fails, the same precedence the port-edit revalidation settled on in #306.
+ *
+ * Same rule as portHandles.findPortByHandle, over a prebuilt map rather than a
+ * device's port array — the strip itself comes from that shared module.
  */
 function portForHandle(handleId: string, portMap: Map<string, Port>): Port | undefined {
   const exact = portMap.get(handleId);
   if (exact) return exact;
-  const stripped = handleId.replace(/-(in|out|rear|front)$/, "");
-  return stripped === handleId ? undefined : portMap.get(stripped);
+  const stripped = strippedHandleId(handleId);
+  return stripped === undefined ? undefined : portMap.get(stripped);
 }
 
 /** Convert screen-px rect to DXF-inch rect (Y flipped, bottom-left origin). */

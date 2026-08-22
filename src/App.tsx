@@ -61,6 +61,7 @@ import PrintSheetPage from "./components/PrintSheetPage";
 import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, parentOffsetFromMap, snapParentedRestPosition, snapGroupRestPositions, settleTagsAfterMove, type GuideLine } from "./snapUtils";
 import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, SchematicNode, StubLabelData, TextStubData } from "./types";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
+import { findPortByHandle } from "./portHandles";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
 import { loadSharedSchematic, checkSession } from "./templateApi";
 import { loadTestSchematicFromUrl } from "./testSchematic/load";
@@ -1066,10 +1067,8 @@ function SchematicCanvas() {
           const srcNode = state2.nodes.find((n) => n.id === srcNodeId);
           const tgtNode = state2.nodes.find((n) => n.id === tgtNodeId);
           if (srcNode?.type === "device" && tgtNode?.type === "device") {
-            const srcPortId = srcHandleId?.replace(/-(in|out|rear|front)$/, "");
-            const tgtPortId = tgtHandleId?.replace(/-(in|out|rear|front)$/, "");
-            const srcPort = (srcNode.data as DeviceData).ports.find((p) => p.id === srcPortId);
-            const tgtPort = (tgtNode.data as DeviceData).ports.find((p) => p.id === tgtPortId);
+            const srcPort = srcHandleId ? findPortByHandle(srcNode.data as DeviceData, srcHandleId) : undefined;
+            const tgtPort = tgtHandleId ? findPortByHandle(tgtNode.data as DeviceData, tgtHandleId) : undefined;
             if (srcPort && tgtPort) {
               const allTemplates = [...DEVICE_TEMPLATES, ...state2.customTemplates];
               if (srcPort.signalType !== tgtPort.signalType) {

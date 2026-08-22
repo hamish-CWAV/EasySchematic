@@ -43,6 +43,7 @@ import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode,
 import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, stubTagEndOf, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
 import { getPortAbsolutePositions, parentOffsetFromMap, settleTagsAfterMove, tagHostId } from "./snapUtils";
 import { resolveHiddenAdapterIds } from "./adapterVisibility";
+import { findPortByHandle } from "./portHandles";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_ARROW, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, DEFAULT_CONNECTION_TYPE, portSide } from "./types";
 import { pairKey } from "./roomDistance";
@@ -1432,14 +1433,7 @@ function getPortFromHandle(
   if (!handleId) return undefined;
   const node = nodes.find((n) => n.id === nodeId);
   if (!node || node.type !== "device") return undefined;
-  const ports = (node.data as DeviceData).ports;
-  // Direct match first
-  const direct = ports.find((p) => p.id === handleId);
-  if (direct) return direct;
-  // Bidirectional handles: "{portId}-in" / "{portId}-out"
-  // Passthrough handles:   "{portId}-rear" / "{portId}-front"
-  const baseId = handleId.replace(/-(in|out|rear|front)$/, "");
-  return ports.find((p) => p.id === baseId);
+  return findPortByHandle(node.data as DeviceData, handleId);
 }
 
 /**
