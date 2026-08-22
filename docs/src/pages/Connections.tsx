@@ -401,6 +401,13 @@ export default function ConnectionsPage() {
         name, its far-end port (shown by default at both ends), room (if applicable), and page number (in print
         view). Labels are <strong>draggable</strong> — grab and move them to reposition the stub endpoint.
       </p>
+      <p>
+        Whole selections stub at once. Select several connections, then either right-click one of them and choose{" "}
+        <strong>Stub N Selected Connections</strong>, or use the <strong>Stubs</strong> section of the bulk edit panel
+        (the <strong>Stub N connections</strong> button). Connections already stubbed are left alone, and{" "}
+        <strong>Show N Selected Connections in Full</strong> — <strong>Show N connections in full</strong> in the bulk
+        edit panel — reverses it for the stubbed ones. Either way the whole batch is one undo step.
+      </p>
       <ul>
         <li>Stub lines follow <strong>orthogonal routing</strong> with curved corners, matching normal connections</li>
         <li>Right-click a stub to <strong>Add Handle</strong> for intermediate waypoints, just like normal connections</li>

@@ -522,8 +522,14 @@ interface SchematicState {
   batchPatchEdgeData: (changes: { edgeId: string; patch: Partial<import("./types").ConnectionData> }[]) => void;
 
   // Stub conversion (real React Flow nodes for the labels)
-  convertEdgeToStubs: (edgeId: string) => void;
+  convertEdgeToStubs: (edgeId: string, opts?: { silentBundleToast?: boolean }) => void;
   collapseStubsForEdge: (edgeId: string) => void;
+  /** Stub every listed connection that isn't stubbed already, as one undo step (#349).
+   *  Already-stubbed connections are left exactly as they are. */
+  convertEdgesToStubs: (edgeIds: string[]) => void;
+  /** Show every listed stubbed connection in full again, as one undo step (#349). Both
+   *  legs of one stubbed connection may be listed; it collapses once. */
+  collapseStubsForEdges: (edgeIds: string[]) => void;
   /** What a newly drawn connection becomes — a routed wire, or stubbed at both ends (#353). */
   defaultConnectionType: DefaultConnectionType;
   setDefaultConnectionType: (type: DefaultConnectionType) => void;
@@ -1063,6 +1069,16 @@ const redoStack: Snapshot[] = [];
 /** If set, the next pushUndo call uses this instead of the passed snapshot. */
 let pendingUndoSnapshot: Snapshot | null = null;
 
+/**
+ * While set, pushUndo only counts the call instead of recording it — runAsSingleUndoStep
+ * pushes one entry for the whole batch itself. Counting rather than dropping silently is
+ * what tells the batch whether anything actually changed the schematic.
+ */
+let suppressedUndoPushes: { count: number } | null = null;
+
+/** Same idea for saveToLocalStorage: a bulk loop saves once at the end, not per step. */
+let deferredSave: { pending: boolean } | null = null;
+
 /** Edge ID being reconnected — excluded from isValidConnection duplicate checks. */
 let _reconnectingEdgeId: string | null = null;
 export function setReconnectingEdgeId(id: string | null) {
@@ -1070,6 +1086,10 @@ export function setReconnectingEdgeId(id: string | null) {
 }
 
 function pushUndo(partial: { nodes: SchematicNode[]; edges: ConnectionEdge[]; autoRoute?: boolean }) {
+  if (suppressedUndoPushes) {
+    suppressedUndoPushes.count++;
+    return;
+  }
   const liveState = useSchematicStore?.getState?.();
   const pages = liveState?.pages ?? [];
   const bundles = liveState?.bundles ?? {};
@@ -1104,6 +1124,47 @@ function applyDefaultConnectionType(edgeId: string): boolean {
   undoStack.pop();
   useSchematicStore.setState({ undoSize: undoStack.length });
   return true;
+}
+
+/**
+ * Run a single-connection action across many connections and leave ONE undo entry, so a
+ * bulk gesture comes back in a single Ctrl+Z (#349).
+ *
+ * The inner calls' pushes are suppressed outright rather than pushed and popped back off:
+ * pushUndo caps the history by pushing and then shifting, so throwaway pushes would still
+ * evict real entries off the BOTTOM of the stack — and a batch larger than MAX_HISTORY
+ * would evict its own pre-loop snapshot, leaving the whole bulk action un-undoable. The
+ * one entry the batch does push carries pages and bundles too, which matters because
+ * stubbing a bundled member can dissolve its bundle.
+ *
+ * Saves are deferred the same way, so a 100-connection bulk serializes the document once.
+ */
+function runAsSingleUndoStep(ids: string[], apply: (id: string) => void) {
+  if (ids.length === 0) return;
+  const state = useSchematicStore.getState();
+  const before: Snapshot = structuredClone({
+    nodes: state.nodes,
+    edges: state.edges,
+    pages: state.pages,
+    bundles: state.bundles,
+  });
+  const previousPending = pendingUndoSnapshot;
+  const suppressed = { count: 0 };
+  const save = { pending: false };
+  suppressedUndoPushes = suppressed;
+  deferredSave = save;
+  try {
+    for (const id of ids) apply(id);
+  } finally {
+    suppressedUndoPushes = null;
+    deferredSave = null;
+  }
+  // Every action bailed without changing anything — no undo entry, nothing to save.
+  if (suppressed.count === 0) return;
+  pendingUndoSnapshot = before;
+  pushUndo({ nodes: before.nodes, edges: before.edges });
+  pendingUndoSnapshot = previousPending; // pushUndo cleared it; hand any outer gesture its own back
+  if (save.pending) useSchematicStore.getState().saveToLocalStorage();
 }
 
 // ── Async routing (Web Worker) plumbing ──────────────────────────────────
@@ -5882,6 +5943,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   saveToLocalStorage: () => {
+    if (deferredSave) {
+      deferredSave.pending = true;
+      return;
+    }
     if (!hydrated) return;
     const state = get();
     const data: SchematicFile = {
@@ -6614,7 +6679,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
-  convertEdgeToStubs: (edgeId) => {
+  convertEdgeToStubs: (edgeId, opts) => {
     const state = get();
     const edge = state.edges.find((e) => e.id === edgeId);
     if (!edge) return;
@@ -6774,8 +6839,46 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       edges: gc.edges,
       bundles: gc.bundles,
     });
-    if (wasBundled) get().addToast("Removed from bundle (stubbed)", "info");
+    // A bulk stub summarises the unbundling itself rather than stacking one toast per member.
+    if (wasBundled && !opts?.silentBundleToast) get().addToast("Removed from bundle (stubbed)", "info");
     get().saveToLocalStorage();
+  },
+
+  convertEdgesToStubs: (edgeIds) => {
+    const state = get();
+    const targets = edgeIds.filter((id) => {
+      const edge = state.edges.find((e) => e.id === id);
+      return !!edge && !edge.data?.linkedConnectionId;
+    });
+    // Counted before the loop, i.e. connections that were in a bundle when the batch
+    // started: stubbing one member can dissolve a 2-member bundle, so by the time the
+    // second member is stubbed it no longer reports itself as bundled.
+    const unbundled = targets.filter(
+      (id) => !!state.edges.find((e) => e.id === id)?.data?.bundleId,
+    ).length;
+    runAsSingleUndoStep(targets, (id) => get().convertEdgeToStubs(id, { silentBundleToast: true }));
+    if (unbundled > 0) {
+      get().addToast(
+        unbundled === 1
+          ? "Removed from bundle (stubbed)"
+          : `Removed ${unbundled} connections from their bundle (stubbed)`,
+        "info",
+      );
+    }
+  },
+
+  collapseStubsForEdges: (edgeIds) => {
+    const state = get();
+    // Both legs of one stubbed connection can be selected — collapse each pair once.
+    const seen = new Set<string>();
+    const targets: string[] = [];
+    for (const id of edgeIds) {
+      const linkedId = state.edges.find((e) => e.id === id)?.data?.linkedConnectionId;
+      if (!linkedId || seen.has(linkedId)) continue;
+      seen.add(linkedId);
+      targets.push(id);
+    }
+    runAsSingleUndoStep(targets, (id) => get().collapseStubsForEdge(id));
   },
 
   collapseStubsForEdge: (edgeId) => {

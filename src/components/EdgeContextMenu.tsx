@@ -331,6 +331,18 @@ export default function EdgeContextMenu() {
     useSchematicStore.setState({ edgeContextMenu: null });
   }, [menu]);
 
+  const stubSelection = useCallback(() => {
+    const store = useSchematicStore.getState();
+    store.convertEdgesToStubs(store.edges.filter((e) => e.selected).map((e) => e.id));
+    useSchematicStore.setState({ edgeContextMenu: null });
+  }, []);
+
+  const collapseSelection = useCallback(() => {
+    const store = useSchematicStore.getState();
+    store.collapseStubsForEdges(store.edges.filter((e) => e.selected).map((e) => e.id));
+    useSchematicStore.setState({ edgeContextMenu: null });
+  }, []);
+
   const toggleHideCableId = useCallback(() => {
     if (!menu) return;
     const store = useSchematicStore.getState();
@@ -482,6 +494,17 @@ export default function EdgeContextMenu() {
     selectedEdgeObjs.some((e) => e.id === menu.edgeId) &&
     !selectionIsOneBundle;
 
+  // Bulk stub/unstub (#349): same "≥2 selected and the right-clicked one is among them"
+  // gate as bundling, but counted in logical connections — a stubbed connection is two
+  // selected legs and must not read as two connections.
+  const unstubbedSelected = selectedEdgeObjs.filter((e) => !e.data?.linkedConnectionId);
+  const stubbedSelectedLinkIds = [
+    ...new Set(selectedEdgeObjs.map((e) => e.data?.linkedConnectionId).filter(Boolean)),
+  ];
+  const selectedConnectionCount = unstubbedSelected.length + stubbedSelectedLinkIds.length;
+  const canBulkStub =
+    selectedConnectionCount >= 2 && selectedEdgeObjs.some((e) => e.id === menu.edgeId);
+
   // Check if this is a trunk (multicable) edge
   const srcNode = store.nodes.find((n) => n.id === edge?.source);
   const tgtNode = store.nodes.find((n) => n.id === edge?.target);
@@ -610,6 +633,25 @@ export default function EdgeContextMenu() {
         label={isStubbed ? "Show Full Connection" : "Stub Connection"}
         onClick={toggleStubbed}
       />
+      {canBulkStub && (
+        // Separated from the single-connection item above: with a mixed selection both
+        // items show, and without the rule they read as duplicates of "Stub Connection".
+        <>
+          <div className="h-px bg-gray-200 my-1" />
+          {unstubbedSelected.length > 0 && (
+            <MenuItem
+              label={`Stub ${unstubbedSelected.length} Selected Connection${unstubbedSelected.length === 1 ? "" : "s"}`}
+              onClick={stubSelection}
+            />
+          )}
+          {stubbedSelectedLinkIds.length > 0 && (
+            <MenuItem
+              label={`Show ${stubbedSelectedLinkIds.length} Selected Connection${stubbedSelectedLinkIds.length === 1 ? "" : "s"} in Full`}
+              onClick={collapseSelection}
+            />
+          )}
+        </>
+      )}
       {!isDirectAttach && (
         <>
           <MenuItem

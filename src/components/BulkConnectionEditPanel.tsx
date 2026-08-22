@@ -17,7 +17,7 @@ export default function BulkConnectionEditPanel({ onClose }: Props) {
       .filter((e) => e.selected)
       .map(
         (e) =>
-          `${e.id}:${e.data?.lineStyle ?? ""}:${e.data?.directAttach ? "1" : "0"}:${e.data?.hideCableId ? "1" : "0"}:${String(e.data?.sourceLabel ?? "")}:${String(e.data?.label ?? "")}:${String(e.data?.targetLabel ?? "")}:${String(e.data?.color ?? "")}:${e.data?.bundleId ?? ""}:${e.data?.signalType ?? ""}`,
+          `${e.id}:${e.data?.lineStyle ?? ""}:${e.data?.directAttach ? "1" : "0"}:${e.data?.hideCableId ? "1" : "0"}:${String(e.data?.sourceLabel ?? "")}:${String(e.data?.label ?? "")}:${String(e.data?.targetLabel ?? "")}:${String(e.data?.color ?? "")}:${e.data?.bundleId ?? ""}:${e.data?.signalType ?? ""}:${e.data?.linkedConnectionId ?? ""}`,
       )
       .join("|"),
   );
@@ -51,6 +51,16 @@ export default function BulkConnectionEditPanel({ onClose }: Props) {
   const commitBundleLabel = (value: string) => {
     if (bundleId) useSchematicStore.getState().setBundleMeta(bundleId, { label: value.trim() || undefined });
   };
+
+  // --- Stub state (#349) ---
+  // A stubbed connection is two selected legs, so it is counted by its linked id, not by edge.
+  const unstubbedEdges = selectedEdges.filter((e) => !e.data?.linkedConnectionId);
+  const stubbedLinkIds = [
+    ...new Set(selectedEdges.map((e) => e.data?.linkedConnectionId).filter(Boolean) as string[]),
+  ];
+  const doStub = () => useSchematicStore.getState().convertEdgesToStubs(unstubbedEdges.map((e) => e.id));
+  const doCollapse = () =>
+    useSchematicStore.getState().collapseStubsForEdges(selectedEdges.map((e) => e.id));
 
   const lineStyles = selectedEdges.map((e) => (e.data?.lineStyle as LineStyle | undefined) ?? "solid");
   const allSameStyle = lineStyles.every((s) => s === lineStyles[0]);
@@ -200,6 +210,31 @@ export default function BulkConnectionEditPanel({ onClose }: Props) {
             Mixed signal types — trunk drawn neutral; each connection keeps its own color and cable.
           </p>
         )}
+      </section>
+
+      {/* Stubs */}
+      <section className="mb-3">
+        <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] mb-1.5">
+          Stubs
+        </div>
+        <div className="space-y-1">
+          {unstubbedEdges.length > 0 && (
+            <button
+              onClick={doStub}
+              className="w-full px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-500 cursor-pointer"
+            >
+              Stub {unstubbedEdges.length} connection{unstubbedEdges.length === 1 ? "" : "s"}
+            </button>
+          )}
+          {stubbedLinkIds.length > 0 && (
+            <button
+              onClick={doCollapse}
+              className="w-full px-2 py-0.5 text-[10px] text-[var(--color-text-muted)] hover:text-blue-600 border border-[var(--color-border)] rounded hover:border-blue-300 cursor-pointer"
+            >
+              Show {stubbedLinkIds.length} connection{stubbedLinkIds.length === 1 ? "" : "s"} in full
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Labels */}
