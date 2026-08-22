@@ -164,9 +164,9 @@ export default function ConnectionsPage() {
       </p>
       <ul>
         <li>
-          Toggle multi-connect per port in the <strong>device editor</strong> (double-click the device) — hover a
-          port row and click the <strong> M</strong> badge (next to the multicable <strong>T</strong> toggle). It
-          lights up amber when the port is multi-connect
+          Toggle multi-connect per port in the <strong>device editor</strong> (double-click the device) — click the
+          <strong> M</strong> badge on the row of badges under the port (next to the multicable <strong>T</strong>{" "}
+          toggle). It lights up amber when the port is multi-connect
         </li>
         <li>
           New ports default to multi-connect when their signal type is <strong>SRT</strong> or <strong>Custom</strong>,
@@ -186,7 +186,7 @@ export default function ConnectionsPage() {
       <p>To show a Dante flow from one console output feeding several receivers:</p>
       <ol>
         <li><strong>Double-click</strong> the source device to open the device editor</li>
-        <li>Hover the Dante port's row and click the <strong>M</strong> badge so it lights up amber</li>
+        <li>Click the <strong>M</strong> badge under the Dante port so it lights up amber</li>
         <li>
           Draw a connection from that port to each destination — every destination gets its own line on the
           canvas and its own row in the cable schedule
@@ -271,7 +271,7 @@ export default function ConnectionsPage() {
         <li>They're excluded from pack list cable counts</li>
         <li>
           Toggle direct-attach per port in the <strong>device editor</strong> — look for the
-          <strong> DA</strong> badge on each port row (only visible on adapter devices)
+          <strong> DA</strong> badge under each port row (only visible on adapter devices)
         </li>
       </ul>
 

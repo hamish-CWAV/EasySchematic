@@ -38,6 +38,7 @@ import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingE
 import { deriveThermalBtuh } from "../thermal";
 import { carriesPowerCapacity } from "../deviceTypeCategories";
 import { visibleSaveActions, SAVE_ACTION_LABELS, SAVE_ACTION_TITLES, type SaveActionId } from "../deviceEditorActions";
+import { visiblePortRowControls, PORT_ROW_CONTROL_TITLES, type PortRowControlId } from "../portRowControls";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -2497,214 +2498,72 @@ function PortRow({
   const showIndicatorAfter =
     isLast && dropTarget?.direction === direction && dropTarget.index === index + 1;
 
-  return (
-    <>
-      {showIndicatorBefore && (
-        <div className="h-0.5 bg-blue-500 rounded-full my-0.5" />
-      )}
-      <div
-        ref={rowRef}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        className={`flex items-center gap-1.5 group py-0.5 ${
-          isDragging ? "opacity-30" : ""
-        } ${isHidden ? "opacity-50" : ""}`}
-      >
-        {/* Drag handle */}
-        <span
-          draggable
-          onDragStart={handleDragStart}
-          onDragEnd={() => {
-            setDraggedPortId(null);
-            setDropTarget(null);
-          }}
-          className="text-[var(--color-text-muted)] cursor-grab active:cursor-grabbing text-[10px] select-none shrink-0"
-          title="Drag to reorder"
-        >
-          ⠿
-        </span>
+  // Secondary controls share one compact line under the port, so the name input
+  // keeps the primary row to itself instead of being squeezed by every badge
+  // that accumulates to its right (#303). Unset badges stay faint rather than
+  // hidden until hover: they hold their space either way, so hiding them would
+  // only leave a blank strip under every port on a long list.
+  const badgeClass = (active: boolean, activeClass: string) =>
+    `text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 select-none ${
+      active
+        ? activeClass
+        : "text-[var(--color-text-muted)] opacity-70 group-hover:opacity-100 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]"
+    }`;
 
-        {/* Eye toggle for port visibility */}
-        <button
-          onClick={onToggleVisibility}
-          className="shrink-0 cursor-pointer transition-colors"
-          title={isHidden ? "Show port on schematic" : "Hide port on schematic"}
-        >
-          {isHidden ? (
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 2l12 12" />
-              <path d="M6.5 6.5a2 2 0 0 0 2.8 2.8" />
-              <path d="M4.2 4.2C3 5.1 2 6.4 2 8c1.3 3 3.5 5 6 5 1.2 0 2.3-.4 3.3-1.2M13.4 11.4C14.6 10.4 15.3 9.2 16 8c-1.3-3-3.5-5-6-5-.7 0-1.4.1-2 .4" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text)]" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 8c1.3-3 3.5-5 6-5s4.7 2 6 5c-1.3 3-3.5 5-6 5S3.3 11 2 8z" />
-              <circle cx="8" cy="8" r="2" />
-            </svg>
-          )}
-        </button>
-
-        <div
-          className="w-2.5 h-2.5 rounded-full shrink-0"
-          style={{ background: SIGNAL_COLORS[port.signalType] }}
-        />
-
-        <input
-          className="flex-1 min-w-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500"
-          value={port.label}
-          onChange={(e) => onUpdate({ label: e.target.value })}
-          placeholder="Port label"
-          onKeyDown={(e) => e.stopPropagation()}
-        />
-
-        {direction === "passthrough" ? (
-          <select
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
-            value={port.inheritsSignal ? "" : port.signalType}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "") {
-                onUpdate({ signalType: "custom", inheritsSignal: true });
-              } else {
-                onUpdate({ signalType: v as SignalType, inheritsSignal: undefined });
-              }
-            }}
+  const secondaryControl = (id: PortRowControlId) => {
+    const title = PORT_ROW_CONTROL_TITLES[id];
+    switch (id) {
+      case "trunk":
+        return (
+          <label
+            key={id}
+            className={badgeClass(!!port.isMulticable, "bg-purple-100 text-purple-600")}
+            title={title}
           >
-            <option value="">(inherits from connection)</option>
-            {ALL_SIGNAL_TYPES.map((t) => (
-              <option key={t} value={t}>{SIGNAL_LABELS[t]}</option>
-            ))}
-          </select>
-        ) : (
-          <select
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
-            value={port.signalType}
-            onChange={(e) => {
-              const newSignal = e.target.value as SignalType;
-              onUpdate({
-                signalType: newSignal,
-                connectorType: DEFAULT_CONNECTOR[newSignal],
-              });
-            }}
-          >
-            {ALL_SIGNAL_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {SIGNAL_LABELS[t]}
-              </option>
-            ))}
-          </select>
-        )}
-
-        {direction !== "passthrough" && (
-          <select
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-1 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer max-w-[80px]"
-            value={port.connectorType ?? DEFAULT_CONNECTOR[port.signalType]}
-            onChange={(e) => onUpdate({ connectorType: e.target.value as ConnectorType })}
-            title="Connector type"
-          >
-            {CONNECTOR_GROUP_ENTRIES.map(([groupName, types]) => (
-              <optgroup key={groupName} label={groupName}>
-                {types.map((c) => (
-                  <option key={c} value={c}>
-                    {CONNECTOR_LABELS[c]}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        )}
-
-        {/* Connector gender — only shown for connectors where M/F genuinely varies */}
-        {direction !== "passthrough" && (() => {
-          const ct = port.connectorType ?? DEFAULT_CONNECTOR[port.signalType];
-          if (!CONNECTORS_WITH_GENDER_VARIATION.has(ct)) return null;
-          const resolved = resolvePortGender({
-            id: port.id,
-            label: port.label,
-            signalType: port.signalType,
-            direction: port.direction,
-            connectorType: ct,
-            gender: port.gender,
-          });
-          const isOverride = port.gender != null;
-          return (
-            <select
-              className={`border border-[var(--color-border)] rounded px-1 py-1 text-[10px] outline-none focus:border-blue-500 cursor-pointer shrink-0 ${
-                isOverride
-                  ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                  : "bg-[var(--color-surface)] text-[var(--color-text-muted)]"
-              }`}
-              value={port.gender ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                onUpdate({ gender: v === "" ? undefined : (v as Gender) });
-              }}
-              title={`Connector gender${isOverride ? " (overridden)" : ` (auto: ${resolved ?? "—"})`}`}
-            >
-              <option value="">{resolved ? `${resolved === "male" ? "M" : "F"} (auto)` : "—"}</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-            </select>
-          );
-        })()}
-
-        {/* Multicable trunk toggle */}
-        <label
-          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 select-none ${
-            port.isMulticable
-              ? "bg-purple-100 text-purple-600"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
-          }`}
-          title="Multicable trunk port"
-        >
+            <input
+              type="checkbox"
+              checked={port.isMulticable ?? false}
+              onChange={(e) => onUpdate({ isMulticable: e.target.checked || undefined, channelCount: e.target.checked ? (port.channelCount ?? 0) : undefined })}
+              className="hidden"
+            />
+            {port.isMulticable ? `T${port.channelCount ?? 0}` : "T"}
+          </label>
+        );
+      case "channel-count":
+        return (
           <input
-            type="checkbox"
-            checked={port.isMulticable ?? false}
-            onChange={(e) => onUpdate({ isMulticable: e.target.checked || undefined, channelCount: e.target.checked ? (port.channelCount ?? 0) : undefined })}
-            className="hidden"
-          />
-          {port.isMulticable ? `T${port.channelCount ?? 0}` : "T"}
-        </label>
-
-        {port.isMulticable && (
-          <input
+            key={id}
             type="number"
             min={0}
             className="w-8 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 shrink-0"
             value={port.channelCount ?? 0}
             onChange={(e) => onUpdate({ channelCount: parseInt(e.target.value) || 0 })}
-            title="Channel count"
+            title={title}
             onKeyDown={(e) => e.stopPropagation()}
           />
-        )}
-
-        {/* Multi-connect toggle */}
-        <label
-          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 select-none ${
-            port.multiConnect
-              ? "bg-amber-100 text-amber-700"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
-          }`}
-          title="Multi-connect — allow multiple connections on this port (1:many), e.g. one Dante flow feeding many destinations"
-        >
-          <input
-            type="checkbox"
-            checked={port.multiConnect ?? false}
-            onChange={(e) => onUpdate({ multiConnect: e.target.checked || undefined })}
-            className="hidden"
-          />
-          M
-        </label>
-
-        {/* Direct attach toggle (adapters only) */}
-        {deviceType === "adapter" && (
+        );
+      case "multi-connect":
+        return (
           <label
-            className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 select-none ${
-              port.directAttach
-                ? "bg-green-100 text-green-700"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
-            }`}
-            title="Direct attach — plugs directly into device, no separate cable"
+            key={id}
+            className={badgeClass(!!port.multiConnect, "bg-amber-100 text-amber-700")}
+            title={title}
+          >
+            <input
+              type="checkbox"
+              checked={port.multiConnect ?? false}
+              onChange={(e) => onUpdate({ multiConnect: e.target.checked || undefined })}
+              className="hidden"
+            />
+            M
+          </label>
+        );
+      case "direct-attach":
+        return (
+          <label
+            key={id}
+            className={badgeClass(!!port.directAttach, "bg-green-100 text-green-700")}
+            title={title}
           >
             <input
               type="checkbox"
@@ -2714,66 +2573,235 @@ function PortRow({
             />
             DA
           </label>
-        )}
-
-        {/* Section badge */}
-        <button
-          onClick={() => setShowSection(!showSection)}
-          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
-            port.section
-              ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
-          }`}
-          title="Set section group"
-        >
-          {port.section || "§"}
-        </button>
-
-        {/* Notes badge */}
-        <button
-          onClick={() => setShowNotes(!showNotes)}
-          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
-            port.notes
-              ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
-          }`}
-          title={port.notes || "Add note"}
-        >
-          {port.notes ? "N" : "N"}
-        </button>
-
-        {/* Flip badge */}
-        <button
-          onClick={() => onUpdate({ flipped: !port.flipped || undefined })}
-            className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
-              port.flipped
-                ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
-            }`}
-            title="Flip port to opposite side"
+        );
+      case "section":
+        return (
+          <button
+            key={id}
+            onClick={() => setShowSection(!showSection)}
+            className={badgeClass(!!port.section, "bg-blue-100 text-blue-600 hover:bg-blue-200")}
+            title={title}
+          >
+            {port.section || "§"}
+          </button>
+        );
+      case "notes":
+        return (
+          <button
+            key={id}
+            onClick={() => setShowNotes(!showNotes)}
+            className={badgeClass(!!port.notes, "bg-amber-100 text-amber-700 hover:bg-amber-200")}
+            title={port.notes || title}
+          >
+            N
+          </button>
+        );
+      case "flip":
+        return (
+          <button
+            key={id}
+            onClick={() => onUpdate({ flipped: !port.flipped || undefined })}
+            className={badgeClass(!!port.flipped, "bg-purple-100 text-purple-700 hover:bg-purple-200")}
+            title={title}
           >
             ⇄
-        </button>
+          </button>
+        );
+      default: {
+        // Adding an id to portRowControls.ts without rendering it here is a
+        // compile error, not a silently missing control.
+        const unhandled: never = id;
+        return unhandled;
+      }
+    }
+  };
 
-        {/* Duplicate port */}
-        <button
-          onClick={onDuplicate}
-          className="text-[var(--color-text-muted)] hover:text-blue-500 cursor-pointer px-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-          title="Duplicate port"
-        >
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-            <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
-          </svg>
-        </button>
+  return (
+    <>
+      {showIndicatorBefore && (
+        <div className="h-0.5 bg-blue-500 rounded-full my-0.5" />
+      )}
+      <div
+        ref={rowRef}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={`group pt-0.5 pb-1.5 ${
+          isDragging ? "opacity-30" : ""
+        } ${isHidden ? "opacity-50" : ""}`}
+      >
+        {/* Never wrap: the actions sit at the end of this line, and a wrapped
+            line would reserve blank height on every row (they only appear on
+            hover). Every control here is width-capped so the row always fits. */}
+        <div className="flex items-center gap-1.5">
+          {/* Drag handle */}
+          <span
+            draggable
+            onDragStart={handleDragStart}
+            onDragEnd={() => {
+              setDraggedPortId(null);
+              setDropTarget(null);
+            }}
+            className="text-[var(--color-text-muted)] cursor-grab active:cursor-grabbing text-[10px] select-none shrink-0"
+            title="Drag to reorder"
+          >
+            ⠿
+          </span>
 
-        <button
-          onClick={onRemove}
-          className="text-red-400/60 hover:text-red-500 text-sm cursor-pointer px-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Remove port"
-        >
-          &times;
-        </button>
+          {/* Eye toggle for port visibility */}
+          <button
+            onClick={onToggleVisibility}
+            className="shrink-0 cursor-pointer transition-colors"
+            title={isHidden ? "Show port on schematic" : "Hide port on schematic"}
+          >
+            {isHidden ? (
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 2l12 12" />
+                <path d="M6.5 6.5a2 2 0 0 0 2.8 2.8" />
+                <path d="M4.2 4.2C3 5.1 2 6.4 2 8c1.3 3 3.5 5 6 5 1.2 0 2.3-.4 3.3-1.2M13.4 11.4C14.6 10.4 15.3 9.2 16 8c-1.3-3-3.5-5-6-5-.7 0-1.4.1-2 .4" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text)]" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 8c1.3-3 3.5-5 6-5s4.7 2 6 5c-1.3 3-3.5 5-6 5S3.3 11 2 8z" />
+                <circle cx="8" cy="8" r="2" />
+              </svg>
+            )}
+          </button>
+
+          <div
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: SIGNAL_COLORS[port.signalType] }}
+          />
+
+          {/* min-w floor, not min-w-0: flex-1 with no minimum let every other
+              control take its content width and leave the name whatever was
+              left, which is how it collapsed to a few characters (#303, #235). */}
+          <input
+            className="flex-1 min-w-[112px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500"
+            value={port.label}
+            onChange={(e) => onUpdate({ label: e.target.value })}
+            placeholder="Port label"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+
+          {direction === "passthrough" ? (
+            <select
+              className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
+              value={port.inheritsSignal ? "" : port.signalType}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  onUpdate({ signalType: "custom", inheritsSignal: true });
+                } else {
+                  onUpdate({ signalType: v as SignalType, inheritsSignal: undefined });
+                }
+              }}
+            >
+              <option value="">(inherits from connection)</option>
+              {ALL_SIGNAL_TYPES.map((t) => (
+                <option key={t} value={t}>{SIGNAL_LABELS[t]}</option>
+              ))}
+            </select>
+          ) : (
+            <select
+              className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer max-w-[120px]"
+              value={port.signalType}
+              onChange={(e) => {
+                const newSignal = e.target.value as SignalType;
+                onUpdate({
+                  signalType: newSignal,
+                  connectorType: DEFAULT_CONNECTOR[newSignal],
+                });
+              }}
+            >
+              {ALL_SIGNAL_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {SIGNAL_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {direction !== "passthrough" && (
+            <select
+              className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-1 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer max-w-[80px]"
+              value={port.connectorType ?? DEFAULT_CONNECTOR[port.signalType]}
+              onChange={(e) => onUpdate({ connectorType: e.target.value as ConnectorType })}
+              title="Connector type"
+            >
+              {CONNECTOR_GROUP_ENTRIES.map(([groupName, types]) => (
+                <optgroup key={groupName} label={groupName}>
+                  {types.map((c) => (
+                    <option key={c} value={c}>
+                      {CONNECTOR_LABELS[c]}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
+
+          {/* Connector gender — only shown for connectors where M/F genuinely varies */}
+          {direction !== "passthrough" && (() => {
+            const ct = port.connectorType ?? DEFAULT_CONNECTOR[port.signalType];
+            if (!CONNECTORS_WITH_GENDER_VARIATION.has(ct)) return null;
+            const resolved = resolvePortGender({
+              id: port.id,
+              label: port.label,
+              signalType: port.signalType,
+              direction: port.direction,
+              connectorType: ct,
+              gender: port.gender,
+            });
+            const isOverride = port.gender != null;
+            return (
+              <select
+                className={`border border-[var(--color-border)] rounded px-1 py-1 text-[10px] outline-none focus:border-blue-500 cursor-pointer shrink-0 max-w-[76px] ${
+                  isOverride
+                    ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                    : "bg-[var(--color-surface)] text-[var(--color-text-muted)]"
+                }`}
+                value={port.gender ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onUpdate({ gender: v === "" ? undefined : (v as Gender) });
+                }}
+                title={`Connector gender${isOverride ? " (overridden)" : ` (auto: ${resolved ?? "—"})`}`}
+              >
+                <option value="">{resolved ? `${resolved === "male" ? "M" : "F"} (auto)` : "—"}</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            );
+          })()}
+
+          {/* Duplicate port */}
+          <button
+            onClick={onDuplicate}
+            className="text-[var(--color-text-muted)] hover:text-blue-500 cursor-pointer px-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            title="Duplicate port"
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+              <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
+            </svg>
+          </button>
+
+          <button
+            onClick={onRemove}
+            className="text-red-400/60 hover:text-red-500 text-sm cursor-pointer px-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            title="Remove port"
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Secondary per-port controls, on the same pl-6 indent the section and
+            note editors below use. The rule and the tight gap above it tie the
+            line to the port it belongs to — the row's pb keeps the next port
+            further away than this line is. */}
+        <div className="flex flex-wrap items-center gap-1 ml-[7px] pl-4 pt-0.5 border-l border-[var(--color-border)]/40">
+          {visiblePortRowControls({ deviceType, isMulticable: !!port.isMulticable }).map(secondaryControl)}
+        </div>
       </div>
 
       {showSection && (
