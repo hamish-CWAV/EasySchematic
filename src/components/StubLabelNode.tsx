@@ -43,6 +43,9 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
       edges: s.edges,
       // Page tags only appear in print view (matches OffsetEdge.tsx legacy behavior).
       pageAt: buildPrintPageLookup(s),
+      // With the inline adapter hidden the leg visibly runs on to the device beyond it,
+      // so that is the device the tag names (#348).
+      hiddenAdapterIds: s.hiddenAdapterNodeIds,
     });
     if (!parts) return "";
     return [parts.arrow, parts.farLabel, parts.farPort, parts.farRoom, parts.myPage, parts.farPage].join("\0");

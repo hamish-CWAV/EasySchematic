@@ -12,6 +12,7 @@ import type { TitleBlock, TitleBlockLayout, DeviceData, SchematicNode, Connectio
 import type { RoutedEdge } from "./edgeRouter";
 import { computeCellRects, normalizeSizes, getFieldValue } from "./titleBlockLayout";
 import { useSchematicStore } from "./store";
+import { hopHiddenAdapters } from "./adapterVisibility";
 import { DEFAULT_SIGNAL_COLORS } from "./signalColors";
 import { transformLabelNow } from "./labelCaseUtils";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "./colorKeyLayout";
@@ -381,6 +382,7 @@ export function computePdfCrossingLabels(
     }
     nodeInfo.set(n.id, { label: transformLabelNow(data.label), room });
   }
+  const hiddenAdapterIds = useSchematicStore.getState().hiddenAdapterNodeIds;
   for (const n of nodes) {
     if (n.type !== "stub-label") continue;
     const stubData = n.data as { linkedConnectionId?: string; side?: "source" | "target" };
@@ -395,7 +397,18 @@ export function computePdfCrossingLabels(
       e.data?.linkedConnectionId === stubData.linkedConnectionId && e.id !== myEdge.id,
     );
     if (!partnerEdge) continue;
-    const farDeviceId = stubData.side === "source" ? partnerEdge.target : partnerEdge.source;
+    // Past a hidden inline adapter to the device the run really reaches, so the
+    // indicator and the stub tag on the same leg name the same device (#348).
+    const { nodeId: farDeviceId } = hopHiddenAdapters(
+      {
+        nodeId: stubData.side === "source" ? partnerEdge.target : partnerEdge.source,
+        handleId: null,
+      },
+      partnerEdge.id,
+      nodes,
+      edges,
+      hiddenAdapterIds,
+    );
     const farInfo = nodeInfo.get(farDeviceId);
     if (farInfo) nodeInfo.set(n.id, farInfo);
   }

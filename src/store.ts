@@ -42,6 +42,7 @@ import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
 import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, stubTagEndOf, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
 import { getPortAbsolutePositions, parentOffsetFromMap, tagHostId } from "./snapUtils";
+import { resolveHiddenAdapterIds } from "./adapterVisibility";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, portSide } from "./types";
 import { pairKey } from "./roomDistance";
@@ -3982,7 +3983,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     };
     for (const n of state.nodes) {
       if (n.type !== "stub-label" && n.type !== "text-stub") continue;
-      const hostId = tagHostId(n, state.edges, state.hiddenAdapterNodeIds);
+      const hostId = tagHostId(n, state.nodes, state.edges, state.hiddenAdapterNodeIds);
       const host = hostId === undefined ? undefined : absShiftOf(hostId);
       if (!host) continue;
       // A tag inside the room already travels with its own parent; only the
@@ -7227,22 +7228,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       : state.edges;
 
     // --- Adapter visibility: compute hidden adapters and virtual edges ---
-    const hiddenAdapterNodeIds = new Set<string>();
+    const hiddenAdapterNodeIds = resolveHiddenAdapterIds(state.nodes, state.hideAdapters);
     const hiddenVirtualEdgeIds = new Set<string>();
     const virtualEdgeGradients: Record<string, { sourceColor: string; targetColor: string }> = {};
     // Map from virtual edge ID back to the hidden partner edge ID
     const virtualEdgeSources = new Map<string, { primaryEdgeId: string; secondaryEdgeId: string; adapterNodeId: string }>();
-
-    for (const n of state.nodes) {
-      if (n.type !== "device") continue;
-      const data = n.data as DeviceData;
-      if (data.deviceType !== "adapter") continue;
-      // Resolve visibility
-      if (data.adapterVisibility === "force-show") continue;
-      if (data.adapterVisibility === "force-hide" || state.hideAdapters) {
-        hiddenAdapterNodeIds.add(n.id);
-      }
-    }
 
     if (hiddenAdapterNodeIds.size > 0) {
       // For each hidden adapter, find its edge pair and create virtual edges

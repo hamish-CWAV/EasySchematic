@@ -5,9 +5,11 @@
 //
 // The far end of a stubbed connection is reached through the PARTNER leg: the two legs
 // share a linkedConnectionId, and each terminates at one stub-label node. The device this
-// stub names is the one at the other end of the partner leg, never our own.
+// stub names is the one at the other end of the partner leg, never our own — or, when
+// that end is an inline adapter the canvas is hiding, the device beyond it (#348).
 
 import { resolvePortLabel } from "./packList";
+import { hopHiddenAdapters } from "./adapterVisibility";
 import { computePageGrid } from "./printPageGrid";
 import { getPaperSize, type Orientation } from "./printConfig";
 import type { StubLabelParts } from "./stubLabelText";
@@ -24,6 +26,10 @@ export interface StubLabelContext {
   /** 1-indexed printed page holding a canvas point, 0 when off-page. Omit outside
    *  print view or on a single-page drawing — page tags are then never resolved. */
   pageAt?: (x: number, y: number) => number;
+  /** Inline adapters the caller is hiding. A partner leg that terminates on one names a
+   *  device the reader cannot see, so the tag reads through to the device beyond it
+   *  (#348). Omit only where every adapter is drawn at full size. */
+  hiddenAdapterIds?: ReadonlySet<string>;
 }
 
 /** Walk the parent chain to an absolute canvas position. */
@@ -92,8 +98,20 @@ export function resolveStubLabelParts(
   );
   if (!partnerEdge) return null;
 
-  const farDeviceId = data.side === "source" ? partnerEdge.target : partnerEdge.source;
-  const farHandleId = data.side === "source" ? partnerEdge.targetHandle : partnerEdge.sourceHandle;
+  // The partner leg can end on an inline adapter — stubbing the device→adapter half of
+  // an adapted connection is exactly that. While the adapter is hidden the reader sees a
+  // connection running to the device on ITS far side, so that is the device, port and
+  // room the tag has to name (#348). The hop is the one tagHostId pairs the tag with.
+  const { nodeId: farDeviceId, handleId: farHandleId } = hopHiddenAdapters(
+    {
+      nodeId: data.side === "source" ? partnerEdge.target : partnerEdge.source,
+      handleId: (data.side === "source" ? partnerEdge.targetHandle : partnerEdge.sourceHandle) ?? null,
+    },
+    partnerEdge.id,
+    nodes,
+    edges,
+    ctx.hiddenAdapterIds,
+  );
   const farDevice = nodes.find((n) => n.id === farDeviceId);
   if (!farDevice) return null;
 
@@ -102,7 +120,7 @@ export function resolveStubLabelParts(
     ? nodes.find((n) => n.id === farDevice.parentId)
     : null;
   const farRoomLabel = ((farRoom?.data as Record<string, unknown>)?.label as string) ?? "";
-  const farPort = resolvePortLabel(farDevice, farHandleId ?? null);
+  const farPort = resolvePortLabel(farDevice, farHandleId);
 
   // Partner stub's position relative to ours drives the arrow direction.
   const partnerStub = findPartnerStub(data.linkedConnectionId, data.side, nodes);

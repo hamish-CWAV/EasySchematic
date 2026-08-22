@@ -7,8 +7,9 @@
 // top of the title block, exactly as in the editor. The mismatch silently dropped every
 // pill for a connection leaving the bottom of a page.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { computePdfCrossingLabels } from "../pdfExport";
+import { useSchematicStore } from "../store";
 import { computePageGrid } from "../printPageGrid";
 import { getPaperSize, PAGE_MARGIN_IN } from "../printConfig";
 import { layoutContinuationPill, titleBlockBandInches } from "../continuationPill";
@@ -205,5 +206,82 @@ describe("PDF off-page continuation labels — clear of the title block (#337)",
     );
     expect(box.y).toBeCloseTo(label.y - PILL_H, 6);
     expect(box.y).toBeGreaterThan(BAND.y);
+  });
+});
+
+// The pill on a stub leg proxies to the far device of the logical connection, so it has
+// to make the same hop the stub tag beside it makes: past a hidden inline adapter to the
+// device the run really reaches. Otherwise one printed sheet carries two names for the
+// same connection, one of them a device the sheet never draws (#348).
+describe("PDF off-page continuation labels — past a hidden inline adapter (#348)", () => {
+  const LINKED = "lnk-348b";
+
+  const nodes = [
+    {
+      id: "dev-cam", type: "device", position: { x: 100, y: 100 },
+      measured: { width: 144, height: 64 },
+      data: { label: "CAM-01", ports: [{ id: "sdi-out-1", label: "SDI Out 1", direction: "output", signalType: "sdi" }] },
+    },
+    {
+      id: "stub-src", type: "stub-label", position: { x: 130, y: 1200 },
+      measured: { width: 96, height: 14 },
+      data: { signalType: "sdi", linkedConnectionId: LINKED, side: "source", placed: true },
+    },
+    {
+      id: "stub-tgt", type: "stub-label", position: { x: 130, y: 1240 },
+      measured: { width: 96, height: 14 },
+      data: { signalType: "sdi", linkedConnectionId: LINKED, side: "target", placed: true },
+    },
+    {
+      id: "dev-adapter", type: "device", position: { x: 130, y: 1290 },
+      measured: { width: 1, height: 1 },
+      data: {
+        label: "BNC Barrel", deviceType: "adapter",
+        ports: [
+          { id: "bnc-f-1", label: "BNC (F)", direction: "input", signalType: "sdi" },
+          { id: "bnc-m-1", label: "BNC (M)", direction: "output", signalType: "sdi" },
+        ],
+      },
+    },
+    {
+      id: "dev-switcher", type: "device", position: { x: 100, y: 1340 },
+      measured: { width: 144, height: 64 },
+      data: { label: "SWITCHER", ports: [{ id: "sdi-io-1", label: "SDI I/O 1", direction: "bidirectional", signalType: "sdi" }] },
+    },
+  ] as unknown as SchematicNode[];
+
+  const edges = [
+    { id: "e-leg-src", source: "dev-cam", target: "stub-src", sourceHandle: "sdi-out-1", targetHandle: "l", data: { signalType: "sdi", linkedConnectionId: LINKED } },
+    { id: "e-leg-tgt", source: "stub-tgt", target: "dev-adapter", sourceHandle: "r", targetHandle: "bnc-f-1", data: { signalType: "sdi", linkedConnectionId: LINKED } },
+    { id: "e-adapter-switcher", source: "dev-adapter", target: "dev-switcher", sourceHandle: "bnc-m-1", targetHandle: "sdi-io-1-in", data: { signalType: "sdi" } },
+  ] as unknown as ConnectionEdge[];
+
+  const pages = pagesFor(nodes);
+  const routed = { "e-leg-src": verticalRoute(150, 164, 1200) };
+
+  function labelsOnFirstPage(hidden: string[]) {
+    useSchematicStore.setState({ hiddenAdapterNodeIds: new Set(hidden) });
+    return computePdfCrossingLabels(pages[0], pages, routed, edges, nodes, SCALE);
+  }
+
+  afterEach(() => {
+    useSchematicStore.setState({ hiddenAdapterNodeIds: new Set() });
+  });
+
+  it("splits the adapted run across two stacked pages", () => {
+    expect(pages.map((p) => p.row)).toEqual([0, 1]);
+  });
+
+  it("names the switcher once the adapter is hidden", () => {
+    const labels = labelsOnFirstPage(["dev-adapter"]);
+    expect(labels).toHaveLength(1);
+    expect(labels[0].anchor).toBe("up");
+    expect(labels[0].text).toBe("SWITCHER");
+  });
+
+  it("names the adapter while the adapter is drawn", () => {
+    const labels = labelsOnFirstPage([]);
+    expect(labels).toHaveLength(1);
+    expect(labels[0].text).toBe("BNC Barrel");
   });
 });

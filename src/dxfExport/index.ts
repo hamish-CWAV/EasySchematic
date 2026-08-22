@@ -152,7 +152,13 @@ export function buildDxf(rfInstance: ReactFlowInstance): string | null {
   const pageAt = buildPrintPageLookup(state);
   for (const node of nodes) {
     if (node.type !== "stub-label") continue;
-    emitStubLabel(writer, node, rfInstance, { nodes, edges, pageAt }, {
+    emitStubLabel(writer, node, rfInstance, {
+      nodes, edges, pageAt,
+      // A hidden adapter reaches the DXF as its 1x1 placeholder — too small to carry so
+      // much as its own name — so a tag naming it would be a dead end on paper too. The
+      // tag names the device beyond it, exactly as the canvas does (#348).
+      hiddenAdapterIds: state.hiddenAdapterNodeIds,
+    }, {
       showPort: state.stubLabelShowPort,
       showRoom: state.stubLabelShowRoom,
       pageMode: state.stubLabelPageMode,

@@ -2,6 +2,7 @@ import type { ConnectionEdge, DeviceData, SchematicNode, TextStubData } from "./
 import { portSide } from "./types";
 
 import { GRID_SIZE } from "./gridConstants";
+import { hopHiddenAdapters } from "./adapterVisibility";
 import { totalAuxHeight, headerBandHeight, HEADER_LABEL_ZONE_PX, HEADER_LABEL_ZONE_2_PX } from "./auxiliaryData";
 import { resolveDeviceLabel } from "./displayName";
 import { STUB_GAP as STUB_PORT_GAP, STUB_W_EST, STUB_H_EST } from "./stubPlacement";
@@ -1297,7 +1298,7 @@ export function snapGroupRestPositions(
 
   // Re-hang each co-dragged tag off its own device (#334).
   for (const t of tags) {
-    const hostId = tagHostId(t, edges, hiddenAdapterIds);
+    const hostId = tagHostId(t, nodes, edges, hiddenAdapterIds);
     const shift = hostId === undefined ? undefined : shifts.get(hostId);
     if (!shift) continue;
     const rest = { x: t.position.x + shift.dx, y: t.position.y + shift.dy };
@@ -1312,11 +1313,10 @@ export function snapGroupRestPositions(
  *
  *  `hiddenAdapterIds` is the canvas's hidden inline adapters. A leg can terminate on
  *  one — stubbing the device→adapter half of an adapted connection leaves the tag's leg
- *  pointing at the adapter — and a hidden adapter renders as a 1x1 pointerEvents:none
- *  placeholder that no selection can contain, while recomputeRoutes draws the leg
- *  through to the device on its far side. The visible host is that device, so hop. */
+ *  pointing at the adapter — and the visible host is then the device beyond it, so hop. */
 export function tagHostId(
   tag: SchematicNode,
+  nodes: readonly SchematicNode[],
   edges: readonly ConnectionEdge[],
   hiddenAdapterIds?: ReadonlySet<string>,
 ): string | undefined {
@@ -1330,17 +1330,7 @@ export function tagHostId(
     break;
   }
   if (host === undefined || !hiddenAdapterIds?.size) return host;
-  let cur: string = host;
-  const seen = new Set<string>([tag.id]);
-  while (hiddenAdapterIds.has(cur) && !seen.has(cur)) {
-    seen.add(cur);
-    const from = cur;
-    const onward = edges.find((e) => e.id !== legId && (e.source === from || e.target === from));
-    if (!onward) break;
-    legId = onward.id;
-    cur = onward.source === from ? onward.target : onward.source;
-  }
-  return cur;
+  return hopHiddenAdapters({ nodeId: host, handleId: null }, legId, nodes, edges, hiddenAdapterIds).nodeId;
 }
 
 /**

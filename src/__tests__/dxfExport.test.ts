@@ -1488,3 +1488,92 @@ describe("buildDxf — stub labels (#319)", () => {
     expect(order).toEqual(["90", "45", "63", "441"]);
   });
 });
+
+// ─── Stub labels across a hidden inline adapter (#348) ───────────────────────
+//
+// A hidden adapter reaches the DXF the way it reaches the canvas: as the 1x1 placeholder
+// DeviceNode renders, far too small for emitDevice to fit even its name into. A stub tag
+// naming it was a dead end on paper as well as on screen, so the exporter feeds the
+// hidden set into the label resolver too.
+describe("buildDxf — stub labels read past a hidden adapter (#348)", () => {
+  const LINKED = "lnk-348a";
+
+  // CAM-01 ─▶ [BNC barrel, hidden] ─▶ SWITCHER, with the camera half stubbed. The
+  // switcher's port is bidirectional, so the adapter's far leg lands on "-in".
+  const nodes = [
+    {
+      id: "dev-cam", type: "device", position: { x: 0, y: 0 },
+      measured: { width: 144, height: 80 },
+      data: { label: "CAM-01", deviceType: "camera", ports: [{ id: "sdi-out-1", label: "SDI Out 1", direction: "output", signalType: "sdi" }] },
+    },
+    {
+      id: "stub-a", type: "stub-label", position: { x: 208, y: 33 },
+      measured: { width: 96, height: 14 },
+      data: { signalType: "sdi", linkedConnectionId: LINKED, side: "source", placed: true },
+    },
+    {
+      id: "stub-b", type: "stub-label", position: { x: 900, y: 33 },
+      measured: { width: 96, height: 14 },
+      data: { signalType: "sdi", linkedConnectionId: LINKED, side: "target", placed: true },
+    },
+    {
+      id: "dev-adapter", type: "device", position: { x: 1060, y: 40 },
+      measured: { width: 1, height: 1 },
+      data: {
+        label: "BNC (F) to BNC (M) Barrel", deviceType: "adapter",
+        ports: [
+          { id: "bnc-f-1", label: "BNC (F)", direction: "input", signalType: "sdi" },
+          { id: "bnc-m-1", label: "BNC (M)", direction: "output", signalType: "sdi" },
+        ],
+      },
+    },
+    {
+      id: "dev-switcher", type: "device", position: { x: 1200, y: 0 },
+      measured: { width: 144, height: 80 },
+      data: { label: "SWITCHER", ports: [{ id: "sdi-io-1", label: "SDI I/O 1", direction: "bidirectional", signalType: "sdi" }] },
+    },
+  ] as unknown as SchematicNode[];
+
+  const edges = [
+    { id: "e-leg-a", source: "dev-cam", target: "stub-a", sourceHandle: "sdi-out-1", targetHandle: "l", data: { signalType: "sdi", cableId: "C-101", linkedConnectionId: LINKED } },
+    { id: "e-leg-b", source: "stub-b", target: "dev-adapter", sourceHandle: "r", targetHandle: "bnc-f-1", data: { signalType: "sdi", cableId: "C-101", linkedConnectionId: LINKED } },
+    { id: "e-adapter-switcher", source: "dev-adapter", target: "dev-switcher", sourceHandle: "bnc-m-1", targetHandle: "sdi-io-1-in", data: { signalType: "sdi", cableId: "C-102" } },
+  ] as unknown as ConnectionEdge[];
+
+  const routedEdges = {
+    "e-leg-a": straightRoute(144, 40, 208),
+    "e-leg-b": straightRoute(996, 40, 1060),
+    "e-adapter-switcher": straightRoute(1061, 40, 1200),
+  };
+
+  afterEach(() => {
+    resetExportStore();
+    useSchematicStore.setState({ hiddenAdapterNodeIds: new Set() });
+  });
+
+  function stubLabelTexts(hidden: string[]) {
+    useSchematicStore.setState({
+      nodes, edges, routedEdges,
+      hiddenAdapterNodeIds: new Set(hidden),
+      stubLabelShowPort: true, stubLabelShowRoom: false, stubLabelPageMode: "never",
+      cableIdLabelMode: "endpoint", cableIdGap: 4,
+      colorKeyEnabled: false, printView: false,
+    });
+    const dxf = buildDxf(instanceFor(nodes));
+    expect(dxf).not.toBeNull();
+    return (parse(dxf!).entities as { type: string; layer: string; text?: string }[])
+      .filter((e) => e.type === "MTEXT" && e.layer === CANONICAL_LAYERS.LABELS)
+      .map((e) => e.text ?? "");
+  }
+
+  it("names the switcher, not the adapter the leg lands on", () => {
+    const texts = stubLabelTexts(["dev-adapter"]);
+    expect(texts).toContain(escapeForMText("→ SWITCHER [SDI I/O 1]"));
+    expect(texts).not.toContain(escapeForMText("→ BNC (F) to BNC (M) Barrel [BNC (F)]"));
+  });
+
+  it("still names the adapter while the adapter is drawn", () => {
+    const texts = stubLabelTexts([]);
+    expect(texts).toContain(escapeForMText("→ BNC (F) to BNC (M) Barrel [BNC (F)]"));
+  });
+});
