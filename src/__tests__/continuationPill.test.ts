@@ -113,8 +113,13 @@ describe("clamping a continuation pill off the title block", () => {
     expect(box.y).toBeCloseTo(band.y - 0.12, 6);
   });
 
-  it("leaves a pill touching the band's right edge alone", () => {
+  it("leaves a pill touching the band's left edge alone", () => {
     const box = clampPillAboveBand({ x: band.x - 1.2, y: 10.3, width: 1.2, height: 0.12 }, band);
+    expect(box.y).toBeCloseTo(10.3, 6);
+  });
+
+  it("leaves a pill starting at the band's right edge alone", () => {
+    const box = clampPillAboveBand({ x: band.x + band.width, y: 10.3, width: 1.2, height: 0.12 }, band);
     expect(box.y).toBeCloseTo(10.3, 6);
   });
 
