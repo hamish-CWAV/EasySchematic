@@ -8,27 +8,10 @@ import { checkDeviceTypeMapped, checkApprovalDeviceType } from "../../api/src/va
 import { validateTemplate } from "../import/validate";
 import { approveSubmission } from "../../devices/src/api";
 
-// Every id that still has two bundled templates on it (#300 audit, 2026-08-18).
-// D1 was seeded from these ids and kept whichever entry landed last, so each of
-// these is a template the Device Library cannot show. Reported on #300, not
-// fixed here — this set exists so the count can only shrink.
-const KNOWN_COLLIDED_IDS = [
-  "c0a80101-003d-4000-8000-000000000061", // ATEM Mini / PowerCON Distro
-  "c0a80101-003e-4000-8000-000000000062", // ATEM Mini Pro / PowerCON Thru Distro
-  "c0a80101-00ce-4000-8000-000000000206", // USB-C (M) → USB-A (F) Adapter / Panasonic RZ12K
-  "c0a80101-00cf-4000-8000-000000000207", // USB-C (M) → USB-B (F) Adapter / D'San Perfect Cue
-  "c0a80101-00d0-4000-8000-000000000208", // mini-XLR (M) → XLR-3 (F) Adapter / Brainstorm SR-112
-  "c0a80101-00d1-4000-8000-000000000209", // IEC (M) → Edison (F) Adapter / MIDI Merge 4x2
-  "c0a80101-00d2-4000-8000-000000000210", // IEC (M) → powerCON (F) Adapter / MIDI Thru 1x4
-  "c0a80101-010c-4000-8000-000000000344", // Disguise VX 1 / Dataton WATCHPAX 64
-  "c0a80101-010d-4000-8000-000000000345", // Novastar NovaPro UHD Jr / Disguise VX 2
-  "c0a80101-010e-4000-8000-000000000346", // Brompton Tessera S8 / Disguise VX 3
-  "c0a80101-010f-4000-8000-000000000347", // Brompton Tessera R2+ / Disguise GX 1
-  "c0a80101-0110-4000-8000-000000000348", // Disguise GX 2 / ETC Eos Apex
-  "c0a80101-0111-4000-8000-000000000349", // Disguise GX 2C / grandMA3 full-size
-  "c0a80101-0112-4000-8000-000000000350", // Disguise GX 3 / grandMA3 compact XT
-  "c0a80101-0240-4000-8000-000000000721", // BMD Videohub 80x80 12G / Wall Plate 1-Port Keystone
-];
+// Ids that still carry two bundled templates. The #300 audit found 15 and left
+// them here as a backlog; #339 re-ided all 15, so the set is empty and must stay
+// that way — a new entry means a template the Device Library cannot show.
+const KNOWN_COLLIDED_IDS: string[] = [];
 
 function idCounts(): Map<string, string[]> {
   const byId = new Map<string, string[]>();
@@ -61,6 +44,75 @@ describe("#300 — TB (M) → RJ45 (F) Adapter id collision", () => {
       .map(([id]) => id)
       .sort();
     expect(duplicates).toEqual([...KNOWN_COLLIDED_IDS].sort());
+  });
+});
+
+describe("#339 — the 15 remaining bundled id collisions", () => {
+  // For each collided id the *later* bundled template wins: seed.ts writes the
+  // library in array order with INSERT OR REPLACE, so D1 holds the last one, and
+  // effectiveTemplates() lets D1 shadow the bundle. Keeping the winner on the old
+  // id is what stops saved schematics resolving to a different device than they
+  // did before; the shadowed template is the one that moves.
+  const RE_IDED = [
+    { collidedId: "c0a80101-003d-4000-8000-000000000061", keeper: "PowerCON Distro", moved: "ATEM Mini", newId: "c0a80101-030e-4000-8000-000000000736" },
+    { collidedId: "c0a80101-003e-4000-8000-000000000062", keeper: "PowerCON Thru Distro", moved: "ATEM Mini Pro", newId: "c0a80101-030f-4000-8000-000000000737" },
+    { collidedId: "c0a80101-00ce-4000-8000-000000000206", keeper: "Panasonic RZ12K", moved: "USB-C (M) → USB-A (F) Adapter", newId: "c0a80101-0310-4000-8000-000000000738" },
+    { collidedId: "c0a80101-00cf-4000-8000-000000000207", keeper: "D'San Perfect Cue", moved: "USB-C (M) → USB-B (F) Adapter", newId: "c0a80101-0311-4000-8000-000000000739" },
+    { collidedId: "c0a80101-00d0-4000-8000-000000000208", keeper: "Brainstorm SR-112", moved: "mini-XLR (M) → XLR-3 (F) Adapter", newId: "c0a80101-0312-4000-8000-000000000740" },
+    { collidedId: "c0a80101-00d1-4000-8000-000000000209", keeper: "MIDI Merge 4x2", moved: "IEC (M) → Edison (F) Adapter", newId: "c0a80101-0313-4000-8000-000000000741" },
+    { collidedId: "c0a80101-00d2-4000-8000-000000000210", keeper: "MIDI Thru 1x4", moved: "IEC (M) → powerCON (F) Adapter", newId: "c0a80101-0314-4000-8000-000000000742" },
+    { collidedId: "c0a80101-010c-4000-8000-000000000344", keeper: "Dataton WATCHPAX 64", moved: "Disguise VX 1", newId: "c0a80101-0315-4000-8000-000000000743" },
+    { collidedId: "c0a80101-010d-4000-8000-000000000345", keeper: "Disguise VX 2", moved: "Novastar NovaPro UHD Jr", newId: "c0a80101-0316-4000-8000-000000000744" },
+    { collidedId: "c0a80101-010e-4000-8000-000000000346", keeper: "Disguise VX 3", moved: "Brompton Tessera S8", newId: "c0a80101-0317-4000-8000-000000000745" },
+    { collidedId: "c0a80101-010f-4000-8000-000000000347", keeper: "Disguise GX 1", moved: "Brompton Tessera R2+", newId: "c0a80101-0318-4000-8000-000000000746" },
+    { collidedId: "c0a80101-0110-4000-8000-000000000348", keeper: "ETC Eos Apex", moved: "Disguise GX 2", newId: "c0a80101-0319-4000-8000-000000000747" },
+    { collidedId: "c0a80101-0111-4000-8000-000000000349", keeper: "grandMA3 full-size", moved: "Disguise GX 2C", newId: "c0a80101-031a-4000-8000-000000000748" },
+    { collidedId: "c0a80101-0112-4000-8000-000000000350", keeper: "grandMA3 compact XT", moved: "Disguise GX 3", newId: "c0a80101-031b-4000-8000-000000000749" },
+    { collidedId: "c0a80101-0240-4000-8000-000000000721", keeper: "Wall Plate 1-Port Keystone", moved: "BMD Videohub 80x80 12G", newId: "c0a80101-031c-4000-8000-000000000750" },
+  ];
+
+  const byLabel = (label: string) =>
+    [...DEVICE_TEMPLATES, ...CARD_TEMPLATES].find((t) => t.label === label);
+
+  it.each(RE_IDED)("$collidedId now belongs to $keeper alone", ({ collidedId, keeper }) => {
+    expect(byLabel(keeper)?.id).toBe(collidedId);
+    expect(idCounts().get(collidedId)).toEqual([keeper]);
+  });
+
+  it.each(RE_IDED)("$moved moves to $newId", ({ moved, newId }) => {
+    expect(byLabel(moved)?.id).toBe(newId);
+    expect(idCounts().get(newId)).toEqual([moved]);
+  });
+
+  it("allocates the new ids above the previous high-water mark", () => {
+    // Both halves of the id are running counters (see the #300 re-id): the last
+    // one issued was c0a80101-030d-…-735, so 736+ was free in the bundle and in
+    // live D1, where every non-bundled row is a random UUID.
+    for (const { newId } of RE_IDED) {
+      const [, mid, , , num] = newId.split("-");
+      expect(parseInt(mid, 16)).toBeGreaterThan(0x030d);
+      expect(parseInt(num, 10)).toBeGreaterThan(735);
+    }
+    expect(new Set(RE_IDED.map((r) => r.newId)).size).toBe(RE_IDED.length);
+  });
+
+  it("frees five adapters the connector matcher can now stamp correctly", () => {
+    // Auto-insert reads the bundled library, so the matcher always saw these
+    // five; what was broken is the templateId it stamped on the inserted device,
+    // which resolved through D1 to a projector or a control device instead.
+    const adapters = RE_IDED.filter(({ moved }) => byLabel(moved)?.deviceType === "adapter");
+    expect(adapters.map((a) => a.moved)).toEqual([
+      "USB-C (M) → USB-A (F) Adapter",
+      "USB-C (M) → USB-B (F) Adapter",
+      "mini-XLR (M) → XLR-3 (F) Adapter",
+      "IEC (M) → Edison (F) Adapter",
+      "IEC (M) → powerCON (F) Adapter",
+    ]);
+    for (const { moved, newId } of adapters) {
+      const resolved = DEVICE_TEMPLATES.find((t) => t.id === newId);
+      expect(resolved?.label).toBe(moved);
+      expect(resolved?.deviceType).toBe("adapter");
+    }
   });
 });
 

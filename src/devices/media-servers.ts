@@ -134,7 +134,10 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-010c-4000-8000-000000000344",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-010c-4000-8000-000000000344
+    // with Dataton WATCHPAX 64 further down this file, which wins the dedupe
+    // (D1 keeps the last-seeded row), leaving this server unreachable.
+    id: "c0a80101-0315-4000-8000-000000000743",
     deviceType: "media-server",
     category: "media-servers",
     label: "Disguise VX 1",
@@ -245,7 +248,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-0110-4000-8000-000000000348",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-0110-4000-8000-000000000348
+    // with ETC Eos Apex in src/devices/lighting.ts, which wins the dedupe.
+    id: "c0a80101-0319-4000-8000-000000000747",
     deviceType: "media-server",
     category: "media-servers",
     label: "Disguise GX 2",
@@ -274,7 +279,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-0111-4000-8000-000000000349",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-0111-4000-8000-000000000349
+    // with grandMA3 full-size in src/devices/lighting.ts, which wins the dedupe.
+    id: "c0a80101-031a-4000-8000-000000000748",
     deviceType: "media-server",
     category: "media-servers",
     label: "Disguise GX 2C",
@@ -303,7 +310,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-0112-4000-8000-000000000350",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-0112-4000-8000-000000000350
+    // with grandMA3 compact XT in src/devices/lighting.ts, which wins the dedupe.
+    id: "c0a80101-031b-4000-8000-000000000749",
     deviceType: "media-server",
     category: "media-servers",
     label: "Disguise GX 3",

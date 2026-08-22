@@ -186,7 +186,10 @@ export const templates: DeviceTemplate[] = [
   },
   // ── Video Switchers ──────────────────────────────────────────────
   {
-    id: "c0a80101-003d-4000-8000-000000000061",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-003d-4000-8000-000000000061
+    // with PowerCON Distro in src/devices/infrastructure.ts, which wins the
+    // dedupe (D1 keeps the last-seeded row), leaving this switcher unreachable.
+    id: "c0a80101-030e-4000-8000-000000000736",
     deviceType: "switcher",
     label: "ATEM Mini",
     manufacturer: "Blackmagic Design",
@@ -207,7 +210,10 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-003e-4000-8000-000000000062",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-003e-4000-8000-000000000062
+    // with PowerCON Thru Distro in src/devices/infrastructure.ts, which wins
+    // the dedupe, leaving this switcher unreachable.
+    id: "c0a80101-030f-4000-8000-000000000737",
     deviceType: "switcher",
     label: "ATEM Mini Pro",
     manufacturer: "Blackmagic Design",
@@ -760,7 +766,10 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-0240-4000-8000-000000000721",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-0240-4000-8000-000000000721
+    // with Wall Plate 1-Port Keystone in src/devices/infrastructure.ts, which
+    // wins the dedupe, leaving this router unreachable.
+    id: "c0a80101-031c-4000-8000-000000000750",
     deviceType: "router",
     label: "BMD Videohub 80x80 12G",
     manufacturer: "Blackmagic Design",

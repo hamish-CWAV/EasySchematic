@@ -509,3 +509,77 @@ describe("insertAdapterBetween — reversed connector-swap adapter is wired up",
     assertEdgesResolvable(edges, nodes);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #339 — the five adapters that were shadowed by an id collision
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** How a template id resolves for a device on the canvas: seed.ts writes the
+ *  bundled library to D1 in array order with INSERT OR REPLACE, so the *last*
+ *  template on an id is the row D1 keeps, and templateApi's effectiveTemplates()
+ *  lets that row shadow the bundle. Before #339 five adapters shared an id with a
+ *  later projector or control device, so an auto-inserted adapter carried a
+ *  templateId that resolved to something that is not an adapter at all. */
+function resolveAsD1Would(id: string): DeviceTemplate | undefined {
+  let winner: DeviceTemplate | undefined;
+  for (const t of DEVICE_TEMPLATES) if (t.id === id) winner = t;
+  return winner;
+}
+
+describe("#339 — freed connector adapters", () => {
+  const FREED: Array<[string, ConnectorType, ConnectorType, SignalType]> = [
+    ["USB-C (M) → USB-A (F) Adapter", "usb-c", "usb-a", "usb"],
+    ["USB-C (M) → USB-B (F) Adapter", "usb-c", "usb-b", "usb"],
+    ["mini-XLR (M) → XLR-3 (F) Adapter", "mini-xlr", "xlr-3", "analog-audio"],
+    ["IEC (M) → Edison (F) Adapter", "iec", "edison", "power"],
+    ["IEC (M) → powerCON (F) Adapter", "iec", "powercon", "power"],
+  ];
+
+  it.each(FREED)("%s is offered for its connector pairing", (label, source, target, signal) => {
+    const found = findAdaptersForConnectorBridge(source, target, signal, DEVICE_TEMPLATES);
+    expect(found.map((t) => t.label)).toContain(label);
+  });
+
+  it.each(FREED)("%s keeps its own id once inserted", (label) => {
+    const adapter = DEVICE_TEMPLATES.find((t) => t.label === label)!;
+    expect(adapter.id).toBeTruthy();
+    const resolved = resolveAsD1Would(adapter.id!);
+    expect(resolved?.label).toBe(label);
+    expect(resolved?.deviceType).toBe("adapter");
+  });
+
+  it("leaves no bundled adapter resolving to a different device", () => {
+    const stolen = DEVICE_TEMPLATES.filter((t) => t.deviceType === "adapter" && t.id)
+      .filter((t) => resolveAsD1Would(t.id!)?.label !== t.label)
+      .map((t) => `${t.label} → ${resolveAsD1Would(t.id!)?.label}`);
+    expect(stolen).toEqual([]);
+  });
+
+  it("stamps the freed adapter's own template id on the inserted device", () => {
+    const adapterTemplate = DEVICE_TEMPLATES.find((t) => t.label === "IEC (M) → powerCON (F) Adapter")!;
+    const rackNode = deviceNode("n1", "Rack Gear", [
+      { id: "rk-iec", label: "AC In", signalType: "power", direction: "input", connectorType: "iec" },
+    ], 0);
+    const distroNode = deviceNode("n2", "Distro", [
+      { id: "ds-pc", label: "powerCON Out", signalType: "power", direction: "output", connectorType: "powercon" },
+    ], 600);
+    useSchematicStore.setState({
+      nodes: [rackNode, distroNode],
+      edges: [],
+      pendingIncompatibleConnection: {
+        connection: { source: "n2", sourceHandle: "ds-pc", target: "n1", targetHandle: "rk-iec" },
+        sourcePort: (distroNode.data as { ports: Port[] }).ports[0],
+        targetPort: (rackNode.data as { ports: Port[] }).ports[0],
+        reason: "connector-mismatch",
+      },
+    });
+    useSchematicStore.getState().insertAdapterBetween(adapterTemplate);
+
+    const inserted = useSchematicStore
+      .getState()
+      .nodes.find((n) => (n.data as { label?: string }).label === adapterTemplate.label)!;
+    const templateId = (inserted.data as { templateId?: string }).templateId!;
+    expect(templateId).toBe(adapterTemplate.id);
+    expect(resolveAsD1Would(templateId)?.label).toBe(adapterTemplate.label);
+  });
+});

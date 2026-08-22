@@ -849,8 +849,14 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   // ── Connector-Mismatch Adapters (passive cable adapters) ────────────
+  // The five adapters below were re-ided 2026-08-22 (#339): each shared an id
+  // with a later bundled template, and the later one wins the dedupe (D1 keeps
+  // the last-seeded row), so auto-insert stamped a templateId that resolved to
+  // a projector or a control device instead of the adapter it inserted.
   {
-    id: "c0a80101-00ce-4000-8000-000000000206",
+    // Was c0a80101-00ce-4000-8000-000000000206, shared with Panasonic RZ12K
+    // in src/devices/projection.ts.
+    id: "c0a80101-0310-4000-8000-000000000738",
     deviceType: "adapter",
     label: "USB-C (M) → USB-A (F) Adapter",
     searchTerms: ["usb-c", "usb-a", "adapter", "dongle", "male", "female"],
@@ -861,7 +867,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-00cf-4000-8000-000000000207",
+    // Was c0a80101-00cf-4000-8000-000000000207, shared with D'San Perfect Cue
+    // in src/devices/control.ts.
+    id: "c0a80101-0311-4000-8000-000000000739",
     deviceType: "adapter",
     label: "USB-C (M) → USB-B (F) Adapter",
     searchTerms: ["usb-c", "usb-b", "adapter", "dongle", "male", "female"],
@@ -872,7 +880,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-00d0-4000-8000-000000000208",
+    // Was c0a80101-00d0-4000-8000-000000000208, shared with Brainstorm SR-112
+    // in src/devices/control.ts.
+    id: "c0a80101-0312-4000-8000-000000000740",
     deviceType: "adapter",
     label: "mini-XLR (M) → XLR-3 (F) Adapter",
     searchTerms: ["mini-xlr", "xlr", "adapter", "audio", "male", "female"],
@@ -883,7 +893,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-00d1-4000-8000-000000000209",
+    // Was c0a80101-00d1-4000-8000-000000000209, shared with MIDI Merge 4x2
+    // in src/devices/control.ts.
+    id: "c0a80101-0313-4000-8000-000000000741",
     deviceType: "adapter",
     label: "IEC (M) → Edison (F) Adapter",
     searchTerms: ["iec", "edison", "power", "adapter", "cable", "male", "female"],
@@ -894,7 +906,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-00d2-4000-8000-000000000210",
+    // Was c0a80101-00d2-4000-8000-000000000210, shared with MIDI Thru 1x4
+    // in src/devices/control.ts.
+    id: "c0a80101-0314-4000-8000-000000000742",
     deviceType: "adapter",
     label: "IEC (M) → powerCON (F) Adapter",
     searchTerms: ["iec", "powercon", "power", "adapter", "cable", "male", "female"],

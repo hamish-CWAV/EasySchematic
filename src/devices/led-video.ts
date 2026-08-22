@@ -134,7 +134,10 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-010d-4000-8000-000000000345",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-010d-4000-8000-000000000345
+    // with Disguise VX 2 in src/devices/media-servers.ts, which wins the dedupe
+    // (D1 keeps the last-seeded row), leaving this processor unreachable.
+    id: "c0a80101-0316-4000-8000-000000000744",
     deviceType: "led-processor",
     category: "led-processing",
     label: "Novastar NovaPro UHD Jr",
@@ -201,7 +204,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-010e-4000-8000-000000000346",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-010e-4000-8000-000000000346
+    // with Disguise VX 3 in src/devices/media-servers.ts, which wins the dedupe.
+    id: "c0a80101-0317-4000-8000-000000000745",
     deviceType: "led-processor",
     category: "led-processing",
     label: "Brompton Tessera S8",
@@ -232,7 +237,9 @@ export const templates: DeviceTemplate[] = [
     ],
   },
   {
-    id: "c0a80101-010f-4000-8000-000000000347",
+    // Re-ided 2026-08-22 (#339): shared c0a80101-010f-4000-8000-000000000347
+    // with Disguise GX 1 in src/devices/media-servers.ts, which wins the dedupe.
+    id: "c0a80101-0318-4000-8000-000000000746",
     deviceType: "led-processor",
     category: "led-processing",
     label: "Brompton Tessera R2+",
