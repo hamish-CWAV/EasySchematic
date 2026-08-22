@@ -938,25 +938,80 @@ describe("a group drag settles the tags it left out (#346)", () => {
     expect(dataOf(settled!, "stub-2").placed).toBe(true);
   });
 
-  it("does not re-arm a tag whose leg ends on a hidden inline adapter", () => {
-    // StubLabelNode.tryPlace resolves its anchor as the literal far end of the leg, with
-    // no adapter hop — re-arming here would re-pin the tag to the stationary adapter,
-    // away from the device that moved. snapGroupRestPositions can hop because it rides
-    // the tag by a shift it already knows instead of handing it back to the placer.
+  /** scene() with stub-1's leg re-pointed at an inline adapter sitting between the tag and
+   *  dev-1 — what stubbing the device→adapter half of an adapted connection leaves (#348). */
+  function adaptedScene(): { nodes: SchematicNode[]; edges: ConnectionEdge[] } {
     const { nodes, edges } = scene();
     const adapter = {
       ...ported("adapter-1", 500, 96),
       data: { label: "adapter-1", deviceType: "adapter", ports: [] },
     } as SchematicNode;
-    const legToAdapter = { ...edges[0], target: "adapter-1" } as ConnectionEdge;
     const onward = {
       id: "e-onward", source: "adapter-1", sourceHandle: "sdi-out-1",
       target: "dev-1", targetHandle: "sdi-out-1", data: { signalType: "sdi" },
     } as unknown as ConnectionEdge;
-    const draggedIds = new Set(["dev-1"]);
-    const dragged = dragBy([...nodes, adapter], draggedIds, DRAG, 0);
+    return {
+      nodes: [...nodes, adapter],
+      edges: [{ ...edges[0], target: "adapter-1" } as ConnectionEdge, onward, edges[1]],
+    };
+  }
 
-    expect(settleTagsAfterMove(dragged, [legToAdapter, onward, edges[1]], draggedIds)).toBeNull();
+  it("does not re-arm a tag whose leg ends on a hidden inline adapter", () => {
+    // StubLabelNode.tryPlace resolves its anchor as the literal far end of the leg, with
+    // no adapter hop — re-arming here would re-pin the tag to the stationary adapter,
+    // away from the device that moved. snapGroupRestPositions can hop because it rides
+    // the tag by a shift it already knows instead of handing it back to the placer.
+    const { nodes, edges } = adaptedScene();
+    const draggedIds = new Set(["dev-1"]);
+    const dragged = dragBy(nodes, draggedIds, DRAG, 0);
+
+    expect(settleTagsAfterMove(dragged, edges, draggedIds)).toBeNull();
+    // Handing over the hidden set does not buy the re-anchor a hop (#356 reads it only
+    // for a tag that was itself in the move).
+    expect(settleTagsAfterMove(dragged, edges, draggedIds, new Set(["adapter-1"]))).toBeNull();
+  });
+
+  it("leaves a tag co-dragged with the device past a hidden adapter unstamped (#356)", () => {
+    // Marquee the adapter-side tag together with the device on the far side of the hidden
+    // adapter. snapGroupRestPositions rides the tag with that device (#348), but the
+    // no-hop host lookup here sees only the stationary adapter, reads "tag moved, device
+    // did not", and stamps the ride as a hand placement.
+    const { nodes, edges } = adaptedScene();
+    const hidden = new Set(["adapter-1"]);
+    const draggedIds = new Set(["dev-1", "stub-1"]);
+    // The 5px is what makes the ride visible: the group rest correction pulls dev-1 back
+    // onto the grid, and only the hop carries the tag along with it.
+    const dragged = dragBy(nodes, draggedIds, DRAG + 5, 0);
+    const rested = applyMoves(
+      dragged,
+      snapGroupRestPositions(dragged, draggedIds, { dx: 0, dy: 0 }, "dev-1", edges, hidden),
+    );
+    expect(absPos(rested, "stub-1").x - absPos(nodes, "stub-1").x).toBe(DRAG);
+    expect(absPos(rested, "dev-1").x - absPos(nodes, "dev-1").x).toBe(DRAG);
+
+    expect(settleTagsAfterMove(rested, edges, draggedIds, hidden)).toBeNull();
+
+    // The cost of the stamp, and the payoff for withholding it: Show Adapter and drag the
+    // now-visible adapter. Unstamped, the tag re-arms and follows; stamped, it is opted
+    // out of every future re-anchor and holds the dogleg until the stub is re-created.
+    const shown = new Set(["adapter-1"]);
+    const followed = settleTagsAfterMove(dragBy(rested, shown, 0, DRAG), edges, shown);
+    expect(dataOf(followed!, "stub-1").placed).toBe(false);
+
+    const stamped = settleTagsAfterMove(rested, edges, draggedIds);
+    expect(dataOf(stamped!, "stub-1")).toMatchObject({ userMoved: true, placed: true });
+    expect(settleTagsAfterMove(dragBy(stamped!, shown, 0, DRAG), edges, shown)).toBeNull();
+  });
+
+  it("still marks a tag hand-dragged alone past a hidden adapter (#356)", () => {
+    // Same scene, tag pulled off on its own: nothing rode it, so the stamp is exactly
+    // right and the hop host being stationary is what says so.
+    const { nodes, edges } = adaptedScene();
+    const tagOnly = new Set(["stub-1"]);
+    const pulled = settleTagsAfterMove(
+      dragBy(nodes, tagOnly, 0, 6 * GRID_SIZE), edges, tagOnly, new Set(["adapter-1"]),
+    );
+    expect(dataOf(pulled!, "stub-1")).toMatchObject({ userMoved: true, placed: true });
   });
 
   it("is the settle moveDevice runs too, text stubs (#196) included", () => {

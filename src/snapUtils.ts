@@ -1366,12 +1366,22 @@ export function tagHostId(
  * the literal far end of the leg — the adapter. Hopping here would re-arm a tag that the
  * placer then re-pins to the stationary adapter, moving it away from the device that moved.
  *
+ * `hiddenAdapterIds` does not change that: it is read only to recognise the one case the
+ * no-hop lookup gets wrong in the other direction (#356). When a tag's leg ends on a
+ * hidden adapter and the device the user sees BEYOND it was in the same move, the tag was
+ * carried by snapGroupRestPositions' hop (#348), not placed by hand — the stationary
+ * adapter just makes it look like a hand placement to the no-hop lookup. Stamping
+ * `userMoved` there would opt the tag out of every later re-anchor, including the one it
+ * needs once Show Adapter makes the adapter draggable again.
+ *
  * Returns a new nodes array, or null when no tag needs anything.
  */
 export function settleTagsAfterMove(
   nodes: readonly SchematicNode[],
   edges: readonly ConnectionEdge[],
   movedIds: ReadonlySet<string>,
+  /** Inline adapters the canvas is hiding — see above; never used to re-anchor. */
+  hiddenAdapterIds?: ReadonlySet<string>,
 ): SchematicNode[] | null {
   if (movedIds.size === 0) return null;
   const nodeMap = new Map<string, SchematicNode>();
@@ -1403,6 +1413,12 @@ export function settleTagsAfterMove(
     const d = n.data as StubLabelData | TextStubData;
     if (movedIds.has(n.id)) {
       if (hostMoved) return n; // rode with its device — #334 already placed it
+      // Same thing one hop further out: the leg ends on a hidden adapter that stayed put
+      // and the visible device past it moved, so the tag rode with it (#348/#356).
+      if (hiddenAdapterIds?.size) {
+        const hopHostId = tagHostId(n, nodes, edges, hiddenAdapterIds);
+        if (hopHostId !== hostId && hopHostId !== undefined && moved.has(hopHostId)) return n;
+      }
       if (d.userMoved === true && d.placed === true) return n;
       changed = true;
       return { ...n, data: { ...d, userMoved: true, placed: true } } as SchematicNode;

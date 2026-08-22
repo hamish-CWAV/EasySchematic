@@ -1383,7 +1383,9 @@ function SchematicCanvas() {
         // `userMoved` it stamps on a tag dragged clear of its device is a user
         // placement that has to survive a reload.
         const st = useSchematicStore.getState();
-        const settledNodes = settleTagsAfterMove(st.nodes, st.edges, draggedIds);
+        const settledNodes = settleTagsAfterMove(
+          st.nodes, st.edges, draggedIds, st.hiddenAdapterNodeIds,
+        );
         if (settledNodes) {
           useSchematicStore.setState({ nodes: settledNodes });
           useSchematicStore.getState().saveToLocalStorage();
