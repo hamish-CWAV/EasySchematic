@@ -3,6 +3,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useSchematicStore, GRID_SIZE } from "../store";
 import { resolvePort } from "../packList";
 import { LINE_STYLE_LABELS, LINE_STYLE_DASHARRAY, type DeviceData, type LineStyle } from "../types";
+import { isAdapterHidden, toggleAdapterVisibility as nextAdapterVisibility } from "../adapterVisibility";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 import MenuSubmenu from "./MenuSubmenu";
 
@@ -368,9 +369,7 @@ export default function EdgeContextMenu() {
     if (!adapterId) return;
 
     const adapterData = store.nodes.find((n) => n.id === adapterId)?.data as DeviceData | undefined;
-    const current = adapterData?.adapterVisibility ?? "default";
-    const isCurrentlyHidden = current === "force-hide" || (current === "default" && store.hideAdapters);
-    const newVisibility = isCurrentlyHidden ? "force-show" : "force-hide";
+    const newVisibility = nextAdapterVisibility(adapterData?.adapterVisibility, store.hideAdapters);
 
     store.patchDeviceData(adapterId, { adapterVisibility: newVisibility });
     useSchematicStore.setState({ edgeContextMenu: null });
@@ -497,8 +496,7 @@ export default function EdgeContextMenu() {
   const connectsToAdapter = srcIsAdapter || tgtIsAdapter || hiddenAdapterTarget;
   const adapterId = srcIsAdapter ? edge?.source : tgtIsAdapter ? edge?.target : hiddenAdapterTarget ? edge?.target : null;
   const adapterData = adapterId ? store.nodes.find((n) => n.id === adapterId)?.data as DeviceData | undefined : undefined;
-  const adapterVisibility = adapterData?.adapterVisibility ?? "default";
-  const adapterIsHidden = adapterVisibility === "force-hide" || (adapterVisibility === "default" && store.hideAdapters);
+  const adapterIsHidden = isAdapterHidden(adapterData?.adapterVisibility, store.hideAdapters);
 
   let nearWaypoint = false;
   const checkNear = (wps: { x: number; y: number }[]) => {

@@ -4,6 +4,7 @@ import { useSchematicStore } from "../store";
 import type { DeviceData, RackElevationPage } from "../types";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 import { inferRackHeightU } from "../rackUtils";
+import { isAdapterHidden, toggleAdapterVisibility } from "../adapterVisibility";
 
 export default function DeviceContextMenu() {
   const menu = useSchematicStore((s) => s.deviceContextMenu);
@@ -11,6 +12,7 @@ export default function DeviceContextMenu() {
   const pages = useMemo(() => allPages.filter((p): p is RackElevationPage => p.type === "rack-elevation"), [allPages]);
   const setActivePage = useSchematicStore((s) => s.setActivePage);
   const nodes = useSchematicStore((s) => s.nodes);
+  const hideAdapters = useSchematicStore((s) => s.hideAdapters);
   const updateNodeInternals = useUpdateNodeInternals();
   const { ref: menuRef, pos: menuPos } = useContextMenuPosition(
     menu?.screenX ?? 0,
@@ -68,6 +70,17 @@ export default function DeviceContextMenu() {
     useSchematicStore.setState({ deviceContextMenu: null });
   }, [menu, updateNodeInternals]);
 
+  const toggleAdapterHidden = useCallback(() => {
+    if (!menu) return;
+    const store = useSchematicStore.getState();
+    const node = store.nodes.find((n) => n.id === menu.nodeId);
+    if (!node || node.type !== "device") return;
+    const data = node.data as DeviceData;
+    const newVisibility = toggleAdapterVisibility(data.adapterVisibility, store.hideAdapters);
+    store.patchDeviceData(menu.nodeId, { adapterVisibility: newVisibility });
+    useSchematicStore.setState({ deviceContextMenu: null });
+  }, [menu]);
+
   if (!menu) return null;
 
   const { nodeId } = menu;
@@ -77,6 +90,9 @@ export default function DeviceContextMenu() {
   const placement = pages
     .flatMap((p) => p.placements.map((pl) => ({ page: p, placement: pl })))
     .find((x) => x.placement.deviceNodeId === nodeId);
+
+  const isAdapter = deviceData?.deviceType === "adapter";
+  const adapterIsHidden = isAdapter && isAdapterHidden(deviceData?.adapterVisibility, hideAdapters);
 
   return (
     <div
@@ -102,6 +118,12 @@ export default function DeviceContextMenu() {
             onClick={toggleShowOnlyConnected}
             checked={!!deviceData.showOnlyConnectedPorts}
           />
+          {isAdapter && (
+            <MenuItem
+              label={adapterIsHidden ? "Show Adapter" : "Hide Adapter"}
+              onClick={toggleAdapterHidden}
+            />
+          )}
           {(placement || pages.length > 0) && (
             <div className="border-t border-gray-200 my-1" />
           )}
