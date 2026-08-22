@@ -285,3 +285,103 @@ describe("PDF off-page continuation labels — past a hidden inline adapter (#34
     expect(labels[0].text).toBe("BNC Barrel");
   });
 });
+
+// A boundary line is shared by every page along it: the vertical line between two
+// columns runs down all their rows. A crossing on one row was emitting a pill for the
+// pages on the OTHER rows too, drawn off the sheet where it was invisible — harmless
+// until the spread started sliding pills against each other, at which point a phantom
+// pill could shove the real ones about (#357).
+describe("PDF off-page continuation labels — crossings on another sheet", () => {
+  /** Four devices, one per cell of a 2×2 page grid. */
+  const grid = [
+    { id: "dev-tl", x: 100, y: 100, label: "Top Left" },
+    { id: "dev-tr", x: 1000, y: 100, label: "Top Right" },
+    { id: "dev-bl", x: 100, y: 1200, label: "Bottom Left" },
+    { id: "dev-br", x: 1000, y: 1200, label: "Bottom Right" },
+  ].map((d) => ({
+    id: d.id, type: "device", position: { x: d.x, y: d.y },
+    measured: { width: 144, height: 64 },
+    data: { label: d.label, ports: [] },
+  })) as unknown as SchematicNode[];
+
+  const pages = pagesFor(grid);
+  const edges = [edge("dev-bl", "dev-br")];
+  // Runs left to right across the BOTTOM row, crossing the column boundary there.
+  const routed = { e1: horizontalRoute(1230, 244, 1000) };
+
+  const pageAt = (col: number, row: number) => pages.find((p) => p.col === col && p.row === row)!;
+
+  it("tiles the schematic over four sheets", () => {
+    expect(pages).toHaveLength(4);
+  });
+
+  it("labels the sheets the crossing actually runs across", () => {
+    const left = computePdfCrossingLabels(pageAt(0, 1), pages, routed, edges, grid, SCALE);
+    expect(left.map((l) => [l.anchor, l.text])).toEqual([["left", "Bottom Right"]]);
+    const right = computePdfCrossingLabels(pageAt(1, 1), pages, routed, edges, grid, SCALE);
+    expect(right.map((l) => [l.anchor, l.text])).toEqual([["right", "Bottom Left"]]);
+  });
+
+  it("leaves the sheets above it alone", () => {
+    expect(computePdfCrossingLabels(pageAt(0, 0), pages, routed, edges, grid, SCALE)).toEqual([]);
+    expect(computePdfCrossingLabels(pageAt(1, 0), pages, routed, edges, grid, SCALE)).toEqual([]);
+  });
+});
+
+// The pill names the sheet the connection carries on to, so the printed page can be
+// followed without the editor open. It is the far side of the boundary, never the
+// sheet the pill is drawn on (#357).
+describe("PDF off-page continuation labels — the sheet the run carries on to", () => {
+  const nodes = [topDevice, bottomDevice];
+  const pages = pagesFor(nodes);
+  const edges = [edge(topDevice.id, bottomDevice.id)];
+  const routed = { e1: verticalRoute(150, 164, 1200) };
+
+  it("points the upper sheet's pill at the lower sheet and back", () => {
+    const [upper] = computePdfCrossingLabels(pages[0], pages, routed, edges, nodes, SCALE);
+    expect(upper.pageNum).toBe(2);
+    const [lower] = computePdfCrossingLabels(pages[1], pages, routed, edges, nodes, SCALE);
+    expect(lower.pageNum).toBe(1);
+  });
+});
+
+// Adjacent sheets' print bands do not touch: there is a margin strip either side of
+// every boundary that no band claims. Handing each crossing to the sheet whose PAGE it
+// falls on — the test the editor overlay uses — keeps the strip covered, where bounding
+// against the bands would have dropped these pills from the print while the editor went
+// on drawing them (#357).
+describe("PDF off-page continuation labels — a crossing in the margin strip", () => {
+  const grid = [
+    { id: "dev-tl", x: 100, y: 100, label: "Top Left" },
+    { id: "dev-tr", x: 1000, y: 100, label: "Top Right" },
+    { id: "dev-bl", x: 100, y: 1200, label: "Bottom Left" },
+    { id: "dev-br", x: 1000, y: 1200, label: "Bottom Right" },
+  ].map((d) => ({
+    id: d.id, type: "device", position: { x: d.x, y: d.y },
+    measured: { width: 144, height: 64 },
+    data: { label: d.label, ports: [] },
+  })) as unknown as SchematicNode[];
+
+  const pages = pagesFor(grid);
+  const pageAt = (col: number, row: number) => pages.find((p) => p.col === col && p.row === row)!;
+  const topLeft = pageAt(0, 0);
+  const marginPx = topLeft.contentX - topLeft.x;
+  // Half a margin above the row boundary: inside the top row's sheet, but below the
+  // bottom of the strip it rasterises.
+  const stripY = topLeft.y + topLeft.heightPx - marginPx * 0.5;
+
+  const edges = [edge("dev-tl", "dev-tr")];
+  const routed = { e1: horizontalRoute(stripY, 244, 1000) };
+
+  it("still labels both sheets the crossing runs between", () => {
+    const left = computePdfCrossingLabels(topLeft, pages, routed, edges, grid, SCALE);
+    expect(left.map((l) => [l.anchor, l.text])).toEqual([["left", "Top Right"]]);
+    const right = computePdfCrossingLabels(pageAt(1, 0), pages, routed, edges, grid, SCALE);
+    expect(right.map((l) => [l.anchor, l.text])).toEqual([["right", "Top Left"]]);
+  });
+
+  it("leaves the row below it alone", () => {
+    expect(computePdfCrossingLabels(pageAt(0, 1), pages, routed, edges, grid, SCALE)).toEqual([]);
+    expect(computePdfCrossingLabels(pageAt(1, 1), pages, routed, edges, grid, SCALE)).toEqual([]);
+  });
+});

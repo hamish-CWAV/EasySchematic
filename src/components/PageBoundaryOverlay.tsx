@@ -8,7 +8,16 @@ import type { RoutedEdge } from "../edgeRouter";
 import { computeCellRects, normalizeSizes, getFieldValue, getFieldLabel } from "../titleBlockLayout";
 import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "../colorKeyLayout";
-import { layoutContinuationPill, titleBlockBandPx, type TitleBlockBand } from "../continuationPill";
+import {
+  continuationPillText,
+  layoutContinuationPills,
+  titleBlockBandPx,
+  PILL_FONT_SIZE_PT,
+  PILL_GAP_PT,
+  PILL_PAD_PT,
+  type PillLimit,
+  type TitleBlockBand,
+} from "../continuationPill";
 
 // ─── Page crossing labels ─────────────────────────────────────────
 
@@ -24,6 +33,10 @@ interface CrossingLabel {
   anchor: "left" | "right" | "up" | "down";
   /** Signal wire color (hex) */
   color: string;
+  /** Page the pill itself is drawn on (1-indexed, 0 when it lands off every page) */
+  sheet: number;
+  /** The sheet's drawing border along the axis the pill can slide on (#357) */
+  limit: PillLimit | null;
 }
 
 /** Find which page (1-indexed) contains a given point, or 0 if none. */
@@ -84,6 +97,19 @@ function computeCrossingLabels(
   // Inset from content border — 15% of margin keeps pills visually separated
   const inset = marginPx * 0.15;
 
+  // How far a pill may slide along the sheet it sits on before it leaves the drawing
+  // border. The vertical span runs to the bottom margin, not to contentH, which stops
+  // a title-block height short of it.
+  const pageByNumber = new Map(pages.map((p) => [p.index + 1, p]));
+  const slideX = (pageNum: number): PillLimit | null => {
+    const p = pageByNumber.get(pageNum);
+    return p ? { min: p.contentX, max: p.contentX + p.contentW } : null;
+  };
+  const slideY = (pageNum: number): PillLimit | null => {
+    const p = pageByNumber.get(pageNum);
+    return p ? { min: p.contentY, max: p.y + p.heightPx - marginPx } : null;
+  };
+
   // Resolve signal colors
   const resolveColor = (edge: { data?: { signalType?: SignalType } }): string => {
     const st = edge.data?.signalType;
@@ -116,8 +142,8 @@ function computeCrossingLabels(
 
             // Position inside the content border (margin + inset from boundary)
             const edgeColor = resolveColor(edge);
-            labels.push({ x: bx - marginPx - inset, y, text: formatLabel(rightwardTarget), pageNum: rightPageNum, anchor: "left", color: edgeColor });
-            labels.push({ x: bx + marginPx + inset, y, text: formatLabel(leftwardTarget), pageNum: leftPageNum, anchor: "right", color: edgeColor });
+            labels.push({ x: bx - marginPx - inset, y, text: formatLabel(rightwardTarget), pageNum: rightPageNum, anchor: "left", color: edgeColor, sheet: leftPageNum, limit: slideY(leftPageNum) });
+            labels.push({ x: bx + marginPx + inset, y, text: formatLabel(leftwardTarget), pageNum: leftPageNum, anchor: "right", color: edgeColor, sheet: rightPageNum, limit: slideY(rightPageNum) });
           }
         }
       } else {
@@ -134,8 +160,8 @@ function computeCrossingLabels(
             const upPageNum = pageAtPoint(x, by - 1, pages);
 
             const edgeColor = resolveColor(edge);
-            labels.push({ x, y: by - marginPx - inset, text: formatLabel(downwardTarget), pageNum: downPageNum, anchor: "up", color: edgeColor });
-            labels.push({ x, y: by + marginPx + inset, text: formatLabel(upwardTarget), pageNum: upPageNum, anchor: "down", color: edgeColor });
+            labels.push({ x, y: by - marginPx - inset, text: formatLabel(downwardTarget), pageNum: downPageNum, anchor: "up", color: edgeColor, sheet: upPageNum, limit: slideX(upPageNum) });
+            labels.push({ x, y: by + marginPx + inset, text: formatLabel(upwardTarget), pageNum: upPageNum, anchor: "down", color: edgeColor, sheet: downPageNum, limit: slideX(downPageNum) });
           }
         }
       }
@@ -162,38 +188,52 @@ function measureTextWidth(text: string, font: string): number {
 
 function CrossingLabels({ labels, pxPerPt, titleBlockBands }: { labels: CrossingLabel[]; pxPerPt: number; titleBlockBands: TitleBlockBand[] }) {
   if (labels.length === 0) return null;
-  const fontSize = 6.5 * pxPerPt;
-  const pad = 1.5 * pxPerPt;
+  // Type size, padding and pill text all come from the shared module: the spread is
+  // driven by pill width, so a preview that measured its pills differently would push
+  // them to different places than the PDF does (#357).
+  const fontSize = PILL_FONT_SIZE_PT * pxPerPt;
+  const pad = PILL_PAD_PT * pxPerPt;
   const radius = 1.5 * pxPerPt;
   const font = `500 ${fontSize}px Inter, system-ui, sans-serif`;
+  const pillGap = PILL_GAP_PT * pxPerPt;
+
+  const texts = labels.map((l) => continuationPillText(l.anchor, l.text, l.pageNum));
+
+  // Box outer edge sits at l.x/l.y, growing INWARD (away from the page boundary).
+  // Pills crowding the same page edge then slide along it until they clear each
+  // other, and any that landed on the title block ride up off it.
+  const boxes = layoutContinuationPills(
+    labels.map((l, i) => ({
+      anchor: l.anchor,
+      x: l.x,
+      y: l.y,
+      width: measureTextWidth(texts[i], font) + pad * 2,
+      height: fontSize + pad * 2,
+      // A pill that landed on no page at all (a boundary shared with an empty grid
+      // cell) is on nobody's edge, so it gets a key of its own rather than being
+      // spread against every other homeless pill in the document.
+      sheet: l.sheet > 0 ? l.sheet : `off-${i}`,
+      limit: l.limit,
+    })),
+    titleBlockBands,
+    pillGap,
+  );
 
   return (
     <g>
       {labels.map((l, i) => {
-        const arrow = l.anchor === "left" ? "\u2192" : l.anchor === "right" ? "\u2190" : l.anchor === "up" ? "\u2193" : "\u2191";
-        const pgRef = l.pageNum > 0 ? ` Pg ${l.pageNum}` : "";
-        const displayText = `${arrow} ${l.text}${pgRef}`;
-
-        const textW = measureTextWidth(displayText, font);
-        const boxW = textW + pad * 2;
-        const boxH = fontSize + pad * 2;
-
-        // Box outer edge sits at l.x/l.y, growing INWARD (away from the page
-        // boundary), then rides up off the title block if it landed on one.
-        const box = layoutContinuationPill(
-          { anchor: l.anchor, x: l.x, y: l.y, width: boxW, height: boxH },
-          titleBlockBands,
-        );
+        const displayText = texts[i];
+        const box = boxes[i];
         const textX = box.x + pad;
-        const textY = box.y + boxH / 2;
+        const textY = box.y + box.height / 2;
 
         return (
           <g key={i}>
             <rect
               x={box.x}
               y={box.y}
-              width={boxW}
-              height={boxH}
+              width={box.width}
+              height={box.height}
               rx={radius}
               ry={radius}
               fill="white"

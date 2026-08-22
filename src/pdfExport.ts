@@ -16,7 +16,15 @@ import { hopHiddenAdapters } from "./adapterVisibility";
 import { DEFAULT_SIGNAL_COLORS } from "./signalColors";
 import { transformLabelNow } from "./labelCaseUtils";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "./colorKeyLayout";
-import { layoutContinuationPill, titleBlockBandInches, type TitleBlockBand } from "./continuationPill";
+import {
+  continuationPillText,
+  layoutContinuationPills,
+  titleBlockBandInches,
+  PILL_FONT_SIZE_PT,
+  PILL_GAP_PT,
+  PILL_PAD_PT,
+  type TitleBlockBand,
+} from "./continuationPill";
 
 const DPI = 96;
 // 5 × 96 = 480 DPI — well above the 300 DPI print standard, sharp even at high
@@ -329,6 +337,18 @@ export interface PdfCrossingLabel {
   anchor: "left" | "right" | "up" | "down";
   /** Signal wire color (hex) */
   color: string;
+  /** Sheet the connection carries on to (1-indexed, 0 when it lands off every page) */
+  pageNum: number;
+}
+
+/** Which sheet (1-indexed) a canvas point falls on, or 0 for none. */
+function pdfPageAtPoint(x: number, y: number, pages: PageRect[]): number {
+  for (const p of pages) {
+    if (x >= p.x && x < p.x + p.widthPx && y >= p.y && y < p.y + p.heightPx) {
+      return p.index + 1;
+    }
+  }
+  return 0;
 }
 
 export function computePdfCrossingLabels(
@@ -442,6 +462,13 @@ export function computePdfCrossingLabels(
     for (const seg of route.segments) {
       if (seg.axis === "h") {
         const y = seg.y1;
+        // A vertical boundary is shared by every page in its column, so the crossing
+        // may well run across a different sheet than this one. The page rects tile the
+        // grid, so testing the crossing against this sheet's own rect hands it to
+        // exactly one sheet — the same one the editor overlay draws it on (#357).
+        // Bounding against the print margins instead would drop crossings in the
+        // margin strip, which no sheet's band claims and the editor still shows.
+        if (y < page.y || y >= page.y + page.heightPx) continue;
         const minX = Math.min(seg.x1, seg.x2);
         const maxX = Math.max(seg.x1, seg.x2);
         const goingRight = seg.x2 > seg.x1;
@@ -453,19 +480,23 @@ export function computePdfCrossingLabels(
             const insetPx = marginPx * 0.15;
             const leftPx = bx - marginPx - insetPx;
             const rightPx = bx + marginPx + insetPx;
+            const rightPageNum = pdfPageAtPoint(bx + 1, y, pages);
+            const leftPageNum = pdfPageAtPoint(bx - 1, y, pages);
 
             if (leftPx >= drawnLeft && leftPx <= drawnRight) {
               const text = fmtLabel(rightwardTarget);
-              labels.push({ x: toPageX(leftPx), y: toPageY(y), text, anchor: "left", color: edgeColor });
+              labels.push({ x: toPageX(leftPx), y: toPageY(y), text, anchor: "left", color: edgeColor, pageNum: rightPageNum });
             }
             if (rightPx >= drawnLeft && rightPx <= drawnRight) {
               const text = fmtLabel(leftwardTarget);
-              labels.push({ x: toPageX(rightPx), y: toPageY(y), text, anchor: "right", color: edgeColor });
+              labels.push({ x: toPageX(rightPx), y: toPageY(y), text, anchor: "right", color: edgeColor, pageNum: leftPageNum });
             }
           }
         }
       } else {
         const x = seg.x1;
+        // Likewise a horizontal boundary is shared by every page in its row.
+        if (x < page.x || x >= page.x + page.widthPx) continue;
         const minY = Math.min(seg.y1, seg.y2);
         const maxY = Math.max(seg.y1, seg.y2);
         const goingDown = seg.y2 > seg.y1;
@@ -477,14 +508,16 @@ export function computePdfCrossingLabels(
             const insetPx = marginPx * 0.15;
             const upPx = by - marginPx - insetPx;
             const downPx = by + marginPx + insetPx;
+            const downPageNum = pdfPageAtPoint(x, by + 1, pages);
+            const upPageNum = pdfPageAtPoint(x, by - 1, pages);
 
             if (upPx >= drawnTop && upPx <= drawnBottom) {
               const text = fmtLabel(downwardTarget);
-              labels.push({ x: toPageX(x), y: toPageY(upPx), text, anchor: "up", color: edgeColor });
+              labels.push({ x: toPageX(x), y: toPageY(upPx), text, anchor: "up", color: edgeColor, pageNum: downPageNum });
             }
             if (downPx >= drawnTop && downPx <= drawnBottom) {
               const text = fmtLabel(upwardTarget);
-              labels.push({ x: toPageX(x), y: toPageY(downPx), text, anchor: "down", color: edgeColor });
+              labels.push({ x: toPageX(x), y: toPageY(downPx), text, anchor: "down", color: edgeColor, pageNum: upPageNum });
             }
           }
         }
@@ -500,39 +533,55 @@ function fmtLabel(info: { label: string; room?: string }): string {
   return info.label;
 }
 
-const ARROW_CHARS: Record<string, string> = {
-  left: "\u2192",  // → (points right, meaning "continues to the right")
-  right: "\u2190", // ← (points left, meaning "continues to the left")
-  up: "\u2193",    // ↓ (points down, meaning "continues downward")
-  down: "\u2191",  // ↑ (points up, meaning "continues upward")
-};
-
-function drawCrossingLabels(doc: jsPDF, labels: PdfCrossingLabel[], titleBlockBand: TitleBlockBand | null) {
+function drawCrossingLabels(
+  doc: jsPDF,
+  labels: PdfCrossingLabel[],
+  titleBlockBand: TitleBlockBand | null,
+  pageWIn: number,
+  pageHIn: number,
+) {
   if (labels.length === 0) return;
   doc.saveGraphicsState();
 
-  const fontSize = 6; // points
-  const pad = 0.02; // inches — uniform on all sides
+  // Type size, padding, gap and the pill text itself are shared with the editor
+  // overlay: the spread below is driven by pill width, so the preview has to measure
+  // the same box the sheet prints or it stops showing what prints (#357).
+  const fontSize = PILL_FONT_SIZE_PT; // points
+  const pad = PILL_PAD_PT / 72; // inches — uniform on all sides
   const radius = 0.02;
+  const pillGap = PILL_GAP_PT / 72;
 
   doc.setFont("Inter", "normal");
   doc.setFontSize(fontSize);
 
   const bands = titleBlockBand ? [titleBlockBand] : [];
+  // Every label here belongs to the one sheet being drawn, so anchor alone names the
+  // page edge a pill may slide along.
+  const acrossSheet = { min: PAGE_MARGIN_IN, max: pageWIn - PAGE_MARGIN_IN };
+  const downSheet = { min: PAGE_MARGIN_IN, max: pageHIn - PAGE_MARGIN_IN };
 
-  for (const l of labels) {
-    const arrow = ARROW_CHARS[l.anchor];
-    const displayText = `${arrow} ${l.text}`;
-    const textW = doc.getTextWidth(displayText);
-    const boxW = textW + pad * 2;
-    const boxH = fontSize / 72 + pad * 2;
+  const texts = labels.map((l) => continuationPillText(l.anchor, l.text, l.pageNum));
+  const boxH = fontSize / 72 + pad * 2;
 
-    // Grows inward from the boundary, then rides up off the title block if it
-    // landed on one — the pill is opaque and would white the block out (#337).
-    const { x: boxX, y: boxY } = layoutContinuationPill(
-      { anchor: l.anchor, x: l.x, y: l.y, width: boxW, height: boxH },
-      bands,
-    );
+  // Grows inward from the boundary, slides along the edge to clear the pills of any
+  // connections crossing alongside it (#357), then rides up off the title block if it
+  // landed on one — the pill is opaque and would white the block out (#337).
+  const boxes = layoutContinuationPills(
+    labels.map((l, i) => ({
+      anchor: l.anchor,
+      x: l.x,
+      y: l.y,
+      width: doc.getTextWidth(texts[i]) + pad * 2,
+      height: boxH,
+      limit: l.anchor === "up" || l.anchor === "down" ? acrossSheet : downSheet,
+    })),
+    bands,
+    pillGap,
+  );
+
+  labels.forEach((l, i) => {
+    const displayText = texts[i];
+    const { x: boxX, y: boxY, width: boxW } = boxes[i];
 
     // White pill background with signal-colored border
     const [cr, cg, cb] = hexToRgb(l.color);
@@ -546,7 +595,7 @@ function drawCrossingLabels(doc: jsPDF, labels: PdfCrossingLabel[], titleBlockBa
     doc.setFontSize(fontSize);
     doc.setTextColor(55, 65, 81);
     doc.text(displayText, boxX + pad, boxY + boxH / 2 + (fontSize / 72) * 0.35);
-  }
+  });
   doc.restoreGraphicsState();
 }
 
@@ -783,7 +832,13 @@ export async function exportPdf(
       const pdfLabels = computePdfCrossingLabels(
         page, pages, storeState.routedEdges, storeState.edges, storeState.nodes, scale,
       );
-      drawCrossingLabels(doc, pdfLabels, titleBlockBandInches(pageWIn, pageHIn, layout.widthIn, layout.heightIn));
+      drawCrossingLabels(
+        doc,
+        pdfLabels,
+        titleBlockBandInches(pageWIn, pageHIn, layout.widthIn, layout.heightIn),
+        pageWIn,
+        pageHIn,
+      );
 
       // Draw color key / signal legend
       if (storeState.colorKeyEnabled) {
