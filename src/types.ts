@@ -400,6 +400,9 @@ export interface StubLabelData {
   showRoom?: boolean;
   /** When/whether to append page number (per-stub override; falls back to global setting) */
   pageMode?: StubLabelPageMode;
+  /** What this tag prints — the full destination description, or the cable ID alone.
+   *  Undefined = "full", so every schematic saved before #270 reads back unchanged. */
+  labelMode?: StubLabelMode;
   /** True once one-shot auto-placement has aligned this stub with its port. Skips the
    *  align-Y / clear-overlap pass on every subsequent mount so user-dragged positions
    *  survive page refresh. New stubs from convertEdgeToStubs get auto-placed once and
@@ -957,6 +960,17 @@ export const DEFAULT_STUB_LABEL_PAGE_MODE: StubLabelPageMode = "cross-page";
 // end is, is the destination name — and it eats width on a box that is already tight.
 // Off by default (#350), still available globally (Preferences) and per-stub.
 export const DEFAULT_STUB_LABEL_SHOW_ARROW = false;
+
+/**
+ * What a stub tag prints (#270). "full" is the destination description — device, and
+ * optionally arrow, port, room and page. "cableId" is the cable ID and nothing else, for
+ * users who want a plain cable tag at the port and no far-end information on the drawing.
+ *
+ * A string union rather than a boolean so further content modes (#297) slot in here
+ * without another field or a migration.
+ */
+export type StubLabelMode = "full" | "cableId";
+export const DEFAULT_STUB_LABEL_MODE: StubLabelMode = "full";
 
 /** What a newly drawn connection becomes: a routed wire, or a pair of stub legs (#353). */
 export type DefaultConnectionType = "wire" | "stub";

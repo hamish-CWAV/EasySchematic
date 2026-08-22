@@ -30,6 +30,10 @@ export interface StubLabelContext {
    *  device the reader cannot see, so the tag reads through to the device beyond it
    *  (#348). Omit only where every adapter is drawn at full size. */
   hiddenAdapterIds?: ReadonlySet<string>;
+  /** The store's edge-id → cable-ID map, which is what the canvas prints on the leg
+   *  itself. Consulted first so a cable-ID tag (#270) can't disagree with it; omit and
+   *  the ID stored on the edge is used instead. */
+  cableIdMap?: Record<string, string>;
 }
 
 /** Walk the parent chain to an absolute canvas position. */
@@ -143,7 +147,30 @@ export function resolveStubLabelParts(
     if (fp > 0) farPage = String(fp);
   }
 
-  return { arrow, farLabel, farPort, farRoom: farRoomLabel, myPage, farPage };
+  return {
+    arrow, farLabel, farPort, farRoom: farRoomLabel, myPage, farPage,
+    cableId: resolveCableId(ownEdge, partnerEdge, ctx.cableIdMap),
+  };
+}
+
+/**
+ * The cable ID of the logical connection, from whichever leg carries it. convertEdgeToStubs
+ * strips cableId from the target-side leg (the source leg owns it, and recomputeCableIds
+ * mirrors it back through cableIdMap), so a target-side tag has to look at its partner or
+ * it would come back blank.
+ */
+function resolveCableId(
+  ownEdge: ConnectionEdge,
+  partnerEdge: ConnectionEdge,
+  cableIdMap: Record<string, string> | undefined,
+): string {
+  return (
+    cableIdMap?.[ownEdge.id] ||
+    (ownEdge.data?.cableId as string | undefined) ||
+    cableIdMap?.[partnerEdge.id] ||
+    (partnerEdge.data?.cableId as string | undefined) ||
+    ""
+  );
 }
 
 /** The subset of store state the page lookup needs. */

@@ -158,6 +158,8 @@ export function buildDxf(rfInstance: ReactFlowInstance): string | null {
       // much as its own name — so a tag naming it would be a dead end on paper too. The
       // tag names the device beyond it, exactly as the canvas does (#348).
       hiddenAdapterIds: state.hiddenAdapterNodeIds,
+      // A cable-ID tag (#270) has to carry the same ID the leg is labelled with.
+      cableIdMap: state.cableIdMap,
     }, {
       showArrow: state.stubLabelShowArrow,
       showPort: state.stubLabelShowPort,

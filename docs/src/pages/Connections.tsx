@@ -444,6 +444,20 @@ export default function ConnectionsPage() {
         out independently.
       </p>
 
+      <h3>Cable-ID-only tags</h3>
+      <p>
+        Sometimes a stub is wanted purely as a <strong>cable tag</strong> — the cable ID at the port and no
+        destination information at all. Right-click the stub label and set <strong>Tag text</strong> to{" "}
+        <em>Cable ID only</em>: the box then shows just the cable ID, e.g. <code>HDMI-001</code>. The arrow, port,
+        room and page options no longer apply and drop off the menu; switch <strong>Tag text</strong> back to{" "}
+        <em>Destination</em> to get them back.
+      </p>
+      <p>
+        The setting is per stub label, so one end of a connection can be a cable tag while the other still names
+        its destination. It applies to the canvas, PDF export and DXF export alike. A connection with no cable ID
+        — a direct-attach one, for instance — shows a dash instead.
+      </p>
+
       <h3>Drawing new connections as stubs</h3>
       <p>
         If stubs are how you draw most of the time, set <strong>Preferences → Canvas → New Connections →

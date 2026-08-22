@@ -1,7 +1,7 @@
 import { memo, useMemo, useEffect } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { StubLabelNode as StubLabelNodeType, StubLabelData, ConnectionEdge, SchematicNode } from "../types";
-import { SIGNAL_COLORS } from "../types";
+import { DEFAULT_STUB_LABEL_MODE, SIGNAL_COLORS } from "../types";
 import { useSchematicStore, GRID_SIZE } from "../store";
 import { STUB_GAP } from "../stubPlacement";
 import { getPortAbsolutePositions } from "../snapUtils";
@@ -46,9 +46,12 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
       // With the inline adapter hidden the leg visibly runs on to the device beyond it,
       // so that is the device the tag names (#348).
       hiddenAdapterIds: s.hiddenAdapterNodeIds,
+      // Same map the leg prints its cable ID from, so a cable-ID tag (#270) always
+      // agrees with the wire it terminates.
+      cableIdMap: s.cableIdMap,
     });
     if (!parts) return "";
-    return [parts.arrow, parts.farLabel, parts.farPort, parts.farRoom, parts.myPage, parts.farPage].join("\0");
+    return [parts.arrow, parts.farLabel, parts.farPort, parts.farRoom, parts.myPage, parts.farPage, parts.cableId].join("\0");
   });
 
   const showArrowGlobal = useSchematicStore((s) => s.stubLabelShowArrow);
@@ -59,6 +62,8 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
   const effectiveShowPort = data.showPort ?? showPortGlobal;
   const effectiveShowRoom = data.showRoom ?? showRoomGlobal;
   const effectivePageMode = data.pageMode ?? pageModeGlobal;
+  // Per-stub only — there is no global "every tag is a cable tag" setting (#270).
+  const effectiveLabelMode = data.labelMode ?? DEFAULT_STUB_LABEL_MODE;
 
   // Auto-place: once per stub (lifetime, not per mount), align Y with the connected
   // device's actual port Y and ensure the box edge clears the device. Result is sticky
@@ -172,7 +177,7 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
   const displayLabel = useDisplayLabel();
   const text = useMemo(() => {
     if (!labelStr) return UNRESOLVED_STUB_LABEL_TEXT;
-    const [arrow, farLabel, farPort, farRoom, myPage, farPage] = labelStr.split("\0");
+    const [arrow, farLabel, farPort, farRoom, myPage, farPage, cableId] = labelStr.split("\0");
     return buildStubLabelText(
       // The far device's name and its room are labels like any other, so the auto-case
       // preference applies to them here too (#294). Applied to the parts rather than the
@@ -180,10 +185,16 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
       //
       // farPort is deliberately NOT wrapped: resolvePortLabel already runs the transform
       // (see packList.ts), so wrapping it here would be a redundant second pass.
-      { arrow, farLabel: displayLabel(farLabel), farPort, farRoom: displayLabel(farRoom), myPage, farPage },
-      { showArrow: effectiveShowArrow, showPort: effectiveShowPort, showRoom: effectiveShowRoom, pageMode: effectivePageMode },
+      //
+      // cableId is likewise left alone: it is an identifier the user prints on a physical
+      // label, not a device name, so the auto-case preference must not rewrite it.
+      { arrow, farLabel: displayLabel(farLabel), farPort, farRoom: displayLabel(farRoom), myPage, farPage, cableId },
+      {
+        showArrow: effectiveShowArrow, showPort: effectiveShowPort, showRoom: effectiveShowRoom,
+        pageMode: effectivePageMode, labelMode: effectiveLabelMode,
+      },
     );
-  }, [labelStr, effectiveShowArrow, effectiveShowPort, effectiveShowRoom, effectivePageMode, displayLabel]);
+  }, [labelStr, effectiveShowArrow, effectiveShowPort, effectiveShowRoom, effectivePageMode, effectiveLabelMode, displayLabel]);
 
   // Per-signal color overrides apply here as they do to the connection itself — a
   // recolored signal type used to leave the stub box on the stock color while its own

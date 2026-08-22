@@ -1,11 +1,11 @@
 import { useEffect, useCallback } from "react";
 import { useSchematicStore } from "../store";
-import type { StubLabelData, StubLabelPageMode } from "../types";
+import type { StubLabelData, StubLabelMode, StubLabelPageMode } from "../types";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 
-/** Right-click menu for stub-label nodes — per-stub overrides for the four label
- *  fields plus a "show full connection" collapse action. Each cycle item rotates
- *  through "Default (follows global)" → explicit-on → explicit-off → undefined. */
+/** Right-click menu for stub-label nodes — what the tag prints, per-stub overrides for
+ *  the four label fields, plus a "show full connection" collapse action. Each cycle item
+ *  rotates through "Default (follows global)" → explicit-on → explicit-off → undefined. */
 export default function StubLabelContextMenu() {
   const menu = useSchematicStore((s) => s.stubLabelContextMenu);
   const { ref: menuRef, pos: menuPos } = useContextMenuPosition(
@@ -62,6 +62,19 @@ export default function StubLabelContextMenu() {
     useSchematicStore.setState({ stubLabelContextMenu: null });
   }, [menu]);
 
+  // "Cable ID only" turns the tag into a plain cable tag — no destination device, port,
+  // room or page, whatever those toggles say (#270). Two states only, so this is a
+  // straight flip rather than a Default/on/off cycle: there is no global to defer to.
+  const toggleLabelMode = useCallback(() => {
+    if (!menu) return;
+    const store = useSchematicStore.getState();
+    const node = store.nodes.find((n) => n.id === menu.nodeId);
+    const current = (node?.data as StubLabelData | undefined)?.labelMode;
+    const next: StubLabelMode | undefined = current === "cableId" ? undefined : "cableId";
+    store.patchStubLabelData(menu.nodeId, { labelMode: next });
+    useSchematicStore.setState({ stubLabelContextMenu: null });
+  }, [menu]);
+
   const collapseStubs = useCallback(() => {
     if (!menu) return;
     const store = useSchematicStore.getState();
@@ -86,6 +99,9 @@ export default function StubLabelContextMenu() {
   const showPortLabel = boolItemLabel("Show port", data?.showPort, store.stubLabelShowPort);
   const showRoomLabel = boolItemLabel("Show room", data?.showRoom, store.stubLabelShowRoom);
   const pageModeLabel = pageModeItemLabel(data?.pageMode, store.stubLabelPageMode);
+  // The four content toggles say nothing about a cable-ID-only tag, so they come off the
+  // menu in that mode rather than sitting there doing nothing when clicked.
+  const cableIdOnly = data?.labelMode === "cableId";
 
   return (
     <div
@@ -100,10 +116,18 @@ export default function StubLabelContextMenu() {
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <MenuItem label={showArrowLabel} onClick={() => cycleBool("showArrow")} />
-      <MenuItem label={showPortLabel} onClick={() => cycleBool("showPort")} />
-      <MenuItem label={showRoomLabel} onClick={() => cycleBool("showRoom")} />
-      <MenuItem label={pageModeLabel} onClick={cyclePageMode} />
+      <MenuItem
+        label={`Tag text: ${cableIdOnly ? "Cable ID only" : "Destination"}`}
+        onClick={toggleLabelMode}
+      />
+      {!cableIdOnly && (
+        <>
+          <MenuItem label={showArrowLabel} onClick={() => cycleBool("showArrow")} />
+          <MenuItem label={showPortLabel} onClick={() => cycleBool("showPort")} />
+          <MenuItem label={showRoomLabel} onClick={() => cycleBool("showRoom")} />
+          <MenuItem label={pageModeLabel} onClick={cyclePageMode} />
+        </>
+      )}
       <div className="border-t border-gray-200 my-1" />
       <MenuItem label="Show Full Connection" onClick={collapseStubs} />
     </div>

@@ -584,6 +584,8 @@ export function emitStubLabel(
           showPort: data.showPort ?? defaults.showPort,
           showRoom: data.showRoom ?? defaults.showRoom,
           pageMode: data.pageMode ?? defaults.pageMode,
+          // Per-stub only, no global default to fall back to (#270).
+          labelMode: data.labelMode,
         },
       )
     : UNRESOLVED_STUB_LABEL_TEXT;

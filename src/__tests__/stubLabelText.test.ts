@@ -9,6 +9,7 @@ const parts = (over: Partial<StubLabelParts> = {}): StubLabelParts => ({
   farRoom: "Main Hall",
   myPage: "1",
   farPage: "3",
+  cableId: "HDMI-001",
   ...over,
 });
 

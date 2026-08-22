@@ -36,6 +36,7 @@ const stubText = (mode: LabelCaseMode, over: Partial<StubLabelParts> = {}, showA
     farRoom: "Main Hall",
     myPage: "1",
     farPage: "3",
+    cableId: "HDMI-001",
     ...over,
   };
   return buildStubLabelText(
@@ -83,6 +84,26 @@ describe("stub-label auto-case (#294)", () => {
     useSchematicStore.setState({ labelCase: "uppercase" });
     expect(stubText("uppercase", {}, DEFAULT_STUB_LABEL_SHOW_ARROW))
       .toBe("PROJECTOR [HDMI IN 1] (MAIN HALL) Pg 3");
+  });
+
+  // A cable ID is an identifier printed on a physical label, not a device name — Title
+  // Case turning "HDMI-001" into "Hdmi-001" would put the wrong text on the cable. Both
+  // composers deliberately pass it through untransformed; this pins that they keep doing
+  // so, since "apply the transform to every part" is an easy refactor to talk yourself
+  // into (#270).
+  it("never transforms the cable ID of a cable-ID-only tag", () => {
+    for (const mode of ["as-typed", "uppercase", "lowercase", "capitalize"] as LabelCaseMode[]) {
+      useSchematicStore.setState({ labelCase: mode });
+      const d = (t: string) => transformLabel(t, mode);
+      const text = buildStubLabelText(
+        {
+          arrow: "→", farLabel: d("Projector"), farPort: resolvePortLabel(farDevice, "p1"),
+          farRoom: d("Main Hall"), myPage: "1", farPage: "3", cableId: "HDMI-001",
+        },
+        { showArrow: true, showPort: true, showRoom: true, pageMode: "always", labelMode: "cableId" },
+      );
+      expect(text).toBe("HDMI-001");
+    }
   });
 
   it("resolvePortLabel is where the far-end port picks up the case preference", () => {

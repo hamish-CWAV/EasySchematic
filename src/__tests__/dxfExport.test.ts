@@ -27,6 +27,7 @@ import { CANONICAL_LAYERS, LTYPE_DEFS, buildLayerDefs, signalLayerName } from ".
 import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
 import { wrapDeviceLabelLines } from "../displayName";
 import { emitRoundedWaypointPath } from "../dxfExport/geometry";
+import { MISSING_CABLE_ID } from "../stubLabelText";
 import type { RoutedEdge } from "../edgeRouter";
 
 /** Build a minimum-viable DXF document with the given entities inside ENTITIES. */
@@ -142,6 +143,9 @@ function resetExportStore() {
   useSchematicStore.setState({
     nodes: [], edges: [], routedEdges: {}, labelCase: DEFAULT_LABEL_CASE,
     cableIdLabelMode: "endpoint", cableIdGap: 4, cableIdMidOffset: 0,
+    // Derived state, rebuilt by an App effect rather than by newSchematic — clear it or
+    // one case's map decides what the next case's cable-ID tags print (#270).
+    cableIdMap: {},
   });
 }
 
@@ -1496,6 +1500,57 @@ describe("buildDxf — stub labels (#319)", () => {
     const texts = labelTexts(exportWithStubs({ stubLabelShowPort: false }));
     expect(texts).toContain(escapeForMText("Lobby Display"));
     expect(texts).toContain(escapeForMText("Rack Switch"));
+  });
+
+  /** The stub-a node with a per-stub labelMode set. */
+  function withLabelMode(mode: string): SchematicNode[] {
+    return nodes.map((n) =>
+      n.id === "stub-a" ? { ...n, data: { ...n.data, labelMode: mode } } : n,
+    ) as unknown as SchematicNode[];
+  }
+
+  // #270's whole point is that the mode reaches every surface from the one shared
+  // composer. DXF is the surface where that plumbing is testable, so it is pinned here:
+  // drop `labelMode` from emitStubLabel's options and the CAD drawing goes back to
+  // printing the destination the reporter asked to remove.
+  it("honours the per-stub cable-ID-only mode (#270)", () => {
+    const texts = labelTexts(exportWithStubs({ nodes: withLabelMode("cableId") }));
+    expect(texts).not.toContain(escapeForMText("Lobby Display [LAN 1]"));
+    // Two device-end chips (the stub ends stay suppressed) plus the tag itself.
+    expect(texts.filter((t) => t === "C-014").length).toBe(3);
+    // The partner stub was not switched and still names its destination.
+    expect(texts).toContain(escapeForMText("Rack Switch [Port 12]"));
+  });
+
+  // The tag has to print the ID the store derived, not a stale one left on the edge —
+  // the leg chips still come from edge.data.cableId, which is what makes the two
+  // distinguishable here.
+  it("takes the cable ID for the tag from the store's map (#270)", () => {
+    const texts = labelTexts(exportWithStubs({
+      nodes: withLabelMode("cableId"),
+      cableIdMap: { "e-leg-a": "C-777", "e-leg-b": "C-777" },
+    }));
+    expect(texts).toContain("C-777");
+    expect(texts.filter((t) => t === "C-014").length).toBe(2);
+  });
+
+  it("marks a cable-ID tag on an unnumbered connection rather than leaving it blank (#270)", () => {
+    const unnumbered = edges.map(
+      (e) => ({ ...e, data: { ...e.data, cableId: undefined } }),
+    ) as unknown as ConnectionEdge[];
+    const texts = labelTexts(exportWithStubs({
+      nodes: withLabelMode("cableId"),
+      edges: unnumbered,
+    }));
+    expect(texts).toContain(escapeForMText(MISSING_CABLE_ID));
+  });
+
+  it("leaves the cable ID out of the display-case transform (#270)", () => {
+    useSchematicStore.setState({ labelCase: "lowercase" });
+    const texts = labelTexts(exportWithStubs({ nodes: withLabelMode("cableId") }));
+    // Tag plus the two device-end chips, none of them case-folded.
+    expect(texts.filter((t) => t === "C-014").length).toBe(3);
+    expect(texts).not.toContain("c-014");
   });
 
   /** Index of the mask whose bounds are the given stub node's box, or -1. */
