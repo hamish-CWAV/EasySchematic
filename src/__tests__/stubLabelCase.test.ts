@@ -11,6 +11,7 @@ import { buildStubLabelText, type StubLabelParts } from "../stubLabelText";
 import { transformLabel } from "../labelCaseUtils";
 import { resolvePortLabel } from "../packList";
 import { useSchematicStore } from "../store";
+import { DEFAULT_STUB_LABEL_SHOW_ARROW } from "../types";
 import type { LabelCaseMode, SchematicNode } from "../types";
 
 const farDevice = {
@@ -23,8 +24,10 @@ const farDevice = {
   },
 } as unknown as SchematicNode;
 
-/** Mirror of the assembly StubLabelNode.tsx performs, with the same parts transformed. */
-const stubText = (mode: LabelCaseMode, over: Partial<StubLabelParts> = {}) => {
+/** Mirror of the assembly StubLabelNode.tsx performs, with the same parts transformed.
+ *  Most cases here run with the arrow forced on so the "never touches the arrow" case
+ *  has an arrow to guard; showArrow lets one case run at the shipping default (#350). */
+const stubText = (mode: LabelCaseMode, over: Partial<StubLabelParts> = {}, showArrow = true) => {
   const d = (t: string) => transformLabel(t, mode);
   const parts: StubLabelParts = {
     arrow: "→",
@@ -37,7 +40,7 @@ const stubText = (mode: LabelCaseMode, over: Partial<StubLabelParts> = {}) => {
   };
   return buildStubLabelText(
     { ...parts, farLabel: d(parts.farLabel), farRoom: d(parts.farRoom) },
-    { showPort: true, showRoom: true, pageMode: "always" },
+    { showArrow, showPort: true, showRoom: true, pageMode: "always" },
   );
 };
 
@@ -74,6 +77,12 @@ describe("stub-label auto-case (#294)", () => {
     const t = stubText("lowercase", { arrow: "←" });
     expect(t.startsWith("← ")).toBe(true);
     expect(t.endsWith(" Pg 3")).toBe(true);
+  });
+
+  it("transforms the same parts at the shipping arrow default (#350)", () => {
+    useSchematicStore.setState({ labelCase: "uppercase" });
+    expect(stubText("uppercase", {}, DEFAULT_STUB_LABEL_SHOW_ARROW))
+      .toBe("PROJECTOR [HDMI IN 1] (MAIN HALL) Pg 3");
   });
 
   it("resolvePortLabel is where the far-end port picks up the case preference", () => {

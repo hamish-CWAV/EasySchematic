@@ -51,9 +51,11 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
     return [parts.arrow, parts.farLabel, parts.farPort, parts.farRoom, parts.myPage, parts.farPage].join("\0");
   });
 
+  const showArrowGlobal = useSchematicStore((s) => s.stubLabelShowArrow);
   const showPortGlobal = useSchematicStore((s) => s.stubLabelShowPort);
   const showRoomGlobal = useSchematicStore((s) => s.stubLabelShowRoom);
   const pageModeGlobal = useSchematicStore((s) => s.stubLabelPageMode);
+  const effectiveShowArrow = data.showArrow ?? showArrowGlobal;
   const effectiveShowPort = data.showPort ?? showPortGlobal;
   const effectiveShowRoom = data.showRoom ?? showRoomGlobal;
   const effectivePageMode = data.pageMode ?? pageModeGlobal;
@@ -179,9 +181,9 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
       // farPort is deliberately NOT wrapped: resolvePortLabel already runs the transform
       // (see packList.ts), so wrapping it here would be a redundant second pass.
       { arrow, farLabel: displayLabel(farLabel), farPort, farRoom: displayLabel(farRoom), myPage, farPage },
-      { showPort: effectiveShowPort, showRoom: effectiveShowRoom, pageMode: effectivePageMode },
+      { showArrow: effectiveShowArrow, showPort: effectiveShowPort, showRoom: effectiveShowRoom, pageMode: effectivePageMode },
     );
-  }, [labelStr, effectiveShowPort, effectiveShowRoom, effectivePageMode, displayLabel]);
+  }, [labelStr, effectiveShowArrow, effectiveShowPort, effectiveShowRoom, effectivePageMode, displayLabel]);
 
   // Per-signal color overrides apply here as they do to the connection itself — a
   // recolored signal type used to leave the stub box on the stock color while its own

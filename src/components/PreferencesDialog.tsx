@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSchematicStore } from "../store";
-import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE, PROJECT_STATUS_LABELS } from "../types";
-import type { LabelCaseMode, PanMode, ProjectStatus, ScrollAction, ScrollConfig, StubLabelPageMode } from "../types";
+import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_ARROW, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE, DEFAULT_CONNECTION_TYPE, PROJECT_STATUS_LABELS } from "../types";
+import type { DefaultConnectionType, LabelCaseMode, PanMode, ProjectStatus, ScrollAction, ScrollConfig, StubLabelPageMode } from "../types";
 
 const AUTOROUTE_PREF_KEY = "easyschematic-autoroute-pref";
 
@@ -99,12 +99,16 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
   const setProjectStatus = useSchematicStore((s) => s.setProjectStatus);
   const panMode = useSchematicStore((s) => s.panMode);
   const setPanMode = useSchematicStore((s) => s.setPanMode);
+  const stubLabelShowArrow = useSchematicStore((s) => s.stubLabelShowArrow);
+  const setStubLabelShowArrow = useSchematicStore((s) => s.setStubLabelShowArrow);
   const stubLabelShowPort = useSchematicStore((s) => s.stubLabelShowPort);
   const setStubLabelShowPort = useSchematicStore((s) => s.setStubLabelShowPort);
   const stubLabelShowRoom = useSchematicStore((s) => s.stubLabelShowRoom);
   const setStubLabelShowRoom = useSchematicStore((s) => s.setStubLabelShowRoom);
   const stubLabelPageMode = useSchematicStore((s) => s.stubLabelPageMode);
   const setStubLabelPageMode = useSchematicStore((s) => s.setStubLabelPageMode);
+  const defaultConnectionType = useSchematicStore((s) => s.defaultConnectionType);
+  const setDefaultConnectionType = useSchematicStore((s) => s.setDefaultConnectionType);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const setUseShortNames = useSchematicStore((s) => s.setUseShortNames);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
@@ -137,8 +141,10 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
     labelCase === "as-typed" &&
     currency === "USD" &&
     panMode === "select-first" &&
+    stubLabelShowArrow === DEFAULT_STUB_LABEL_SHOW_ARROW &&
     stubLabelShowPort === DEFAULT_STUB_LABEL_SHOW_PORT &&
-    stubLabelPageMode === DEFAULT_STUB_LABEL_PAGE_MODE;
+    stubLabelPageMode === DEFAULT_STUB_LABEL_PAGE_MODE &&
+    defaultConnectionType === DEFAULT_CONNECTION_TYPE;
 
   return (
     <div
@@ -308,6 +314,27 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 </p>
               </div>
 
+              {/* New Connections */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
+                  New Connections
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-xs text-[var(--color-text)]">Draw new connections as</span>
+                  <select
+                    className={selectClass}
+                    value={defaultConnectionType}
+                    onChange={(e) => setDefaultConnectionType(e.target.value as DefaultConnectionType)}
+                  >
+                    <option value="wire">Wire</option>
+                    <option value="stub">Stub</option>
+                  </select>
+                </div>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  Stub creates each new connection already stubbed at both ends, the same as right-clicking it and choosing Stub Connection. Existing connections are left alone, and connections through an auto-inserted adapter stay wires.
+                </p>
+              </div>
+
               {/* Auto-Route */}
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
@@ -392,6 +419,18 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                   Stub labels
                 </div>
                 <div className="flex items-center justify-between py-1">
+                  <span className="text-xs text-[var(--color-text)]">Show direction arrow on stub labels</span>
+                  <input
+                    type="checkbox"
+                    checked={stubLabelShowArrow}
+                    onChange={(e) => setStubLabelShowArrow(e.target.checked)}
+                    className="cursor-pointer accent-blue-600"
+                  />
+                </div>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  Prefixes each stub label with an arrow pointing toward the far end (e.g. <code className="text-[10px]">→ Projector</code>). Off by default — the destination name already says where the connection goes.
+                </p>
+                <div className="flex items-center justify-between py-1 mt-2">
                   <span className="text-xs text-[var(--color-text)]">Show port name on stub labels</span>
                   <input
                     type="checkbox"
@@ -575,8 +614,10 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 setLabelCase("as-typed");
                 setCurrency("USD");
                 setPanMode("select-first");
+                setStubLabelShowArrow(DEFAULT_STUB_LABEL_SHOW_ARROW);
                 setStubLabelShowPort(DEFAULT_STUB_LABEL_SHOW_PORT);
                 setStubLabelPageMode(DEFAULT_STUB_LABEL_PAGE_MODE);
+                setDefaultConnectionType(DEFAULT_CONNECTION_TYPE);
               }}
               className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
             >

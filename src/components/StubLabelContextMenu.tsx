@@ -3,7 +3,7 @@ import { useSchematicStore } from "../store";
 import type { StubLabelData, StubLabelPageMode } from "../types";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 
-/** Right-click menu for stub-label nodes — per-stub overrides for the three label
+/** Right-click menu for stub-label nodes — per-stub overrides for the four label
  *  fields plus a "show full connection" collapse action. Each cycle item rotates
  *  through "Default (follows global)" → explicit-on → explicit-off → undefined. */
 export default function StubLabelContextMenu() {
@@ -33,7 +33,7 @@ export default function StubLabelContextMenu() {
   }, [menu]);
 
   const cycleBool = useCallback(
-    (field: "showPort" | "showRoom") => {
+    (field: "showArrow" | "showPort" | "showRoom") => {
       if (!menu) return;
       const store = useSchematicStore.getState();
       const node = store.nodes.find((n) => n.id === menu.nodeId);
@@ -82,6 +82,7 @@ export default function StubLabelContextMenu() {
   const node = store.nodes.find((n) => n.id === menu.nodeId);
   const data = node?.data as StubLabelData | undefined;
 
+  const showArrowLabel = boolItemLabel("Show arrow", data?.showArrow, store.stubLabelShowArrow);
   const showPortLabel = boolItemLabel("Show port", data?.showPort, store.stubLabelShowPort);
   const showRoomLabel = boolItemLabel("Show room", data?.showRoom, store.stubLabelShowRoom);
   const pageModeLabel = pageModeItemLabel(data?.pageMode, store.stubLabelPageMode);
@@ -99,6 +100,7 @@ export default function StubLabelContextMenu() {
       }}
       onClick={(e) => e.stopPropagation()}
     >
+      <MenuItem label={showArrowLabel} onClick={() => cycleBool("showArrow")} />
       <MenuItem label={showPortLabel} onClick={() => cycleBool("showPort")} />
       <MenuItem label={showRoomLabel} onClick={() => cycleBool("showRoom")} />
       <MenuItem label={pageModeLabel} onClick={cyclePageMode} />

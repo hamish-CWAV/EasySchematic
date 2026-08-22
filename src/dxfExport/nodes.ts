@@ -514,6 +514,7 @@ const STUB_CORNER_RADIUS_IN = 2 / 96;
 const STUB_TEXT_TRUECOLOR = 0x374151;
 
 export interface StubLabelDefaults {
+  showArrow: boolean;
   showPort: boolean;
   showRoom: boolean;
   pageMode: StubLabelPageMode;
@@ -522,7 +523,8 @@ export interface StubLabelDefaults {
 
 /**
  * Emit an off-page wire-reference stub: the signal-colored pill plus the label text
- * the canvas shows — arrow, far device, and (when enabled) its port, room and page.
+ * the canvas shows — the far device, and (when enabled) the direction arrow, its port,
+ * room and page.
  *
  * The DXF used to emit nothing for these nodes, so the only text surviving at a stub
  * end was the leg's cable ID (#319). The text is resolved through the same helper the
@@ -547,12 +549,12 @@ export function emitStubLabel(
     // "Pg" tag stay as assembled, exactly as on the canvas (#294).
     { ...parts, farLabel: transformLabelNow(parts.farLabel), farRoom: transformLabelNow(parts.farRoom) },
     {
+      showArrow: data.showArrow ?? defaults.showArrow,
       showPort: data.showPort ?? defaults.showPort,
       showRoom: data.showRoom ?? defaults.showRoom,
       pageMode: data.pageMode ?? defaults.pageMode,
     },
   );
-  if (!text.trim()) return;
 
   const ax = internal.internals.positionAbsolute.x;
   const ay = internal.internals.positionAbsolute.y;
@@ -577,6 +579,12 @@ export function emitStubLabel(
     STUB_CORNER_RADIUS_IN,
     { trueColor },
   );
+
+  // An unnamed far device with every optional field off leaves nothing to write. The
+  // pill above still goes out, because the canvas and the PDF both draw the empty box —
+  // skipping the whole node here would put a gap in the CAD drawing where the editor
+  // shows a stub.
+  if (!text.trim()) return;
 
   // Deliberately NOT truncated to the pill: the box was measured against browser Inter
   // and truncateToWidth's Arial estimate is conservative enough to clip nearly every

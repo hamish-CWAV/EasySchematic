@@ -159,6 +159,7 @@ export function buildDxf(rfInstance: ReactFlowInstance): string | null {
       // tag names the device beyond it, exactly as the canvas does (#348).
       hiddenAdapterIds: state.hiddenAdapterNodeIds,
     }, {
+      showArrow: state.stubLabelShowArrow,
       showPort: state.stubLabelShowPort,
       showRoom: state.stubLabelShowRoom,
       pageMode: state.stubLabelPageMode,

@@ -410,13 +410,18 @@ export default function ConnectionsPage() {
 
       <h3>Customizing stub labels</h3>
       <p>
-        Two options in <strong>Preferences → Display → Stub labels</strong> control what appears on stub labels
+        Three options in <strong>Preferences → Display → Stub labels</strong> control what appears on stub labels
         across the whole schematic:
       </p>
       <ul>
         <li>
+          <strong>Show direction arrow on stub labels</strong> — prefixes the label with an arrow pointing toward
+          the far end, e.g. <code>→ Projector</code>. Off by default: the destination name already says where the
+          connection goes, and the arrow costs width on an already-tight box.
+        </li>
+        <li>
           <strong>Show port name on stub labels</strong> — adds the destination port in brackets after the device,
-          e.g. <code>→ Projector [HDMI In 1] (Main Hall) Pg 3</code>. Useful when a device has many ports of the
+          e.g. <code>Projector [HDMI In 1] (Main Hall) Pg 3</code>. Useful when a device has many ports of the
           same signal type.
         </li>
         <li>
@@ -426,9 +431,22 @@ export default function ConnectionsPage() {
         </li>
       </ul>
       <p>
-        Both settings can also be overridden on a single stub. Right-click the <strong>stub label</strong> itself
-        and use <strong>Show port</strong> or <strong>Page mode</strong> — each cycles through <em>Default</em>
-        (use the global setting) and explicit values, so an individual stub can opt in or out independently.
+        All of these can also be overridden on a single stub. Right-click the <strong>stub label</strong> itself
+        and use <strong>Show arrow</strong>, <strong>Show port</strong> or <strong>Page mode</strong> — each cycles
+        through <em>Default</em> (use the global setting) and explicit values, so an individual stub can opt in or
+        out independently.
+      </p>
+
+      <h3>Drawing new connections as stubs</h3>
+      <p>
+        If stubs are how you draw most of the time, set <strong>Preferences → Canvas → New Connections →
+        Draw new connections as</strong> to <em>Stub</em>. Connections you draw from then on arrive already stubbed
+        at both ends — identical to drawing one and then choosing <strong>Stub Connection</strong> from its
+        right-click menu — and a single undo still removes the whole connection. Connections that already exist are
+        untouched when you change the setting. The one exception is a connection that needs an adapter: when
+        EasySchematic inserts one for you, the two halves either side of the adapter stay as wires, since stubbing
+        both would scatter four stub labels around a device you did not place. Force one through with{" "}
+        <strong>Connect anyway</strong> and it is stubbed like any other.
       </p>
 
       <h2>Connector compatibility</h2>

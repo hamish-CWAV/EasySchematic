@@ -3,7 +3,7 @@ import DxfParser from "dxf-parser";
 import type { ReactFlowInstance } from "@xyflow/react";
 
 import type { AuxRow, ConnectionEdge, LabelCaseMode, SchematicNode, SignalType } from "../types";
-import { DEFAULT_LABEL_CASE } from "../types";
+import { DEFAULT_LABEL_CASE, DEFAULT_STUB_LABEL_SHOW_ARROW } from "../types";
 import { useSchematicStore } from "../store";
 import { DxfWriter } from "../dxfExport/writer";
 import { buildDxf } from "../dxfExport";
@@ -1367,6 +1367,7 @@ describe("buildDxf — stub labels (#319)", () => {
   function exportWithStubs(over: Record<string, unknown> = {}) {
     useSchematicStore.setState({
       nodes, edges, routedEdges,
+      stubLabelShowArrow: DEFAULT_STUB_LABEL_SHOW_ARROW,
       stubLabelShowPort: true, stubLabelShowRoom: false, stubLabelPageMode: "cross-page",
       cableIdLabelMode: "endpoint", cableIdGap: 4,
       colorKeyEnabled: false, printView: false,
@@ -1387,9 +1388,25 @@ describe("buildDxf — stub labels (#319)", () => {
 
   it("writes the stub label text the canvas shows, not just the cable ID", () => {
     const texts = labelTexts(exportWithStubs());
-    // Both stubs point at the far device across the split, with its far-end port.
+    // Both stubs name the far device across the split, with its far-end port.
+    expect(texts).toContain(escapeForMText("Lobby Display [LAN 1]"));
+    expect(texts).toContain(escapeForMText("Rack Switch [Port 12]"));
+  });
+
+  it("omits the direction arrow by default and restores it with the option on (#350)", () => {
+    expect(labelTexts(exportWithStubs())).toContain(escapeForMText("Lobby Display [LAN 1]"));
+    const withArrows = labelTexts(exportWithStubs({ stubLabelShowArrow: true }));
+    expect(withArrows).toContain(escapeForMText("→ Lobby Display [LAN 1]"));
+    expect(withArrows).toContain(escapeForMText("← Rack Switch [Port 12]"));
+  });
+
+  it("lets a single stub opt back into the arrow while the schematic default is off", () => {
+    const withOverride = nodes.map((n) =>
+      n.id === "stub-a" ? { ...n, data: { ...n.data, showArrow: true } } : n,
+    ) as unknown as SchematicNode[];
+    const texts = labelTexts(exportWithStubs({ nodes: withOverride }));
     expect(texts).toContain(escapeForMText("→ Lobby Display [LAN 1]"));
-    expect(texts).toContain(escapeForMText("← Rack Switch [Port 12]"));
+    expect(texts).toContain(escapeForMText("Rack Switch [Port 12]"));
   });
 
   // The canvas suppresses the endpoint cable ID at a stub end: the stub box already
@@ -1410,8 +1427,8 @@ describe("buildDxf — stub labels (#319)", () => {
 
   it("honours the per-stub port toggle", () => {
     const texts = labelTexts(exportWithStubs({ stubLabelShowPort: false }));
-    expect(texts).toContain(escapeForMText("→ Lobby Display"));
-    expect(texts).toContain(escapeForMText("← Rack Switch"));
+    expect(texts).toContain(escapeForMText("Lobby Display"));
+    expect(texts).toContain(escapeForMText("Rack Switch"));
   });
 
   /** Index of the mask whose bounds are the given stub node's box, or -1. */
@@ -1436,6 +1453,23 @@ describe("buildDxf — stub labels (#319)", () => {
     expect(outlines.length).toBe(4);
   });
 
+  // With the arrow off, a stub can resolve to no text at all — an unnamed far device
+  // whose far-end port is unnamed too. The canvas and the PDF still draw the empty box,
+  // so the DXF has to as well; only the MTEXT is skipped.
+  it("still draws the pill for a stub whose text resolves to nothing (#350)", () => {
+    const unnamed = nodes.map((n) =>
+      n.id === "dev-lobby-display"
+        ? { ...n, data: { label: "", ports: [{ id: "port-1", label: "", direction: "input", signalType: "ethernet" }] } }
+        : n,
+    ) as unknown as SchematicNode[];
+    const dxf = exportWithStubs({ nodes: unnamed });
+
+    expect(stubPillIndex(rawEntityStream(dxf), 208, 33, 96, 14)).toBeGreaterThan(-1);
+    const texts = labelTexts(dxf);
+    expect(texts).not.toContain("");
+    expect(texts).toContain(escapeForMText("Rack Switch [Port 12]"));
+  });
+
   it("emits the stub boxes after all connection geometry", () => {
     const stream = rawEntityStream(exportWithStubs());
     const lastGeometry = stream
@@ -1449,7 +1483,7 @@ describe("buildDxf — stub labels (#319)", () => {
   it("follows the display-case preference like every other label", () => {
     useSchematicStore.setState({ labelCase: "uppercase" });
     const texts = labelTexts(exportWithStubs());
-    expect(texts).toContain(escapeForMText("→ LOBBY DISPLAY [LAN 1]"));
+    expect(texts).toContain(escapeForMText("LOBBY DISPLAY [LAN 1]"));
   });
 
   // The stub pill is a mask like the cable-ID chip and needs the same two grounds:
@@ -1568,12 +1602,12 @@ describe("buildDxf — stub labels read past a hidden adapter (#348)", () => {
 
   it("names the switcher, not the adapter the leg lands on", () => {
     const texts = stubLabelTexts(["dev-adapter"]);
-    expect(texts).toContain(escapeForMText("→ SWITCHER [SDI I/O 1]"));
-    expect(texts).not.toContain(escapeForMText("→ BNC (F) to BNC (M) Barrel [BNC (F)]"));
+    expect(texts).toContain(escapeForMText("SWITCHER [SDI I/O 1]"));
+    expect(texts).not.toContain(escapeForMText("BNC (F) to BNC (M) Barrel [BNC (F)]"));
   });
 
   it("still names the adapter while the adapter is drawn", () => {
     const texts = stubLabelTexts([]);
-    expect(texts).toContain(escapeForMText("→ BNC (F) to BNC (M) Barrel [BNC (F)]"));
+    expect(texts).toContain(escapeForMText("BNC (F) to BNC (M) Barrel [BNC (F)]"));
   });
 });

@@ -392,6 +392,8 @@ export interface StubLabelData {
   linkedConnectionId: string;
   /** Which end of the logical connection this stub represents */
   side: "source" | "target";
+  /** When true, prefix the label text with the direction arrow (per-stub override; falls back to global setting) */
+  showArrow?: boolean;
   /** When true, append [PortName] to the label text (per-stub override; falls back to global setting) */
   showPort?: boolean;
   /** When true, append (RoomName) to the label text (per-stub override; falls back to global setting) */
@@ -909,6 +911,8 @@ export interface SchematicFile {
   currency?: string;
   /** Left-drag canvas behavior — select box (default) or pan viewport */
   panMode?: PanMode;
+  /** Show the direction arrow at the head of a stub label (e.g. "→ Projector") */
+  stubLabelShowArrow?: boolean;
   /** Show the destination port name on stub labels (e.g. "→ Projector [HDMI In 1]") */
   stubLabelShowPort?: boolean;
   /** Show the destination room name on stub labels (e.g. "→ Projector (Room A)") */
@@ -921,6 +925,8 @@ export interface SchematicFile {
   /** Wrap long device labels across two lines instead of truncating with ellipsis.
    *  New files default true; undefined on loaded files = legacy single-line truncate. */
   wrapDeviceLabels?: boolean;
+  /** How a freshly drawn connection is rendered — a routed wire, or stubbed at both ends (#353) */
+  defaultConnectionType?: DefaultConnectionType;
   /** Project lifecycle status, surfaced in project metadata / file lists (#P2-007) */
   status?: ProjectStatus;
 }
@@ -947,6 +953,14 @@ export type StubLabelPageMode = "always" | "cross-page" | "never";
 export const DEFAULT_STUB_LABEL_SHOW_PORT = true;
 export const DEFAULT_STUB_LABEL_SHOW_ROOM = true;
 export const DEFAULT_STUB_LABEL_PAGE_MODE: StubLabelPageMode = "cross-page";
+// The direction arrow says nothing the label text doesn't already say — where the other
+// end is, is the destination name — and it eats width on a box that is already tight.
+// Off by default (#350), still available globally (Preferences) and per-stub.
+export const DEFAULT_STUB_LABEL_SHOW_ARROW = false;
+
+/** What a newly drawn connection becomes: a routed wire, or a pair of stub legs (#353). */
+export type DefaultConnectionType = "wire" | "stub";
+export const DEFAULT_CONNECTION_TYPE: DefaultConnectionType = "wire";
 
 export interface DistanceSettings {
   unit: "m" | "ft";

@@ -39,12 +39,12 @@ import type {
   PatchPanelViewPage,
 } from "./types";
 import type { ReactFlowInstance } from "@xyflow/react";
-import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, ProjectStatus } from "./types";
+import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, DefaultConnectionType, ProjectStatus } from "./types";
 import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, stubTagEndOf, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
 import { getPortAbsolutePositions, parentOffsetFromMap, settleTagsAfterMove, tagHostId } from "./snapUtils";
 import { resolveHiddenAdapterIds } from "./adapterVisibility";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
-import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, portSide } from "./types";
+import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_ARROW, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, DEFAULT_CONNECTION_TYPE, portSide } from "./types";
 import { pairKey } from "./roomDistance";
 import type { Orientation } from "./printConfig";
 import { computeAlignment, resolveAlignmentOverlaps, type AlignOperation } from "./alignUtils";
@@ -523,6 +523,9 @@ interface SchematicState {
   // Stub conversion (real React Flow nodes for the labels)
   convertEdgeToStubs: (edgeId: string) => void;
   collapseStubsForEdge: (edgeId: string) => void;
+  /** What a newly drawn connection becomes — a routed wire, or stubbed at both ends (#353). */
+  defaultConnectionType: DefaultConnectionType;
+  setDefaultConnectionType: (type: DefaultConnectionType) => void;
 
   // Manual edge routing
   setManualWaypoints: (edgeId: string, waypoints: { x: number; y: number }[]) => void;
@@ -793,6 +796,8 @@ interface SchematicState {
   setCableIdMidOffset: (offset: number) => void;
   cableIdLabelMode: "endpoint" | "midpoint";
   setCableIdLabelMode: (mode: "endpoint" | "midpoint") => void;
+  stubLabelShowArrow: boolean;
+  setStubLabelShowArrow: (show: boolean) => void;
   stubLabelShowPort: boolean;
   setStubLabelShowPort: (show: boolean) => void;
   stubLabelShowRoom: boolean;
@@ -1072,6 +1077,30 @@ function pushUndo(partial: { nodes: SchematicNode[]; edges: ConnectionEdge[]; au
   redoStack.length = 0; // clear redo on new action
   // Sync reactive counters so undo/redo buttons stay in sync
   useSchematicStore.setState({ undoSize: undoStack.length, redoSize: 0 });
+}
+
+/**
+ * Hand a just-drawn connection to the same conversion the right-click ▸ Stub Connection
+ * action runs, when the schematic's default says new connections arrive stubbed (#353).
+ * Returns true when the conversion ran — it saves on its way out, so the caller skips
+ * its own save.
+ *
+ * convertEdgeToStubs pushes an undo entry off the just-wired state; that entry is
+ * dropped so one undo takes the whole gesture back to before the connection existed
+ * rather than leaving a bare wire behind. Whether it pushed is decided by the top of
+ * the stack changing identity, NOT by its length: pushUndo caps the history by pushing
+ * and then shifting, so a stack already at MAX_HISTORY comes back the same length it
+ * went in and a length comparison would silently stop popping.
+ */
+function applyDefaultConnectionType(edgeId: string): boolean {
+  const store = useSchematicStore.getState();
+  if (store.defaultConnectionType !== "stub") return false;
+  const topBefore = undoStack[undoStack.length - 1];
+  store.convertEdgeToStubs(edgeId);
+  if (undoStack[undoStack.length - 1] === topBefore) return false;
+  undoStack.pop();
+  useSchematicStore.setState({ undoSize: undoStack.length });
+  return true;
 }
 
 // ── Async routing (Web Worker) plumbing ──────────────────────────────────
@@ -1965,9 +1994,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   cableIdGap: 4,
   cableIdMidOffset: 0,
   cableIdLabelMode: "endpoint" as "endpoint" | "midpoint",
+  stubLabelShowArrow: DEFAULT_STUB_LABEL_SHOW_ARROW,
   stubLabelShowPort: DEFAULT_STUB_LABEL_SHOW_PORT,
   stubLabelShowRoom: DEFAULT_STUB_LABEL_SHOW_ROOM,
   stubLabelPageMode: DEFAULT_STUB_LABEL_PAGE_MODE,
+  defaultConnectionType: DEFAULT_CONNECTION_TYPE,
   useShortNames: false,
   wrapDeviceLabels: false,
   cableIdMap: {},
@@ -2163,7 +2194,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       nodes: existingEdges === state.edges ? state.nodes : reconcileWaypointNodes(state.nodes, existingEdges),
       edges: [...existingEdges, newEdge],
     });
-    get().saveToLocalStorage();
+
+    // A "stub" default runs the brand-new connection straight through the same
+    // conversion the right-click action uses, so drawing a connection and stubbing it
+    // by hand land on byte-identical state (#353).
+    if (!applyDefaultConnectionType(newEdge.id)) get().saveToLocalStorage();
   },
 
   addDevice: (template, position) => {
@@ -4254,7 +4289,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       edges: [...existingEdges, newEdge],
       pendingIncompatibleConnection: null,
     });
-    get().saveToLocalStorage();
+    // "Connect anyway" is the same drawn connection the user started, so it obeys the
+    // same default (#353). The adapter-insertion path below deliberately does not: it
+    // produces two connections around a device the user never placed, and stubbing
+    // both would put four stub labels and a floating adapter where one link belongs.
+    if (!applyDefaultConnectionType(newEdge.id)) get().saveToLocalStorage();
   },
 
   insertAdapterBetween: (template) => {
@@ -4870,6 +4909,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   setCableIdLabelMode: (mode) => {
     set({ cableIdLabelMode: mode });
+    get().saveToLocalStorage();
+  },
+
+  setStubLabelShowArrow: (show) => {
+    set({ stubLabelShowArrow: show });
     get().saveToLocalStorage();
   },
 
@@ -5883,9 +5927,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableIdGap: state.cableIdGap !== 4 ? state.cableIdGap : undefined,
       cableIdMidOffset: state.cableIdMidOffset !== 0 ? state.cableIdMidOffset : undefined,
       cableIdLabelMode: state.cableIdLabelMode !== "endpoint" ? state.cableIdLabelMode : undefined,
+      stubLabelShowArrow: state.stubLabelShowArrow !== DEFAULT_STUB_LABEL_SHOW_ARROW ? state.stubLabelShowArrow : undefined,
       stubLabelShowPort: state.stubLabelShowPort !== DEFAULT_STUB_LABEL_SHOW_PORT ? state.stubLabelShowPort : undefined,
       stubLabelShowRoom: state.stubLabelShowRoom !== DEFAULT_STUB_LABEL_SHOW_ROOM ? state.stubLabelShowRoom : undefined,
       stubLabelPageMode: state.stubLabelPageMode !== DEFAULT_STUB_LABEL_PAGE_MODE ? state.stubLabelPageMode : undefined,
+      defaultConnectionType: state.defaultConnectionType !== DEFAULT_CONNECTION_TYPE ? state.defaultConnectionType : undefined,
       useShortNames: state.useShortNames || undefined,
       wrapDeviceLabels: state.wrapDeviceLabels || undefined,
       hideAdapters: state.hideAdapters || undefined,
@@ -5984,9 +6030,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
             cableIdGap: data.cableIdGap ?? 4,
             cableIdMidOffset: data.cableIdMidOffset ?? 0,
             cableIdLabelMode: data.cableIdLabelMode ?? "endpoint",
+            stubLabelShowArrow: data.stubLabelShowArrow ?? DEFAULT_STUB_LABEL_SHOW_ARROW,
             stubLabelShowPort: data.stubLabelShowPort ?? DEFAULT_STUB_LABEL_SHOW_PORT,
             stubLabelShowRoom: data.stubLabelShowRoom ?? DEFAULT_STUB_LABEL_SHOW_ROOM,
             stubLabelPageMode: data.stubLabelPageMode ?? DEFAULT_STUB_LABEL_PAGE_MODE,
+            defaultConnectionType: data.defaultConnectionType ?? DEFAULT_CONNECTION_TYPE,
             useShortNames: data.useShortNames ?? false,
             wrapDeviceLabels: data.wrapDeviceLabels ?? false,
             hideAdapters: data.hideAdapters ?? false,
@@ -6080,9 +6128,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         cableIdGap: data.cableIdGap ?? 4,
         cableIdMidOffset: data.cableIdMidOffset ?? 0,
         cableIdLabelMode: data.cableIdLabelMode ?? "endpoint",
+        stubLabelShowArrow: data.stubLabelShowArrow ?? DEFAULT_STUB_LABEL_SHOW_ARROW,
         stubLabelShowPort: data.stubLabelShowPort ?? DEFAULT_STUB_LABEL_SHOW_PORT,
         stubLabelShowRoom: data.stubLabelShowRoom ?? DEFAULT_STUB_LABEL_SHOW_ROOM,
         stubLabelPageMode: data.stubLabelPageMode ?? DEFAULT_STUB_LABEL_PAGE_MODE,
+        defaultConnectionType: data.defaultConnectionType ?? DEFAULT_CONNECTION_TYPE,
         useShortNames: data.useShortNames ?? false,
         wrapDeviceLabels: data.wrapDeviceLabels ?? false,
         hideAdapters: data.hideAdapters ?? false,
@@ -6176,9 +6226,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableIdGap: state.cableIdGap !== 4 ? state.cableIdGap : undefined,
       cableIdMidOffset: state.cableIdMidOffset !== 0 ? state.cableIdMidOffset : undefined,
       cableIdLabelMode: state.cableIdLabelMode !== "endpoint" ? state.cableIdLabelMode : undefined,
+      stubLabelShowArrow: state.stubLabelShowArrow !== DEFAULT_STUB_LABEL_SHOW_ARROW ? state.stubLabelShowArrow : undefined,
       stubLabelShowPort: state.stubLabelShowPort !== DEFAULT_STUB_LABEL_SHOW_PORT ? state.stubLabelShowPort : undefined,
       stubLabelShowRoom: state.stubLabelShowRoom !== DEFAULT_STUB_LABEL_SHOW_ROOM ? state.stubLabelShowRoom : undefined,
       stubLabelPageMode: state.stubLabelPageMode !== DEFAULT_STUB_LABEL_PAGE_MODE ? state.stubLabelPageMode : undefined,
+      defaultConnectionType: state.defaultConnectionType !== DEFAULT_CONNECTION_TYPE ? state.defaultConnectionType : undefined,
       useShortNames: state.useShortNames || undefined,
       wrapDeviceLabels: state.wrapDeviceLabels || undefined,
       hideAdapters: state.hideAdapters || undefined,
@@ -6277,8 +6329,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableIdGap: data.cableIdGap ?? 4,
       cableIdMidOffset: data.cableIdMidOffset ?? 0,
       cableIdLabelMode: data.cableIdLabelMode ?? "endpoint",
+      stubLabelShowArrow: data.stubLabelShowArrow ?? DEFAULT_STUB_LABEL_SHOW_ARROW,
       stubLabelShowPort: data.stubLabelShowPort ?? DEFAULT_STUB_LABEL_SHOW_PORT,
       stubLabelPageMode: data.stubLabelPageMode ?? DEFAULT_STUB_LABEL_PAGE_MODE,
+      defaultConnectionType: data.defaultConnectionType ?? DEFAULT_CONNECTION_TYPE,
       useShortNames: data.useShortNames ?? false,
       wrapDeviceLabels: data.wrapDeviceLabels ?? false,
       hideAdapters: data.hideAdapters ?? false,
@@ -6399,9 +6453,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         cableIdGap: 4,
         cableIdMidOffset: 0,
         cableIdLabelMode: "endpoint" as "endpoint" | "midpoint",
+        stubLabelShowArrow: DEFAULT_STUB_LABEL_SHOW_ARROW,
         stubLabelShowPort: DEFAULT_STUB_LABEL_SHOW_PORT,
         stubLabelShowRoom: DEFAULT_STUB_LABEL_SHOW_ROOM,
         stubLabelPageMode: DEFAULT_STUB_LABEL_PAGE_MODE,
+        defaultConnectionType: DEFAULT_CONNECTION_TYPE,
         useShortNames: false,
         wrapDeviceLabels: false,
         autoRoute: true,
@@ -6550,6 +6606,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     });
     if (!changed) return;
     set({ nodes });
+    get().saveToLocalStorage();
+  },
+
+  setDefaultConnectionType: (type) => {
+    set({ defaultConnectionType: type });
     get().saveToLocalStorage();
   },
 

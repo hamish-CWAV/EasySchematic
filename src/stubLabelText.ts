@@ -20,20 +20,21 @@ export interface StubLabelParts {
 }
 
 export interface StubLabelOptions {
+  showArrow: boolean;
   showPort: boolean;
   showRoom: boolean;
   pageMode: StubLabelPageMode;
 }
 
 /**
- * Build the stub-label text: "{arrow} {farLabel}" plus, when enabled and available,
- * the far-end port in brackets, the far-end room in parens, and a page tag. The port
- * is the far end's port so BOTH stubs of a connection name the opposite device's port
- * (issue #200), not the near/local one.
+ * Build the stub-label text: the far device's name, optionally led by the direction
+ * arrow, plus — when enabled and available — the far-end port in brackets, the far-end
+ * room in parens, and a page tag. The port is the far end's port so BOTH stubs of a
+ * connection name the opposite device's port (issue #200), not the near/local one.
  */
 export function buildStubLabelText(parts: StubLabelParts, opts: StubLabelOptions): string {
   const { arrow, farLabel, farPort, farRoom, myPage, farPage } = parts;
-  let t = `${arrow} ${farLabel}`;
+  let t = opts.showArrow ? `${arrow} ${farLabel}` : farLabel;
   if (opts.showPort && farPort) t += ` [${farPort}]`;
   if (opts.showRoom && farRoom) t += ` (${farRoom})`;
   const showPage =

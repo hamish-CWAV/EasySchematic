@@ -243,9 +243,9 @@ describe("a stub tag names the far device, not a hidden inline adapter (#348)", 
     useSchematicStore.getState().setHideAdapters(true);
     const parts = tagParts("stub-e-cam-adapter-src")!;
     // The hop supplies the parts; the toggles still decide which of them reach the box.
-    expect(buildStubLabelText(parts, { showPort: false, showRoom: false, pageMode: "never" }))
+    expect(buildStubLabelText(parts, { showArrow: true, showPort: false, showRoom: false, pageMode: "never" }))
       .toBe("→ SWITCHER");
-    expect(buildStubLabelText(parts, { showPort: true, showRoom: true, pageMode: "never" }))
+    expect(buildStubLabelText(parts, { showArrow: true, showPort: true, showRoom: true, pageMode: "never" }))
       .toBe("→ SWITCHER [SDI I/O 1] (Rack Room)");
   });
 });
