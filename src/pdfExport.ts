@@ -15,6 +15,7 @@ import { useSchematicStore } from "./store";
 import { DEFAULT_SIGNAL_COLORS } from "./signalColors";
 import { transformLabelNow } from "./labelCaseUtils";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "./colorKeyLayout";
+import { layoutContinuationPill, titleBlockBandInches, type TitleBlockBand } from "./continuationPill";
 
 const DPI = 96;
 // 5 × 96 = 480 DPI — well above the 300 DPI print standard, sharp even at high
@@ -135,12 +136,10 @@ async function drawTitleBlock(
   pageNum: number,
   totalPages: number,
 ) {
-  const margin = PAGE_MARGIN_IN;
-  const tbHeight = layout.heightIn;
-  const tbTop = pageHIn - margin - tbHeight;
-  const fullTbWidth = pageWIn - 2 * margin;
-  const tbWidth = Math.min(layout.widthIn, fullTbWidth);
-  const tbLeft = margin + fullTbWidth - tbWidth;
+  // The same band the continuation pills are clamped against
+  const band = titleBlockBandInches(pageWIn, pageHIn, layout.widthIn, layout.heightIn);
+  if (!band) return;
+  const { x: tbLeft, y: tbTop, width: tbWidth, height: tbHeight } = band;
 
   const cellRects = computeCellRects(layout);
   const pad = 0.05;
@@ -493,7 +492,7 @@ const ARROW_CHARS: Record<string, string> = {
   down: "\u2191",  // ↑ (points up, meaning "continues upward")
 };
 
-function drawCrossingLabels(doc: jsPDF, labels: PdfCrossingLabel[]) {
+function drawCrossingLabels(doc: jsPDF, labels: PdfCrossingLabel[], titleBlockBand: TitleBlockBand | null) {
   if (labels.length === 0) return;
   doc.saveGraphicsState();
 
@@ -504,6 +503,8 @@ function drawCrossingLabels(doc: jsPDF, labels: PdfCrossingLabel[]) {
   doc.setFont("Inter", "normal");
   doc.setFontSize(fontSize);
 
+  const bands = titleBlockBand ? [titleBlockBand] : [];
+
   for (const l of labels) {
     const arrow = ARROW_CHARS[l.anchor];
     const displayText = `${arrow} ${l.text}`;
@@ -511,27 +512,12 @@ function drawCrossingLabels(doc: jsPDF, labels: PdfCrossingLabel[]) {
     const boxW = textW + pad * 2;
     const boxH = fontSize / 72 + pad * 2;
 
-    let boxX: number;
-    let boxY: number;
-
-    switch (l.anchor) {
-      case "left":
-        boxX = l.x - boxW;
-        boxY = l.y - boxH / 2;
-        break;
-      case "right":
-        boxX = l.x;
-        boxY = l.y - boxH / 2;
-        break;
-      case "up":
-        boxX = l.x - boxW / 2;
-        boxY = l.y - boxH;
-        break;
-      case "down":
-        boxX = l.x - boxW / 2;
-        boxY = l.y;
-        break;
-    }
+    // Grows inward from the boundary, then rides up off the title block if it
+    // landed on one — the pill is opaque and would white the block out (#337).
+    const { x: boxX, y: boxY } = layoutContinuationPill(
+      { anchor: l.anchor, x: l.x, y: l.y, width: boxW, height: boxH },
+      bands,
+    );
 
     // White pill background with signal-colored border
     const [cr, cg, cb] = hexToRgb(l.color);
@@ -782,7 +768,7 @@ export async function exportPdf(
       const pdfLabels = computePdfCrossingLabels(
         page, pages, storeState.routedEdges, storeState.edges, storeState.nodes, scale,
       );
-      drawCrossingLabels(doc, pdfLabels);
+      drawCrossingLabels(doc, pdfLabels, titleBlockBandInches(pageWIn, pageHIn, layout.widthIn, layout.heightIn));
 
       // Draw color key / signal legend
       if (storeState.colorKeyEnabled) {

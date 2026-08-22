@@ -11,10 +11,13 @@ import { describe, expect, it } from "vitest";
 import { computePdfCrossingLabels } from "../pdfExport";
 import { computePageGrid } from "../printPageGrid";
 import { getPaperSize, PAGE_MARGIN_IN } from "../printConfig";
+import { layoutContinuationPill, titleBlockBandInches } from "../continuationPill";
+import { createDefaultLayout } from "../titleBlockLayout";
 import type { RoutedEdge } from "../edgeRouter";
 import type { ConnectionEdge, SchematicNode } from "../types";
 
 const LETTER = getPaperSize("letter");
+const LAYOUT = createDefaultLayout();
 const SCALE = 1;
 const DPI = 96;
 
@@ -148,5 +151,59 @@ describe("PDF off-page continuation labels — sideways crossings stay put", () 
     expect(second).toHaveLength(1);
     expect(second[0].anchor).toBe("right");
     expect(second[0].text).toBe("Left Device");
+  });
+});
+
+// Restoring the bottom pill (#317) put it back where the title block is drawn: an
+// inset inside the page's bottom margin, which is inside the block's strip. The pill
+// is opaque white, so on a connection running down the right-hand side of the sheet it
+// wiped the block out. drawCrossingLabels now runs every pill through the shared
+// clamp before drawing it.
+describe("PDF off-page continuation labels — clear of the title block (#337)", () => {
+  const BAND = titleBlockBandInches(LETTER.widthIn, LETTER.heightIn, LAYOUT.widthIn, LAYOUT.heightIn)!;
+  // What drawCrossingLabels measures for a pill: 6pt text plus 0.02in padding a side.
+  const PILL_H = 6 / 72 + 0.04;
+  const PILL_W = 1.1;
+
+  /** A device column that lands under the title block, and its partner a page below. */
+  const rightTop = { ...topDevice, position: { x: 540, y: 100 } } as SchematicNode;
+  const rightBottom = { ...bottomDevice, position: { x: 540, y: 1200 } } as SchematicNode;
+
+  const nodes = [rightTop, rightBottom];
+  const pages = pagesFor(nodes);
+  const edges = [edge(rightTop.id, rightBottom.id)];
+  const routed = { e1: verticalRoute(590, 164, 1200) };
+
+  it("anchors the bottom pill inside the title-block strip", () => {
+    const labels = computePdfCrossingLabels(pages[0], pages, routed, edges, nodes, SCALE);
+    expect(labels).toHaveLength(1);
+    expect(labels[0].anchor).toBe("up");
+    expect(labels[0].x).toBeGreaterThan(BAND.x);
+    expect(labels[0].y).toBeGreaterThan(BAND.y);
+  });
+
+  it("lifts that pill onto the top edge of the block instead of covering it", () => {
+    const [label] = computePdfCrossingLabels(pages[0], pages, routed, edges, nodes, SCALE);
+    const box = layoutContinuationPill(
+      { anchor: label.anchor, x: label.x, y: label.y, width: PILL_W, height: PILL_H },
+      [BAND],
+    );
+    expect(box.y + box.height).toBeCloseTo(BAND.y, 6);
+    expect(box.y).toBeGreaterThan(PAGE_MARGIN_IN);
+  });
+
+  it("leaves a bottom pill out at the left-hand side of the sheet where it is", () => {
+    const leftNodes = [topDevice, bottomDevice];
+    const leftPages = pagesFor(leftNodes);
+    const leftEdges = [edge(topDevice.id, bottomDevice.id)];
+    const [label] = computePdfCrossingLabels(
+      leftPages[0], leftPages, { e1: verticalRoute(150, 164, 1200) }, leftEdges, leftNodes, SCALE,
+    );
+    const box = layoutContinuationPill(
+      { anchor: label.anchor, x: label.x, y: label.y, width: PILL_W, height: PILL_H },
+      [BAND],
+    );
+    expect(box.y).toBeCloseTo(label.y - PILL_H, 6);
+    expect(box.y).toBeGreaterThan(BAND.y);
   });
 });

@@ -8,6 +8,7 @@ import type { RoutedEdge } from "../edgeRouter";
 import { computeCellRects, normalizeSizes, getFieldValue, getFieldLabel } from "../titleBlockLayout";
 import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "../colorKeyLayout";
+import { layoutContinuationPill, titleBlockBandPx, type TitleBlockBand } from "../continuationPill";
 
 // ─── Page crossing labels ─────────────────────────────────────────
 
@@ -159,7 +160,7 @@ function measureTextWidth(text: string, font: string): number {
   return measureCtx.measureText(text).width;
 }
 
-function CrossingLabels({ labels, pxPerPt }: { labels: CrossingLabel[]; pxPerPt: number }) {
+function CrossingLabels({ labels, pxPerPt, titleBlockBands }: { labels: CrossingLabel[]; pxPerPt: number; titleBlockBands: TitleBlockBand[] }) {
   if (labels.length === 0) return null;
   const fontSize = 6.5 * pxPerPt;
   const pad = 1.5 * pxPerPt;
@@ -177,44 +178,20 @@ function CrossingLabels({ labels, pxPerPt }: { labels: CrossingLabel[]; pxPerPt:
         const boxW = textW + pad * 2;
         const boxH = fontSize + pad * 2;
 
-        // Box outer edge sits at l.x/l.y, growing INWARD (away from the page boundary)
-        let boxX: number;
-        let boxY: number;
-        let textX: number;
-        let textY: number;
-
-        switch (l.anchor) {
-          case "left":
-            boxX = l.x - boxW;
-            boxY = l.y - boxH / 2;
-            textX = boxX + pad;
-            textY = l.y;
-            break;
-          case "right":
-            boxX = l.x;
-            boxY = l.y - boxH / 2;
-            textX = boxX + pad;
-            textY = l.y;
-            break;
-          case "up":
-            boxX = l.x - boxW / 2;
-            boxY = l.y - boxH;
-            textX = boxX + pad;
-            textY = l.y - boxH / 2;
-            break;
-          case "down":
-            boxX = l.x - boxW / 2;
-            boxY = l.y;
-            textX = boxX + pad;
-            textY = l.y + boxH / 2;
-            break;
-        }
+        // Box outer edge sits at l.x/l.y, growing INWARD (away from the page
+        // boundary), then rides up off the title block if it landed on one.
+        const box = layoutContinuationPill(
+          { anchor: l.anchor, x: l.x, y: l.y, width: boxW, height: boxH },
+          titleBlockBands,
+        );
+        const textX = box.x + pad;
+        const textY = box.y + boxH / 2;
 
         return (
           <g key={i}>
             <rect
-              x={boxX}
-              y={boxY}
+              x={box.x}
+              y={box.y}
               width={boxW}
               height={boxH}
               rx={radius}
@@ -508,6 +485,13 @@ function PageBoundaryOverlay() {
     [pages, routedEdges, storeEdges, storeNodes, pxPerPt, signalColors],
   );
 
+  const titleBlockBands = useMemo(
+    () => pages
+      .map((p) => titleBlockBandPx(p, titleBlockLayout.widthIn, titleBlockLayout.heightIn))
+      .filter((b): b is TitleBlockBand => b !== null),
+    [pages, titleBlockLayout.widthIn, titleBlockLayout.heightIn],
+  );
+
   const colorKeyEntries = useMemo(
     () => colorKeyEnabled ? collectColorKeyEntries(storeEdges, signalColors, signalLineStyles, colorKeyOverrides) : [],
     [colorKeyEnabled, storeEdges, signalColors, signalLineStyles, colorKeyOverrides],
@@ -548,7 +532,7 @@ function PageBoundaryOverlay() {
         {pages.map((p) => (
           <PageOverlay key={p.index} page={p} zoom={zoom} titleBlock={titleBlock} layout={titleBlockLayout} totalPages={totalPages} minCol={minCol} minRow={minRow} />
         ))}
-        <CrossingLabels labels={crossingLabels} pxPerPt={pxPerPt} />
+        <CrossingLabels labels={crossingLabels} pxPerPt={pxPerPt} titleBlockBands={titleBlockBands} />
         {colorKeyEnabled && <ColorKeyLegend entries={colorKeyEntries} pages={pages} corner={colorKeyCorner} columns={colorKeyColumns} pageFilter={colorKeyPage} pxPerPt={pxPerPt} />}
         {(["tl", "tr", "bl", "br"] as const).map((corner) => (
           <OriginDragHandle
@@ -593,16 +577,16 @@ function PageOverlay({
   const fontSize = 14 / zoom;
   const labelFontSize = 10 / zoom;
 
-  // Title block geometry
+  // Title block geometry — the same band the continuation pills are clamped against
   const marginPx = p.contentX - p.x;
-  const tbTop = p.contentY + p.contentH;
-  const tbHeight = (p.y + p.heightPx) - tbTop - marginPx;
-  const hasTitleBlock = tbHeight > 0;
+  const band = titleBlockBandPx(p, layout.widthIn, layout.heightIn);
+  const hasTitleBlock = band !== null;
+  const tbTop = band?.y ?? 0;
+  const tbHeight = band?.height ?? 0;
+  const tbBoxW = band?.width ?? 0;
+  const tbBoxX = band?.x ?? 0;
 
-  // Title block width from layout (fixed inches → canvas pixels)
-  const pxPerIn = marginPx / 0.4; // PAGE_MARGIN_IN = 0.4
-  const tbBoxW = Math.min(layout.widthIn * pxPerIn, p.contentW);
-  const tbBoxX = p.contentX + p.contentW - tbBoxW;
+  const pxPerIn = marginPx / PAGE_MARGIN_IN;
   const pxPerPt = pxPerIn / 72; // convert font points to page pixels
   const stroke = 0.5 * pxPerPt; // scale with page, not screen
 
