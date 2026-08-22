@@ -652,7 +652,9 @@ interface SchematicState {
   reportLayouts: Record<string, unknown>;
   setReportLayout: (key: string, layout: unknown) => void;
   reportHiddenColumns: Record<string, string[]>;
-  setReportHiddenColumns: (tableId: string, columnIds: string[]) => void;
+  /** Pass `undefined` to forget the preference entirely, restoring whatever default the
+   *  table computes for itself (the Patch Panel Schedule's automatic single-face columns). */
+  setReportHiddenColumns: (tableId: string, columnIds: string[] | undefined) => void;
   globalReportHeaderLayout: TitleBlockLayout | null;
   globalReportFooterLayout: TitleBlockLayout | null;
   setGlobalReportHeaderLayout: (layout: TitleBlockLayout) => void;
@@ -4769,7 +4771,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   setReportHiddenColumns: (tableId, columnIds) => {
-    set({ reportHiddenColumns: { ...get().reportHiddenColumns, [tableId]: columnIds } });
+    const next = { ...get().reportHiddenColumns };
+    if (columnIds) next[tableId] = columnIds;
+    else delete next[tableId];
+    set({ reportHiddenColumns: next });
     get().saveToLocalStorage();
   },
 

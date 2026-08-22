@@ -73,6 +73,33 @@ export interface PatchPanelScheduleRow {
 
 const EMPTY = "—";
 
+/** Column ids for the single-face fields (Connector, M/F, Remote Device, Remote Port,
+ *  Remote Room). These are always EMPTY on passthrough rows (see below) and only populate
+ *  via the legacy paired input/output back-compat path, so a report made entirely of
+ *  passthrough panels can never fill them (#311). */
+export const PATCH_PANEL_LEGACY_COLUMN_IDS = ["connector", "gender", "remoteDevice", "remotePort", "remoteRoom"] as const;
+
+export type PatchPanelLegacyColumnId = (typeof PATCH_PANEL_LEGACY_COLUMN_IDS)[number];
+
+/** True when at least one row is a legacy paired-port row (face !== "Passthrough"), i.e.
+ *  when the single-face columns above can actually hold data. */
+function hasLegacyPatchPanelRow(rows: Pick<PatchPanelScheduleRow, "face">[]): boolean {
+  return rows.some((r) => r.face !== "Passthrough");
+}
+
+/** Which Patch Panel Schedule columns the table should hide, given the rows currently in
+ *  view and the document's stored per-table preference. `stored` is undefined when the
+ *  user has never touched the column picker, in which case the single-face columns hide
+ *  themselves unless a legacy row is in view. Any stored array — including an empty one,
+ *  meaning "show everything" — is an explicit choice and wins (#311). */
+export function resolvePatchPanelHiddenColumns(
+  rows: Pick<PatchPanelScheduleRow, "face">[],
+  stored: string[] | undefined,
+): Set<string> {
+  if (stored) return new Set(stored);
+  return hasLegacyPatchPanelRow(rows) ? new Set<string>() : new Set<string>(PATCH_PANEL_LEGACY_COLUMN_IDS);
+}
+
 interface SideInfo {
   edgeId: string;
   remoteDevice: string;

@@ -26,6 +26,9 @@ import {
   computePatchPanelSchedule,
   exportPatchPanelScheduleCsv,
   getPatchPanelScheduleTableData,
+  resolvePatchPanelHiddenColumns,
+  PATCH_PANEL_LEGACY_COLUMN_IDS,
+  type PatchPanelLegacyColumnId,
   type PatchPanelScheduleRow,
 } from "../patchPanelSchedule";
 import { createDefaultPackListLayout, createDefaultNetworkReportLayout, createDefaultCableScheduleLayout, createDefaultPatchPanelScheduleLayout, createDefaultPowerReportLayout } from "../reportLayout";
@@ -331,6 +334,21 @@ const CABLE_COLUMNS: { id: string; label: string }[] = [
   { id: "targetRoom", label: "Tgt Room" },
   { id: "multicableLabel", label: "Snake" },
 ];
+
+// Headings for the Patch Panel Schedule's single-face columns. Keyed off the id list in
+// patchPanelSchedule so the picker, the cells and the group-header colSpan can't drift
+// apart from the visibility rule (#311).
+const PATCH_PANEL_LEGACY_COLUMN_LABELS: Record<PatchPanelLegacyColumnId, string> = {
+  connector: "Connector",
+  gender: "M/F",
+  remoteDevice: "Remote Device",
+  remotePort: "Remote Port",
+  remoteRoom: "Remote Room",
+};
+
+/** Total Patch Panel Schedule columns with every single-face column showing: 5 panel +
+ *  5 single-face + 5 cable + 9 rear + 9 front + 1 normalling. */
+const PATCH_PANEL_COLUMN_COUNT = 34;
 
 // ─── Network Report Tab ────────────────────────────────────────
 
@@ -2218,6 +2236,25 @@ function PatchPanelScheduleTabInline() {
     return copy;
   }, [filtered, sortKey, sortAsc]);
 
+  const hiddenColsArr = useSchematicStore((s) => s.reportHiddenColumns["patchPanel"]);
+  const setReportHiddenColumns = useSchematicStore((s) => s.setReportHiddenColumns);
+  const [colMenu, setColMenu] = useState<{ x: number; y: number } | null>(null);
+
+  // Single-face columns default to hidden unless a legacy paired-port row is actually in
+  // view; a stored preference (even an empty "hide nothing") is the user's word (#311).
+  const hiddenCols = useMemo(
+    () => resolvePatchPanelHiddenColumns(sorted, hiddenColsArr),
+    [sorted, hiddenColsArr],
+  );
+  const legacyHiddenCount = PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => hiddenCols.has(id)).length;
+  const toggleCol = useCallback((id: string) => {
+    const next = new Set(hiddenCols);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setReportHiddenColumns("patchPanel", [...next]);
+  }, [hiddenCols, setReportHiddenColumns]);
+  const showAllCols = useCallback(() => setReportHiddenColumns("patchPanel", []), [setReportHiddenColumns]);
+  const resetCols = useCallback(() => setReportHiddenColumns("patchPanel", undefined), [setReportHiddenColumns]);
+
   const toggleSort = (key: PatchPanelSortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc);
     else { setSortKey(key); setSortAsc(true); }
@@ -2290,6 +2327,13 @@ function PatchPanelScheduleTabInline() {
           />
           Hide empty
         </label>
+        <button
+          className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-xs outline-none cursor-pointer hover:text-[var(--color-text)] whitespace-nowrap"
+          title="Show / hide the single-face columns"
+          onClick={(e) => setColMenu({ x: e.clientX, y: e.clientY })}
+        >
+          Columns ▾
+        </button>
       </div>
 
       {/* Occupancy summary */}
@@ -2313,18 +2357,19 @@ function PatchPanelScheduleTabInline() {
 
       <table className="w-full border-collapse">
         <thead>
-          <tr>
+          <tr onContextMenu={(e) => { e.preventDefault(); setColMenu({ x: e.clientX, y: e.clientY }); }}>
             <th className={thClass} onClick={() => toggleSort("panel")}>Panel{sortArrow("panel")}</th>
             <th className={thClass} onClick={() => toggleSort("panelRoom")}>Panel Room{sortArrow("panelRoom")}</th>
             <th className={thClass} onClick={() => toggleSort("face")}>Face{sortArrow("face")}</th>
             <th className={thClass} onClick={() => toggleSort("position")}>Position{sortArrow("position")}</th>
             <th className={thClass} onClick={() => toggleSort("signalType")}>Signal{sortArrow("signalType")}</th>
-            {/* Legacy (non-passthrough) columns */}
-            <th className={thClass} onClick={() => toggleSort("connector")}>Connector{sortArrow("connector")}</th>
-            <th className={thClass} onClick={() => toggleSort("gender")}>M/F{sortArrow("gender")}</th>
-            <th className={thClass} onClick={() => toggleSort("remoteDevice")}>Remote Device{sortArrow("remoteDevice")}</th>
-            <th className={thClass} onClick={() => toggleSort("remotePort")}>Remote Port{sortArrow("remotePort")}</th>
-            <th className={thClass} onClick={() => toggleSort("remoteRoom")}>Remote Room{sortArrow("remoteRoom")}</th>
+            {/* Single-face (non-passthrough) columns — hidden by default when no row in
+                view is a legacy paired-port row; see hiddenCols above (#311). */}
+            {PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => !hiddenCols.has(id)).map((id) => (
+              <th key={id} className={thClass} onClick={() => toggleSort(id)}>
+                {PATCH_PANEL_LEGACY_COLUMN_LABELS[id]}{sortArrow(id)}
+              </th>
+            ))}
             <th className={thClass} onClick={() => toggleSort("cableId")}>Cable ID{sortArrow("cableId")}</th>
             <th className={thClass} onClick={() => toggleSort("cableType")}>Cable Type{sortArrow("cableType")}</th>
             <th className={thClass} onClick={() => toggleSort("cableLength")}>Length{sortArrow("cableLength")}</th>
@@ -2358,7 +2403,7 @@ function PatchPanelScheduleTabInline() {
               {g.label && (
                 <tr>
                   <td
-                    colSpan={34}
+                    colSpan={PATCH_PANEL_COLUMN_COUNT - legacyHiddenCount}
                     className="bg-[var(--color-surface)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] py-1 px-2"
                   >
                     {g.label}
@@ -2377,12 +2422,10 @@ function PatchPanelScheduleTabInline() {
                     <td className={tdClass}>{r.face}</td>
                     <td className={tdClass}>{r.position}</td>
                     <td className={tdClass}>{r.signalType || "—"}</td>
-                    {/* Legacy columns */}
-                    <td className={tdClass}>{r.connector}</td>
-                    <td className={tdClass}>{r.gender}</td>
-                    <td className={tdClass}>{r.remoteDevice}</td>
-                    <td className={tdClass}>{r.remotePort}</td>
-                    <td className={tdClass}>{r.remoteRoom}</td>
+                    {/* Single-face columns */}
+                    {PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => !hiddenCols.has(id)).map((id) => (
+                      <td key={id} className={tdClass}>{r[id]}</td>
+                    ))}
                     <td className={tdClass}>{r.cableId || "—"}</td>
                     <td className={tdClass}>{r.cableType || "—"}</td>
                     <td className={tdClass}>{r.cableLength || "—"}</td>
@@ -2415,6 +2458,53 @@ function PatchPanelScheduleTabInline() {
           ))}
         </tbody>
       </table>
+
+      {colMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setColMenu(null)} />
+          <div
+            className="fixed z-50 bg-white border border-[var(--color-border)] rounded shadow-lg py-1 text-xs max-h-[70vh] overflow-y-auto"
+            style={{ left: colMenu.x, top: colMenu.y }}
+          >
+            <div className="flex items-center justify-between gap-3 px-3 py-1">
+              <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
+                Single-Face Columns
+              </span>
+              <button
+                onClick={showAllCols}
+                disabled={hiddenCols.size === 0}
+                className="text-[10px] text-blue-600 hover:text-blue-500 disabled:text-[var(--color-text-muted)] disabled:opacity-50 disabled:cursor-default cursor-pointer"
+              >
+                Show all
+              </button>
+            </div>
+            {PATCH_PANEL_LEGACY_COLUMN_IDS.map((id) => (
+              <label
+                key={id}
+                className="flex items-center gap-2 px-3 py-1 hover:bg-[var(--color-surface)] cursor-pointer whitespace-nowrap"
+              >
+                <input
+                  type="checkbox"
+                  checked={!hiddenCols.has(id)}
+                  onChange={() => toggleCol(id)}
+                  className="w-3 h-3 accent-blue-500 cursor-pointer"
+                />
+                {PATCH_PANEL_LEGACY_COLUMN_LABELS[id]}
+              </label>
+            ))}
+            <div className="border-t border-[var(--color-border)] mt-1 pt-1 px-3 py-1">
+              <button
+                onClick={resetCols}
+                disabled={hiddenColsArr === undefined}
+                title="Show these columns only when a panel with separate rear/front ports is in view"
+                className="text-[10px] text-blue-600 hover:text-blue-500 disabled:text-[var(--color-text-muted)] disabled:opacity-50 disabled:cursor-default cursor-pointer"
+              >
+                {hiddenColsArr === undefined ? "Automatic (in use)" : "Back to automatic"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
