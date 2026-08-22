@@ -2,13 +2,16 @@
  * An adapter inserted in reverse gets its ports mirrored so the run reads straight.
  *
  * When `resolveSignalBridgePorts` / `resolveConnectorBridgePorts` match a template in
- * its reversed orientation, the source-side port is the one declared on the right and
- * the target-side port the one declared on the left — so both cables approach from the
- * mirrored side and read as crossed. `insertAdapterBetween` flips every port on the
- * adapter it creates, the same thing "Flip all ports" does from the port context menu.
+ * its reversed orientation, the part is being used the other way round: signal enters
+ * the declared output side and leaves the declared input side. `insertAdapterBetween`
+ * swaps the created instance's strict port directions to match — which both mirrors
+ * their rendered side (the run reads straight instead of crossed) and gives the
+ * outgoing leg a source-type handle the canvas can draw from (#310) — and toggles
+ * `flipped` on bidirectional and passthrough ports, whose direction the swap leaves
+ * alone (`flipped` is the same thing "Flip all ports" does from the port context menu).
  *
- * This is placement only: `flipped` moves a port between the left and right columns in
- * DeviceNode and never changes its handle ID, so the edges are identical either way.
+ * Handle IDs never change: strict ports use the bare port ID whichever direction they
+ * face, so the edges reference the same handles either way.
  *
  * The store reads editor preferences from localStorage at import time, so a minimal
  * in-memory localStorage is installed before the store is imported.
@@ -134,7 +137,7 @@ describe("insertAdapterBetween — reversed adapter is mirrored", () => {
     }
   });
 
-  it("does not change the edges it wires — flipping is placement only", () => {
+  it("keeps every wired handle naming a real port — the flip never touches handle IDs", () => {
     const { adapter, edges } = insertReversed();
     expect(edges).toHaveLength(2);
     const ports = (adapter.data as { ports: Port[] }).ports;

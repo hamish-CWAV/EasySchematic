@@ -2142,19 +2142,34 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       const srcPort = getPortFromHandle(state.nodes, connection.source, connection.sourceHandle);
       const tgtPort = getPortFromHandle(state.nodes, connection.target, connection.targetHandle);
       if (srcPort && tgtPort) {
-        const canSource = srcPort.direction === "output" || srcPort.direction === "bidirectional";
-        const canTarget = tgtPort.direction === "input" || tgtPort.direction === "bidirectional";
+        // Port directions mostly no longer gate this branch: a reversed adapter
+        // legitimately bridges into a strict output (the device hosts the adapter's
+        // plug — #310), and canWireAdapterBridge inside the matcher judges direction
+        // fit per orientation. Two pairs stay out: passthroughs keep their own
+        // validation path (except network-to-network, which this branch always
+        // admitted), and input-to-input has no drawable outcome at all — no adapter
+        // leg, nor a forced connection, can ever be drawn from a strict input.
         const networkBypass = NETWORK_SIGNAL_TYPES.has(srcPort.signalType) && NETWORK_SIGNAL_TYPES.has(tgtPort.signalType);
-        if ((canSource && canTarget || networkBypass) && srcPort.signalType !== tgtPort.signalType && !areSignalPairsCompatible(srcPort.signalType, tgtPort.signalType)) {
-          // Auto-insert if exactly one adapter matches
+        const bridgeable =
+          ((srcPort.direction !== "passthrough" && tgtPort.direction !== "passthrough") || networkBypass) &&
+          !(srcPort.direction === "input" && tgtPort.direction === "input");
+        if (bridgeable && srcPort.signalType !== tgtPort.signalType && !areSignalPairsCompatible(srcPort.signalType, tgtPort.signalType)) {
+          // Auto-insert if exactly one adapter matches; otherwise (zero or many) the
+          // dialog opens — a signal-mismatch drop must never end silently (#310).
           const allTemplates = [...DEVICE_TEMPLATES, ...state.customTemplates];
-          const adapterMatches = findAdaptersForSignalBridge(srcPort.signalType, tgtPort.signalType, allTemplates);
+          const adapterMatches = findAdaptersForSignalBridge(
+            srcPort.signalType, tgtPort.signalType, allTemplates,
+            { sourcePort: srcPort, targetPort: tgtPort },
+          );
+          const pendingConn = { connection, sourcePort: srcPort, targetPort: tgtPort, reason: "signal-mismatch" as const };
+          set({ pendingIncompatibleConnection: pendingConn });
           if (adapterMatches.length === 1) {
-            set({ pendingIncompatibleConnection: { connection, sourcePort: srcPort, targetPort: tgtPort, reason: "signal-mismatch" } });
-            get().insertAdapterBetween(adapterMatches[0]);
-            return;
+            // A refused insert (e.g. a preset reshaped the adapter's ports) clears the
+            // pending state — restore it so the dialog reports instead of silence.
+            if (!get().insertAdapterBetween(adapterMatches[0])) {
+              set({ pendingIncompatibleConnection: pendingConn });
+            }
           }
-          set({ pendingIncompatibleConnection: { connection, sourcePort: srcPort, targetPort: tgtPort, reason: "signal-mismatch" } });
         }
       }
       return;
@@ -2184,18 +2199,19 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         targetPort.connectorType!,
         sourcePort.signalType,
         allTemplates,
+        { sourcePort, targetPort },
       );
 
-      if (adapterMatches.length === 1) {
-        // Auto-insert the single matching adapter (insertAdapterBetween handles its own undo)
-        set({ pendingIncompatibleConnection: { connection, sourcePort, targetPort, reason: "connector-mismatch" } });
-        get().insertAdapterBetween(adapterMatches[0]);
-        return;
-      } else {
-        // Zero or multiple matches — show dialog for user to choose (or connect anyway)
-        set({ pendingIncompatibleConnection: { connection, sourcePort, targetPort, reason: "connector-mismatch" } });
-        return;
+      // Exactly one match auto-inserts (insertAdapterBetween handles its own undo);
+      // zero or multiple show the dialog for the user to choose (or connect anyway).
+      const pendingConn = { connection, sourcePort, targetPort, reason: "connector-mismatch" as const };
+      set({ pendingIncompatibleConnection: pendingConn });
+      if (adapterMatches.length === 1 && !get().insertAdapterBetween(adapterMatches[0])) {
+        // A refused insert clears the pending state — restore it so the dialog
+        // reports instead of the drop ending silently (#310).
+        set({ pendingIncompatibleConnection: pendingConn });
       }
+      return;
     }
 
     // Also handle CONNECTOR_ACCEPTS adapter pairs (compatible but needs adapter cable)
@@ -2206,16 +2222,15 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         targetPort.connectorType!,
         sourcePort.signalType,
         allTemplates,
+        { sourcePort, targetPort },
       );
 
-      if (adapterMatches.length === 1) {
-        set({ pendingIncompatibleConnection: { connection, sourcePort, targetPort, reason: "connector-mismatch" } });
-        get().insertAdapterBetween(adapterMatches[0]);
-        return;
-      } else {
-        set({ pendingIncompatibleConnection: { connection, sourcePort, targetPort, reason: "connector-mismatch" } });
-        return;
+      const pendingConn = { connection, sourcePort, targetPort, reason: "connector-mismatch" as const };
+      set({ pendingIncompatibleConnection: pendingConn });
+      if (adapterMatches.length === 1 && !get().insertAdapterBetween(adapterMatches[0])) {
+        set({ pendingIncompatibleConnection: pendingConn });
       }
+      return;
     }
 
     pushUndo({ nodes: state.nodes, edges: state.edges });
@@ -4320,20 +4335,30 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     const pending = state.pendingIncompatibleConnection;
     if (!pending) return;
+    // An edge's sourceHandle only resolves against source-type handles, and a strict
+    // `input` port renders target-only — a connection drawn from one sits in the
+    // model but never appears (#310). Flip the ends so the drawable port is the
+    // source; with two strict inputs no orientation is drawable, so refuse outright
+    // (onConnect keeps that pair from ever staging, this guards other callers).
+    const flip = pending.sourcePort.direction === "input";
+    if (flip && pending.targetPort.direction === "input") {
+      set({ pendingIncompatibleConnection: null });
+      return;
+    }
     pushUndo({ nodes: state.nodes, edges: state.edges });
 
     const incompatibleData: ConnectionData = {
-      signalType: pending.sourcePort.signalType,
+      signalType: (flip ? pending.targetPort : pending.sourcePort).signalType,
       connectorMismatch: true,
       allowIncompatible: true,
     };
     const existingEdges = ensureUniqueEdgeIds(state.edges);
     const newEdge: ConnectionEdge = {
       id: nextEdgeId(existingEdges),
-      source: pending.connection.source,
-      target: pending.connection.target,
-      sourceHandle: pending.connection.sourceHandle,
-      targetHandle: pending.connection.targetHandle,
+      source: flip ? pending.connection.target : pending.connection.source,
+      target: flip ? pending.connection.source : pending.connection.target,
+      sourceHandle: flip ? pending.connection.targetHandle : pending.connection.sourceHandle,
+      targetHandle: flip ? pending.connection.sourceHandle : pending.connection.targetHandle,
       data: incompatibleData,
       style: {
         stroke: resolveEdgeStroke(incompatibleData),
@@ -4494,7 +4519,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     // alone would wire a USB-A→USB-C drag into the adapter's USB-C end and leave both
     // legs connector-mismatched. Signal resolution and the per-end finds remain as
     // fallbacks so a partially-matching adapter still wires the end it can, as before.
-    const bridge =
+    let bridge =
       (pending.reason === "connector-mismatch" &&
       pending.sourcePort.connectorType &&
       pending.targetPort.connectorType
@@ -4510,6 +4535,35 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         pending.sourcePort.signalType,
         pending.targetPort.signalType,
       );
+
+    // A reversed match is the same physical part used in its other orientation:
+    // signal enters the declared output side and leaves the declared input side.
+    // Flip the instance's strict port directions to match, so the outgoing leg gets a
+    // source-type handle on the adapter (a strict input renders target-only, and an
+    // edge's sourceHandle only resolves against source handles, #310). A direction
+    // swap already mirrors a strict port's rendered side, so only bidirectional and
+    // passthrough ports need the `flipped` placement toggle (the same thing "Flip
+    // all ports" does) for the legs to approach from facing sides instead of reading
+    // as crossed. Handle IDs are unaffected: strict ports use the bare port ID
+    // whichever direction they face, and bidirectional ports stay bidirectional.
+    if (bridge?.reversed) {
+      const sourceSideId = bridge.sourceSidePort.id;
+      const targetSideId = bridge.targetSidePort.id;
+      adapterPorts = adapterPorts.map((p) =>
+        p.direction === "input" ? { ...p, direction: "output" as const }
+        : p.direction === "output" ? { ...p, direction: "input" as const }
+        : { ...p, flipped: !p.flipped || undefined });
+      adapterNode = {
+        ...adapterNode,
+        data: { ...adapterNode.data, ports: adapterPorts },
+      };
+      bridge = {
+        reversed: true,
+        sourceSidePort: adapterPorts.find((p) => p.id === sourceSideId)!,
+        targetSidePort: adapterPorts.find((p) => p.id === targetSideId)!,
+      };
+    }
+
     const adapterInput = bridge?.sourceSidePort ?? adapterPorts.find(
       (p) => (p.direction === "input" || p.direction === "bidirectional") && p.signalType === pending.sourcePort.signalType,
     );
@@ -4528,21 +4582,20 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       return false;
     }
 
-    // Cosmetic only: an adapter matched in reverse has its source-side port on the
-    // declared right and its target-side port on the declared left, so the two legs
-    // approach from mirrored sides and read as crossed. Flipping every port mirrors
-    // the device — the same thing "Flip all ports" does from the port context menu —
-    // so the signal runs straight through. `flipped` is per-port render placement
-    // only: handle IDs are the port IDs either way, so the edges built below and the
-    // router are untouched.
-    if (bridge?.reversed) {
-      adapterNode = {
-        ...adapterNode,
-        data: {
-          ...adapterNode.data,
-          ports: adapterPorts.map((p) => ({ ...p, flipped: !p.flipped || undefined })),
-        },
-      };
+    // A drawn leg must put its edge source on a source-type handle: React Flow
+    // resolves sourceHandle only against handleBounds.source (ConnectionMode.Loose
+    // relaxes the target end only), and DeviceNode renders a strict `input` port as a
+    // target-only handle. Leg 1 draws source device → adapter, so the device source
+    // port must not be a strict input; leg 2 draws adapter → device, so the
+    // adapter-side port must not be. The reversed flip above guarantees the latter
+    // for bridge matches — this guard covers the fallback port resolution and direct
+    // callers, refusing whole rather than committing an adapter the canvas can only
+    // half-draw (#310).
+    if ((adapterInput && pending.sourcePort.direction === "input") ||
+        (adapterOutput && adapterOutput.direction === "input")) {
+      undoStack.pop();
+      set({ pendingIncompatibleConnection: null, undoSize: undoStack.length });
+      return false;
     }
 
     // Replacing an existing connection (#306): the invalid cable makes way for the adapter legs
@@ -4582,18 +4635,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(!areConnectorsCompatible(adapterOutput.connectorType, pending.targetPort.connectorType) ? { connectorMismatch: true } : {}),
         ...(adapterOutput.directAttach ? { directAttach: true } : {}),
       };
-      // An edge's sourceHandle only ever resolves against source handles, and a strict
-      // `input` port renders as target-only — so when a reversed adapter puts an input
-      // on the device side the leg has to be drawn device → adapter instead. That also
-      // reads correctly: the adapter's male plug goes into the device.
-      const drawFromDevice =
-        adapterOutput.direction === "input" && pending.targetPort.direction !== "input";
+      // Always drawn adapter → device: the reversed flip above guarantees the adapter
+      // side is a source-type handle, and the device end resolves under
+      // ConnectionMode.Loose whatever its direction (target handles fall back to
+      // source bounds). One inbound and one outbound leg is also the shape the
+      // hide-adapters virtual-edge builder collapses.
       newEdges.push({
         id: nextEdgeId([...existingEdges, ...newEdges]),
-        source: drawFromDevice ? pending.connection.target : adapterId,
-        target: drawFromDevice ? adapterId : pending.connection.target,
-        sourceHandle: drawFromDevice ? pending.connection.targetHandle : outputHandle,
-        targetHandle: drawFromDevice ? outputHandle : pending.connection.targetHandle,
+        source: adapterId,
+        target: pending.connection.target,
+        sourceHandle: outputHandle,
+        targetHandle: pending.connection.targetHandle,
         data: outputData,
         style: {
           stroke: resolveEdgeStroke(outputData),

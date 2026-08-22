@@ -418,6 +418,48 @@ export function resolveConnectorBridgePorts(
   return null;
 }
 
+/** The two device ports a bridge would span — all `canWireAdapterBridge` needs of them. */
+export interface BridgeEndpoints {
+  sourcePort: Pick<Port, "direction" | "signalType">;
+  targetPort: Pick<Port, "direction" | "signalType">;
+}
+
+/**
+ * Whether a resolved bridge can actually be inserted between two device ports.
+ *
+ * Matching only proves the adapter carries both signals/connectors; whether the two
+ * legs can be *wired* also depends on the device ports' directions, and on a canvas
+ * constraint: React Flow resolves an edge's sourceHandle only against source-type
+ * handles (even in ConnectionMode.Loose — only targetHandle falls back), and
+ * DeviceNode renders a strict `input` port as a target-only handle. So any leg whose
+ * drawn source end is a strict input exists in the model but never appears (#310).
+ */
+export function canWireAdapterBridge(
+  bridge: AdapterBridgePorts,
+  sourcePort: BridgeEndpoints["sourcePort"],
+  targetPort: BridgeEndpoints["targetPort"],
+): boolean {
+  // The source leg is always drawn source device → adapter, so the device port must
+  // render a source-type handle. Drag and click-connect normalization both put a lone
+  // strict input at the target end, so this only rejects input-to-input pairs — where
+  // neither device could originate the signal anyway.
+  if (sourcePort.direction === "input") return false;
+  if (bridge.reversed) {
+    // Reversed match: the same physical part used in its other orientation.
+    // insertAdapterBetween flips the instance's port directions to match, so the
+    // outgoing leg always draws adapter → device from a source-type handle. Any
+    // target direction accepts it — a strict input receives the adapter's signal, a
+    // strict output hosts the adapter's male end (#310 defects 1 and 2).
+    return true;
+  }
+  // Forward match: the adapter's declared output feeds the target. Drawing is safe
+  // either way (a strict-output target still resolves as a Loose-mode edge target);
+  // this is a signal-flow rule, not a canvas one: don't offer to feed a strict
+  // output — unless both signals are network traffic, which is direction-agnostic.
+  const net = NETWORK_SIGNAL_TYPES.has(sourcePort.signalType) && NETWORK_SIGNAL_TYPES.has(targetPort.signalType);
+  return net || targetPort.direction !== "output";
+}
+
 /**
  * Rank bridge matches for the pickers and for the exactly-one-match auto-insert rule.
  *
@@ -450,34 +492,44 @@ function rankBridgeMatches(
   return chosen;
 }
 
-/** Find adapter/converter templates that bridge two different signal types, in either drag direction */
+/** Find adapter/converter templates that bridge two different signal types, in either
+ *  drag direction. Pass `endpoints` to drop matches `canWireAdapterBridge` rules out
+ *  for those device ports — every caller acting on a concrete pair should, so the drag
+ *  preview, the picker dialog, and the auto-insert can never disagree (#310). */
 export function findAdaptersForSignalBridge(
   sourceSignalType: SignalType,
   targetSignalType: SignalType,
   templates: DeviceTemplate[],
+  endpoints?: BridgeEndpoints,
 ): DeviceTemplate[] {
   const matches = [];
   for (const t of templates) {
     if (t.deviceType !== "adapter") continue;
     const bridge = resolveSignalBridgePorts(t, sourceSignalType, targetSignalType);
-    if (bridge) matches.push({ template: t, reversed: bridge.reversed });
+    if (!bridge) continue;
+    if (endpoints && !canWireAdapterBridge(bridge, endpoints.sourcePort, endpoints.targetPort)) continue;
+    matches.push({ template: t, reversed: bridge.reversed });
   }
   return rankBridgeMatches(matches);
 }
 
 /** Find adapter templates that bridge two different connector types within the same
- *  signal type, in either drag direction */
+ *  signal type, in either drag direction. `endpoints` filters as in
+ *  `findAdaptersForSignalBridge`. */
 export function findAdaptersForConnectorBridge(
   sourceConnector: ConnectorType,
   targetConnector: ConnectorType,
   signalType: SignalType,
   templates: DeviceTemplate[],
+  endpoints?: BridgeEndpoints,
 ): DeviceTemplate[] {
   const matches = [];
   for (const t of templates) {
     if (t.deviceType !== "adapter") continue;
     const bridge = resolveConnectorBridgePorts(t, sourceConnector, targetConnector, signalType);
-    if (bridge) matches.push({ template: t, reversed: bridge.reversed });
+    if (!bridge) continue;
+    if (endpoints && !canWireAdapterBridge(bridge, endpoints.sourcePort, endpoints.targetPort)) continue;
+    matches.push({ template: t, reversed: bridge.reversed });
   }
   return rankBridgeMatches(matches);
 }

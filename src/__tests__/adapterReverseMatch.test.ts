@@ -375,13 +375,15 @@ describe("insertAdapterBetween — reversed adapter is wired up", () => {
     expect(ethLeg.target).toBe(adapter.id);
     expect(ethLeg.targetHandle).toBe(ethPort.id);
 
-    // USB leg: the adapter's USB port is a strict input, so the cable is drawn
-    // laptop → adapter. Either way the run passes through the adapter.
+    // USB leg: the reversed instance's USB end is flipped to an output — the dongle's
+    // male plug feeds the laptop — so the cable is drawn adapter → laptop from a
+    // source-type handle (#310).
     const usbLeg = edges.find((e) => e.data?.signalType === "usb")!;
-    expect(usbLeg.source).toBe("n2");
-    expect(usbLeg.sourceHandle).toBe("lt-usb-in");
-    expect(usbLeg.target).toBe(adapter.id);
-    expect(usbLeg.targetHandle).toBe(usbPort.id);
+    expect(usbPort.direction).toBe("output");
+    expect(usbLeg.source).toBe(adapter.id);
+    expect(usbLeg.sourceHandle).toBe(usbPort.id);
+    expect(usbLeg.target).toBe("n2");
+    expect(usbLeg.targetHandle).toBe("lt-usb-in");
 
     // The run is continuous: no direct n1 ↔ n2 edge, both legs touch the adapter.
     expect(edges.every((e) => e.source === adapter.id || e.target === adapter.id)).toBe(true);
@@ -464,12 +466,13 @@ describe("insertAdapterBetween — reversed connector-swap adapter is wired up",
     expect(dockLeg.target).toBe(adapter.id);
     expect(dockLeg.targetHandle).toBe(usbaPort.id);
 
-    // The adapter's USB-C end is a strict input, so that leg is drawn laptop → adapter —
-    // which is also the physical truth: the USB-C male plug goes into the laptop.
-    const laptopLeg = edges.find((e) => e.source === "n2")!;
-    expect(laptopLeg.sourceHandle).toBe("lt-usbc-in");
-    expect(laptopLeg.target).toBe(adapter.id);
-    expect(laptopLeg.targetHandle).toBe(usbcPort.id);
+    // The reversed instance's USB-C end is flipped to an output — the physical truth:
+    // the USB-C male plug goes into the laptop — so the leg draws adapter → laptop (#310).
+    const laptopLeg = edges.find((e) => e.target === "n2")!;
+    expect(usbcPort.direction).toBe("output");
+    expect(laptopLeg.source).toBe(adapter.id);
+    expect(laptopLeg.sourceHandle).toBe(usbcPort.id);
+    expect(laptopLeg.targetHandle).toBe("lt-usbc-in");
 
     // Neither leg is flagged as a connector mismatch — the adapter genuinely bridges them.
     expect(edges.some((e) => e.data?.connectorMismatch)).toBe(false);

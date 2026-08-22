@@ -332,6 +332,18 @@ describe("updateDevice port-edit revalidation flow", () => {
     expect(adapterNode).toBeDefined();
     const legs = after.edges.filter((e) => e.source === adapterNode!.id || e.target === adapterNode!.id);
     expect(legs).toHaveLength(2);
+
+    // The bundled adapter (USB-C (M) → USB-A (F)) only matches this pair in reverse,
+    // so the inserted instance is flipped to its used orientation (#310): the USB-C
+    // male end becomes the output feeding the display, giving the display-side leg a
+    // source-type handle on the adapter — previously that leg's sourceHandle sat on
+    // the adapter's strict USB-C input and the canvas never drew it.
+    const aPorts = (adapterNode!.data as DeviceData).ports;
+    const usbCSide = aPorts.find((p) => p.connectorType === "usb-c")!;
+    expect(usbCSide.direction).toBe("output");
+    const outLeg = after.edges.find((e) => e.source === adapterNode!.id)!;
+    expect(outLeg.sourceHandle).toBe(usbCSide.id);
+    expect(outLeg.target).toBe("n2");
   });
 
   it("adapter insertion on a passthrough conflict bridges the face connectors", () => {

@@ -24,12 +24,17 @@ export default function PortEditConflictDialog() {
     for (const c of conflicts) {
       // Match on the effective face connectors/signals the cable actually uses.
       // An "incompatible" conflict is something no adapter can fix (direction,
-      // multi-connect, multicore) — offer none.
+      // multi-connect, multicore) — offer none. Endpoints filter out bridges
+      // insertAdapterBetween could not wire drawably (#310).
+      const endpoints = {
+        sourcePort: { direction: c.sourcePort.direction, signalType: c.sourceSignal },
+        targetPort: { direction: c.targetPort.direction, signalType: c.targetSignal },
+      };
       const found =
         c.reason === "connector-mismatch" && c.sourceConnector && c.targetConnector
-          ? findAdaptersForConnectorBridge(c.sourceConnector, c.targetConnector, c.sourceSignal, allTemplates)
+          ? findAdaptersForConnectorBridge(c.sourceConnector, c.targetConnector, c.sourceSignal, allTemplates, endpoints)
           : c.reason === "signal-mismatch" && c.sourceSignal !== c.targetSignal
-            ? findAdaptersForSignalBridge(c.sourceSignal, c.targetSignal, allTemplates)
+            ? findAdaptersForSignalBridge(c.sourceSignal, c.targetSignal, allTemplates, endpoints)
             : [];
       map.set(c.edgeId, found);
     }

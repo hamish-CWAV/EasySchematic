@@ -1071,10 +1071,14 @@ function SchematicCanvas() {
             const tgtPort = tgtHandleId ? findPortByHandle(tgtNode.data as DeviceData, tgtHandleId) : undefined;
             if (srcPort && tgtPort) {
               const allTemplates = [...DEVICE_TEMPLATES, ...state2.customTemplates];
+              // Same endpoint filter onConnect's auto-insert uses, so the yellow
+              // preview and the drop outcome can't disagree (#310): an adapter that
+              // exists but can't be wired between these port directions is not offered.
+              const endpoints = { sourcePort: srcPort, targetPort: tgtPort };
               if (srcPort.signalType !== tgtPort.signalType) {
-                adaptable = findAdaptersForSignalBridge(srcPort.signalType, tgtPort.signalType, allTemplates).length > 0;
+                adaptable = findAdaptersForSignalBridge(srcPort.signalType, tgtPort.signalType, allTemplates, endpoints).length > 0;
               } else if (srcPort.connectorType && tgtPort.connectorType && srcPort.connectorType !== tgtPort.connectorType) {
-                adaptable = findAdaptersForConnectorBridge(srcPort.connectorType, tgtPort.connectorType, srcPort.signalType, allTemplates).length > 0
+                adaptable = findAdaptersForConnectorBridge(srcPort.connectorType, tgtPort.connectorType, srcPort.signalType, allTemplates, endpoints).length > 0
                   || !areConnectorsCompatible(srcPort.connectorType, tgtPort.connectorType);
               }
             }

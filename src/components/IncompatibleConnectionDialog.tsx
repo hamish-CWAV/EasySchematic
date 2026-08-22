@@ -17,18 +17,23 @@ export default function IncompatibleConnectionDialog() {
   const adapters = useMemo(() => {
     if (!pending) return [];
     const allTemplates = [...DEVICE_TEMPLATES, ...customTemplates];
+    // Same endpoint filter the drag preview and auto-insert use, so the dialog never
+    // offers an adapter that insertAdapterBetween could not wire drawably (#310).
+    const endpoints = { sourcePort: pending.sourcePort, targetPort: pending.targetPort };
     if (pending.reason === "connector-mismatch") {
       return findAdaptersForConnectorBridge(
         pending.sourcePort.connectorType!,
         pending.targetPort.connectorType!,
         pending.sourcePort.signalType,
         allTemplates,
+        endpoints,
       );
     }
     return findAdaptersForSignalBridge(
       pending.sourcePort.signalType,
       pending.targetPort.signalType,
       allTemplates,
+      endpoints,
     );
   }, [pending, customTemplates]);
 
@@ -40,9 +45,19 @@ export default function IncompatibleConnectionDialog() {
   const srcConn = pending.sourcePort.connectorType ? CONNECTOR_LABELS[pending.sourcePort.connectorType] : "";
   const tgtConn = pending.targetPort.connectorType ? CONNECTOR_LABELS[pending.targetPort.connectorType] : "";
 
+  // insertAdapterBetween clears the pending state even when it refuses (e.g. a
+  // preset reshaped the adapter's ports out from under the matched template);
+  // restore it so the dialog stays open with the remaining choices instead of the
+  // click ending silently (#310).
+  const tryInsert = (template: DeviceTemplate) => {
+    if (!insertAdapter(template)) {
+      useSchematicStore.setState({ pendingIncompatibleConnection: pending });
+    }
+  };
+
   const handleInsert = () => {
     if (selectedIdx === null) return;
-    insertAdapter(adapters[selectedIdx]);
+    tryInsert(adapters[selectedIdx]);
   };
 
   return (
@@ -94,7 +109,7 @@ export default function IncompatibleConnectionDialog() {
                       : "hover:bg-[var(--color-surface-hover)]"
                   }`}
                   onClick={() => setSelectedIdx(i)}
-                  onDoubleClick={() => { setSelectedIdx(i); insertAdapter(t); }}
+                  onDoubleClick={() => { setSelectedIdx(i); tryInsert(t); }}
                 >
                   <span className="font-medium text-[var(--color-text-heading)]">{t.label}</span>
                   {(t.manufacturer || t.modelNumber) && (
