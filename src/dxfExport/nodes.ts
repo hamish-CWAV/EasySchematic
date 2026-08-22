@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import { strippedHandleId } from "../portHandles";
 import type { DxfWriter, EntityStyle } from "./writer";
-import { ACI_NEAR_BLACK, ACI_WHITE, cssFontPxToDxfHeight, pxToIn, tintToWhite, hexToRgb, rgbToTrueColor, truncateToWidth } from "./units";
+import { ACI_NEAR_BLACK, ACI_WHITE, cssFontPxToDxfHeight, ELLIPSIS, pxToIn, tintToWhite, hexToRgb, rgbToTrueColor, truncateToWidth } from "./units";
 import { CANONICAL_LAYERS, hexToTrueColor, resolveSignalColor } from "./layers";
 import {
   auxBlockHeight,
@@ -24,8 +24,13 @@ import {
   rowsInSlot,
 } from "../auxiliaryData";
 import { transformLabelNow } from "../labelCaseUtils";
-import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
-import { buildStubLabelText } from "../stubLabelText";
+import {
+  DEVICE_LABEL_LINE_PX,
+  resolveDeviceLabel,
+  wrapDeviceLabelLines,
+  type SchematicDisplayDefaults,
+} from "../displayName";
+import { buildStubLabelText, UNRESOLVED_STUB_LABEL_TEXT } from "../stubLabelText";
 import { resolveStubLabelParts, type StubLabelContext } from "../stubLabelResolve";
 import { STUB_H_EST, STUB_W_EST } from "../stubPlacement";
 
@@ -44,6 +49,11 @@ const DEVICE_CORNER_RADIUS_IN = 8 / 96;
  * of the decision entirely.
  */
 const INK = { trueColor: 0x1e293b, aci: ACI_NEAR_BLACK } as const;
+
+/** Baseline drop inside one 14-px header line box: the 12-px cap sits on it with the
+ *  leading split above, which is where the canvas puts it too. A single line in the
+ *  16-px zone lands on the same baseline as before (1 px block pad + 11). */
+const LABEL_BASELINE_IN_LINE_PX = 11;
 
 interface HandlePos {
   id: string;
@@ -235,23 +245,36 @@ export function emitDevice(
   const auxTextHeight = cssFontPxToDxfHeight(9);
 
   // Device label — sits in the label zone at the top of the band (below pt pad).
-  // DXF doesn't support multi-line wrap; even with wrap=on we emit a single (possibly
-  // truncated) line. The zone, though, is two lines tall whenever the canvas wraps
-  // (HEADER_LABEL_ZONE_2_PX), so baselining at the bottom of the zone dropped that one
-  // line onto the *second* line's slot and left a blank line above it (#249 follow-up).
-  // Centre the single line's 16-px slot in the zone instead: identical baseline for an
-  // unwrapped label, vertically centred for a wrapped one.
+  //
+  // DXF TEXT has no wrapping of its own, so a name the canvas breaks over two lines is
+  // emitted as two TEXT entities. The break comes from the shared header measurement
+  // (`wrapDeviceLabelLines`, the same width estimate behind `wrapsInHeader`), so the
+  // drawing splits where the canvas splits; the old single ellipsised line simply lost
+  // the tail of every long name — "USB-A (M) → RJ45 (F) Adapter" exported truncated
+  // (#299). Those lines are deliberately NOT run through truncateToWidth: they already
+  // fit the header by the measurement that drew them, and the exporter's conservative
+  // Arial estimate would clip them right back.
+  //
+  // The lines are centred as a block in the zone, which reproduces the previous single-
+  // line baseline exactly — including in a two-line zone, where baselining at the bottom
+  // used to leave a blank line above the name (#249 follow-up).
   if (resolvedLabel.text) {
     const labelHeight = cssFontPxToDxfHeight(12);
-    const labelLineTop = ay + headerPadTop + (labelZone - HEADER_LABEL_ZONE_PX) / 2;
-    const labelBaselineY = labelLineTop + HEADER_LABEL_ZONE_PX - 4;
-    writer.addText(
-      CANONICAL_LAYERS.LABELS,
-      pxToIn(ax + w / 2),
-      -pxToIn(labelBaselineY),
-      truncateToWidth(transformLabelNow(resolvedLabel.text), labelAvailIn, labelHeight),
-      { height: labelHeight, align: "center", style: { ...INK } },
-    );
+    const displayText = transformLabelNow(resolvedLabel.text);
+    const lines = resolvedLabel.wrapsInHeader
+      ? wrapDeviceLabelLines(displayText, { ellipsis: ELLIPSIS })
+      : [truncateToWidth(displayText, labelAvailIn, labelHeight)];
+    const blockTop = ay + headerPadTop + (labelZone - lines.length * DEVICE_LABEL_LINE_PX) / 2;
+    lines.forEach((line, i) => {
+      if (!line) return;
+      writer.addText(
+        CANONICAL_LAYERS.LABELS,
+        pxToIn(ax + w / 2),
+        -pxToIn(blockTop + i * DEVICE_LABEL_LINE_PX + LABEL_BASELINE_IN_LINE_PX),
+        line,
+        { height: labelHeight, align: "center", style: { ...INK } },
+      );
+    });
   }
 
   // Header aux rows — flow directly below the label zone, inside the same band.
@@ -547,18 +570,23 @@ export function emitStubLabel(
   const data = node.data as StubLabelData;
 
   const parts = resolveStubLabelParts(node.id, data, ctx);
-  if (!parts) return;
-  const text = buildStubLabelText(
-    // Only the name-ish parts take the display-case preference — the arrow and the
-    // "Pg" tag stay as assembled, exactly as on the canvas (#294).
-    { ...parts, farLabel: transformLabelNow(parts.farLabel), farRoom: transformLabelNow(parts.farRoom) },
-    {
-      showArrow: data.showArrow ?? defaults.showArrow,
-      showPort: data.showPort ?? defaults.showPort,
-      showRoom: data.showRoom ?? defaults.showRoom,
-      pageMode: data.pageMode ?? defaults.pageMode,
-    },
-  );
+  // A stub whose partner leg or far device can't be resolved reads "?" on the canvas.
+  // Dropping the node from the drawing instead would leave the leg's cable ID as the
+  // only text at that end — the same silent loss of the tag #319 is about — and hide
+  // from the reader that the connection is broken.
+  const text = parts
+    ? buildStubLabelText(
+        // Only the name-ish parts take the display-case preference — the arrow and the
+        // "Pg" tag stay as assembled, exactly as on the canvas (#294).
+        { ...parts, farLabel: transformLabelNow(parts.farLabel), farRoom: transformLabelNow(parts.farRoom) },
+        {
+          showArrow: data.showArrow ?? defaults.showArrow,
+          showPort: data.showPort ?? defaults.showPort,
+          showRoom: data.showRoom ?? defaults.showRoom,
+          pageMode: data.pageMode ?? defaults.pageMode,
+        },
+      )
+    : UNRESOLVED_STUB_LABEL_TEXT;
 
   const ax = internal.internals.positionAbsolute.x;
   const ay = internal.internals.positionAbsolute.y;

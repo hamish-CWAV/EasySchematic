@@ -5,7 +5,7 @@ import { SIGNAL_COLORS } from "../types";
 import { useSchematicStore, GRID_SIZE } from "../store";
 import { STUB_GAP } from "../stubPlacement";
 import { getPortAbsolutePositions } from "../snapUtils";
-import { buildStubLabelText } from "../stubLabelText";
+import { buildStubLabelText, UNRESOLVED_STUB_LABEL_TEXT } from "../stubLabelText";
 import { buildPrintPageLookup, resolveStubLabelParts } from "../stubLabelResolve";
 import { useDisplayLabel } from "../labelCaseUtils";
 
@@ -171,7 +171,7 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
 
   const displayLabel = useDisplayLabel();
   const text = useMemo(() => {
-    if (!labelStr) return "?";
+    if (!labelStr) return UNRESOLVED_STUB_LABEL_TEXT;
     const [arrow, farLabel, farPort, farRoom, myPage, farPage] = labelStr.split("\0");
     return buildStubLabelText(
       // The far device's name and its room are labels like any other, so the auto-case

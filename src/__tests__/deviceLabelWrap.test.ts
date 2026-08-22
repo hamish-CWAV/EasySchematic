@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   DEVICE_LABEL_AVAIL_PX,
+  DEVICE_LABEL_MAX_LINES,
   deviceLabelNeedsWrap,
   resolveDeviceLabel,
+  wrapDeviceLabelLines,
 } from "../displayName";
 import { estimateTextWidthPx } from "../textWidth";
 import { HEADER_LABEL_ZONE_PX, HEADER_LABEL_ZONE_2_PX, headerBandHeight } from "../auxiliaryData";
@@ -65,6 +67,78 @@ describe("deviceLabelNeedsWrap", () => {
 
   it("measures against the header's usable width, not the full device width", () => {
     expect(DEVICE_LABEL_AVAIL_PX).toBe(118);
+  });
+});
+
+// Where the header actually breaks a long name. Exports with no wrapping of their own
+// (DXF emits one TEXT entity per line) ask this instead of guessing, so a name the canvas
+// shows over two lines is not exported as one ellipsised line (#299).
+describe("wrapDeviceLabelLines (#299)", () => {
+  /** Same budget deviceLabelNeedsWrap answers against — every produced line must fit it. */
+  const fits = (line: string) =>
+    estimateTextWidthPx(line, 12, "bold") <= DEVICE_LABEL_AVAIL_PX * 0.98;
+
+  it("leaves a name that fits the header on one line", () => {
+    expect(wrapDeviceLabelLines("Camera")).toEqual(["Camera"]);
+    expect(wrapDeviceLabelLines("Sony HDC-5500")).toEqual(["Sony HDC-5500"]);
+  });
+
+  it("returns nothing for an empty or whitespace-only name", () => {
+    expect(wrapDeviceLabelLines("")).toEqual([]);
+    expect(wrapDeviceLabelLines("   ")).toEqual([]);
+  });
+
+  it("agrees with deviceLabelNeedsWrap on which names take a second line", () => {
+    for (const name of [
+      "Camera",
+      "Camera 1",
+      "Sony HDC-5500",
+      "USB-A (M) → RJ45 (F) Adapter",
+      "Main Hall Ceiling Microphone Array",
+    ]) {
+      expect(wrapDeviceLabelLines(name).length > 1).toBe(deviceLabelNeedsWrap(name));
+    }
+  });
+
+  it("breaks at a word boundary and keeps the whole name — the #299 adapter", () => {
+    const lines = wrapDeviceLabelLines("USB-A (M) → RJ45 (F) Adapter");
+    expect(lines).toEqual(["USB-A (M) → RJ45", "(F) Adapter"]);
+    // Nothing is dropped: the DXF used to export this as one truncated line.
+    expect(lines.join(" ")).toBe("USB-A (M) → RJ45 (F) Adapter");
+    expect(lines.every(fits)).toBe(true);
+  });
+
+  it("clamps past two lines with an ellipsis, like the canvas line-clamp", () => {
+    const lines = wrapDeviceLabelLines("Extron DTP CrossPoint 84 4K IPCP SA");
+    expect(lines.length).toBe(DEVICE_LABEL_MAX_LINES);
+    expect(lines[1].endsWith("…")).toBe(true);
+    expect(lines.every(fits)).toBe(true);
+  });
+
+  it("takes the caller's ellipsis — CAD readers need three literal periods", () => {
+    const lines = wrapDeviceLabelLines("Extron DTP CrossPoint 84 4K IPCP SA", { ellipsis: "..." });
+    expect(lines[1].endsWith("...")).toBe(true);
+    expect(lines.every(fits)).toBe(true);
+  });
+
+  it("breaks a single over-long word mid-word, matching `word-break: break-word`", () => {
+    const word = "Supercalifragilisticexpialidociousaurus";
+    const lines = wrapDeviceLabelLines(word);
+    expect(lines.length).toBe(2);
+    expect(word.startsWith(lines[0])).toBe(true);
+    expect(word.slice(lines[0].length).startsWith(lines[1].replace("…", ""))).toBe(true);
+    expect(lines.every(fits)).toBe(true);
+  });
+
+  it("collapses runs of whitespace the way HTML does", () => {
+    expect(wrapDeviceLabelLines("Sony   HDC-5500")).toEqual(["Sony HDC-5500"]);
+  });
+
+  it("honours a one-line request — the whole name on one ellipsised line", () => {
+    const lines = wrapDeviceLabelLines("Main Hall Ceiling Microphone Array", { maxLines: 1 });
+    expect(lines.length).toBe(1);
+    expect(lines[0].endsWith("…")).toBe(true);
+    expect(fits(lines[0])).toBe(true);
   });
 });
 

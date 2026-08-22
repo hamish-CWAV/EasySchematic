@@ -19,6 +19,11 @@ export interface StubLabelParts {
   farPage: string;
 }
 
+/** What a stub tag reads when its partner leg or far device can't be resolved — a
+ *  half-deleted connection. Shared so the canvas box and the DXF pill say the same
+ *  thing rather than one of them going blank (#319). */
+export const UNRESOLVED_STUB_LABEL_TEXT = "?";
+
 export interface StubLabelOptions {
   showArrow: boolean;
   showPort: boolean;

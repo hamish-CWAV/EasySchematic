@@ -41,7 +41,7 @@ const ARIAL_AVG_ASPECT = 0.65;
  * three literal periods, which is wider than the single glyph. Emitting
  * "..." explicitly gives us stable width accounting across renderers.
  */
-const ELLIPSIS = "...";
+export const ELLIPSIS = "...";
 
 /** Width of a period glyph as a fraction of text height. Arial: ~0.28. */
 const PERIOD_WIDTH_RATIO = 0.28;

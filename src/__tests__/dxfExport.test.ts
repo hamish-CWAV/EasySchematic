@@ -25,6 +25,7 @@ import {
 } from "../dxfExport/units";
 import { CANONICAL_LAYERS, LTYPE_DEFS, buildLayerDefs, signalLayerName } from "../dxfExport/layers";
 import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
+import { wrapDeviceLabelLines } from "../displayName";
 import { emitRoundedWaypointPath } from "../dxfExport/geometry";
 import type { RoutedEdge } from "../edgeRouter";
 
@@ -563,8 +564,12 @@ describe("emitDevice — header label placement", () => {
     } as unknown as ReactFlowInstance;
   }
 
-  /** Baseline Y of the device-name TEXT, in px below the device's top edge. */
-  function labelBaselineOffsetPx(label: string, auxiliaryData: AuxRow[] = []): number {
+  /** Device-name TEXT entities, in emission order, with each baseline expressed in px
+   *  below the device's top edge. */
+  function labelLines(
+    label: string,
+    auxiliaryData: AuxRow[] = [],
+  ): { text: string; offsetPx: number }[] {
     const node = deviceNode(label, auxiliaryData);
     const dxf = buildMinimalDxf((w) => {
       emitDevice(w, node, stubInstance(node), [], undefined, "USD", {});
@@ -576,28 +581,90 @@ describe("emitDevice — header label placement", () => {
     );
     expect(labels.length).toBeGreaterThan(0);
     // DXF is Y-up inches with the canvas origin at y=0; convert back to screen px.
-    return -labels[0].startPoint.y * DPI - DEVICE_Y;
+    return labels.map((e: { text: string; startPoint: { y: number } }) => ({
+      text: e.text,
+      offsetPx: -e.startPoint.y * DPI - DEVICE_Y,
+    }));
   }
 
-  // "Ethernet Switch (4-port)" and the adapters overflow the 144-px box, so the
-  // canvas reserves a two-line label zone for them. DXF still emits ONE line, and
-  // used to baseline it at the bottom of that zone — which read as a blank line
-  // above the name (#249 follow-up). The single line must sit at the same height
-  // as an unwrapped one in the same band.
-  it("centers the single DXF line in a two-line label zone", () => {
-    const short = labelBaselineOffsetPx("Camera");
-    expect(short).toBeCloseTo(20, 3);
-    expect(labelBaselineOffsetPx("Ethernet Switch (4-port)")).toBeCloseTo(short, 3);
-    expect(labelBaselineOffsetPx("USB-A (M) → RJ45 (F) Adapter")).toBeCloseTo(short, 3);
+  /** Baseline Y of the device name's FIRST line, in px below the device's top edge. */
+  function labelBaselineOffsetPx(label: string, auxiliaryData: AuxRow[] = []): number {
+    return labelLines(label, auxiliaryData)[0].offsetPx;
+  }
+
+  it("emits one line, centred in the band, for a name that fits the header", () => {
+    const lines = labelLines("Camera");
+    expect(lines.map((l) => l.text)).toEqual(["Camera"]);
+    expect(lines[0].offsetPx).toBeCloseTo(20, 3);
   });
 
-  it("keeps the label above the header aux rows when the zone is two lines", () => {
+  // A name the canvas breaks over two lines used to leave the DXF as ONE ellipsised
+  // line, so "USB-A (M) → RJ45 (F) Adapter" exported with its tail missing (#299).
+  // DXF TEXT can't wrap, so the exporter emits the canvas's two lines as two entities.
+  it("emits both canvas lines for a wrapped device name (#299)", () => {
+    const lines = labelLines("USB-A (M) → RJ45 (F) Adapter");
+    expect(lines.map((l) => l.text)).toEqual(
+      wrapDeviceLabelLines("USB-A (M) → RJ45 (F) Adapter").map(escapeForText),
+    );
+    // Nothing is truncated: the whole name is on the page.
+    expect(lines.map((l) => l.text).join(" ")).toBe(
+      escapeForText("USB-A (M) → RJ45 (F) Adapter"),
+    );
+  });
+
+  it("splits at the shared header measurement, not an exporter-local guess", () => {
+    for (const name of ["Ethernet Switch (4-port)", "Main Hall Ceiling Microphone Array"]) {
+      expect(labelLines(name).map((l) => l.text)).toEqual(
+        wrapDeviceLabelLines(name, { ellipsis: "..." }).map(escapeForText),
+      );
+    }
+  });
+
+  it("ellipsises with three periods, never the single glyph CAD readers re-measure", () => {
+    const lines = labelLines("Extron DTP CrossPoint 84 4K IPCP SA");
+    expect(lines.length).toBe(2);
+    expect(lines[1].text.endsWith("...")).toBe(true);
+    expect(lines.map((l) => l.text).join("")).not.toContain("\\U+2026");
+  });
+
+  // Two lines stacked on the canvas's 14-px leading, centred as a block in the 32-px
+  // zone: they straddle where the single line used to sit, rather than one of them
+  // landing in the aux rows below (#249 follow-up).
+  it("stacks the two lines on the canvas leading, centred in the two-line zone", () => {
+    const lines = labelLines("USB-A (M) → RJ45 (F) Adapter");
+    expect(lines[0].offsetPx).toBeCloseTo(13, 3);
+    expect(lines[1].offsetPx).toBeCloseTo(27, 3);
+    const single = labelBaselineOffsetPx("Camera");
+    expect(lines[0].offsetPx).toBeLessThan(single);
+    expect(lines[1].offsetPx).toBeGreaterThan(single);
+  });
+
+  it("keeps both label lines above the header aux rows", () => {
     const rows: AuxRow[] = [{ text: "{{deviceType}}", position: "header" }];
     // Band is 48px (32 zone + 12 row, rounded up to the 16-px grid), pad 4 → top pad 2.
-    // Single line centred in the 32-px zone puts its baseline at 2 + 8 + 12 = 22,
-    // comfortably clear of the aux row, which starts at 2 + 32 = 34.
-    expect(labelBaselineOffsetPx("USB-A (M) → RJ45 (F) Adapter", rows)).toBeCloseTo(22, 3);
+    // The 28-px two-line block centres in the zone at 2 + 2, so the baselines land at
+    // 15 and 29 — clear of the aux row, which starts at 2 + 32 = 34.
+    const lines = labelLines("USB-A (M) → RJ45 (F) Adapter", rows);
+    expect(lines.map((l) => l.offsetPx)).toEqual([
+      expect.closeTo(15, 3),
+      expect.closeTo(29, 3),
+    ]);
     expect(labelBaselineOffsetPx("Camera", rows)).toBeCloseTo(14, 3);
+  });
+
+  it("still ellipsises a single line when the device opts out of wrapping", () => {
+    const node = {
+      ...deviceNode("Main Hall Ceiling Microphone Array"),
+    } as unknown as SchematicNode;
+    (node.data as { wrapLabel?: boolean }).wrapLabel = false;
+    const dxf = buildMinimalDxf((w) => {
+      emitDevice(w, node, stubInstance(node), [], undefined, "USD", {});
+    });
+    const texts = (parse(dxf).entities as { type: string; layer: string; text: string }[])
+      .filter((e) => e.type === "TEXT" && e.layer === CANONICAL_LAYERS.LABELS)
+      .map((e) => e.text);
+    expect(texts.length).toBe(1);
+    expect(texts[0].endsWith("...")).toBe(true);
   });
 });
 
@@ -1520,6 +1587,46 @@ describe("buildDxf — stub labels (#319)", () => {
       .map(([c]) => c)
       .filter((c) => ["90", "45", "63", "441"].includes(c));
     expect(order).toEqual(["90", "45", "63", "441"]);
+  });
+
+  // The report behind #319 was a tag reading "C-014" where the editor shows the device,
+  // its port and its room. All three parts have to survive the export together.
+  it("carries device, port and room across, exactly as the tag composes them", () => {
+    const inRoom = [
+      {
+        id: "room-lobby",
+        type: "room",
+        position: { x: 1040, y: -40 },
+        measured: { width: 260, height: 200 },
+        data: { label: "Lobby" },
+      },
+      ...nodes.map((n) =>
+        n.id === "dev-lobby-display"
+          ? { ...n, parentId: "room-lobby", position: { x: 20, y: 40 } }
+          : n,
+      ),
+    ] as unknown as SchematicNode[];
+    const texts = labelTexts(
+      exportWithStubs({ nodes: inRoom, stubLabelShowRoom: true, stubLabelShowArrow: true }),
+    );
+    expect(texts).toContain(escapeForMText("→ Lobby Display [LAN 1] (Lobby)"));
+    // The far end of the other leg has no room, so its tag simply omits the parens.
+    expect(texts).toContain(escapeForMText("← Rack Switch [Port 12]"));
+    // ...and the cable ID is still only at the device ends, never standing in for a tag.
+    expect(texts.filter((t) => t === "C-014").length).toBe(2);
+  });
+
+  // A half-deleted connection leaves a stub whose partner leg resolves to nothing. The
+  // canvas prints "?" there; the DXF used to drop the node, which left the leg's cable ID
+  // as the only text at that end — the exact failure #319 is about.
+  it("prints the canvas's '?' for a stub whose partner leg is gone", () => {
+    const orphaned = edges.filter((e) => e.id === "e-leg-a");
+    const dxf = exportWithStubs({
+      edges: orphaned,
+      routedEdges: { "e-leg-a": routedEdges["e-leg-a"] },
+    });
+    expect(labelTexts(dxf)).toContain("?");
+    expect(stubPillIndex(rawEntityStream(dxf), 208, 33, 96, 14)).toBeGreaterThan(-1);
   });
 });
 

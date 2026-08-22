@@ -67,6 +67,14 @@ const DEVICE_LABEL_FONT_PX = 12;
  *  that would just barely have fit costs 16 px of header, but NOT wrapping one that
  *  doesn't fit silently truncates it, so lean toward the second line at the margin. */
 const FIT_TOLERANCE = 0.98;
+/** Widest a header line may be before it has to break — the single budget behind both
+ *  "does this name need a second line?" and "where does line one end?", so the two can
+ *  never disagree. */
+const DEVICE_LABEL_BUDGET_PX = DEVICE_LABEL_AVAIL_PX * FIT_TOLERANCE;
+
+function deviceLabelWidthPx(text: string): number {
+  return estimateTextWidthPx(text, DEVICE_LABEL_FONT_PX, "bold");
+}
 
 /** Does this device name actually need a second line inside the header?
  *
@@ -78,8 +86,72 @@ const FIT_TOLERANCE = 0.98;
  *  at render time, so an uppercase override can push a borderline name past the
  *  box. FIT_TOLERANCE absorbs a few percent of that. */
 export function deviceLabelNeedsWrap(text: string): boolean {
-  const width = estimateTextWidthPx(text, DEVICE_LABEL_FONT_PX, "bold");
-  return width > DEVICE_LABEL_AVAIL_PX * FIT_TOLERANCE;
+  return deviceLabelWidthPx(text) > DEVICE_LABEL_BUDGET_PX;
+}
+
+/** Line box the canvas gives each line of a wrapped header label (`lineHeight: "14px"`
+ *  on DeviceNode's clamped label span). */
+export const DEVICE_LABEL_LINE_PX = 14;
+/** Lines the header shows before clipping — DeviceNode's `-webkit-line-clamp: 2`, and
+ *  what HEADER_LABEL_ZONE_2_PX reserves room for. */
+export const DEVICE_LABEL_MAX_LINES = 2;
+
+export interface WrapDeviceLabelOptions {
+  /** Lines to keep; the last one absorbs the ellipsis. Defaults to DEVICE_LABEL_MAX_LINES. */
+  maxLines?: number;
+  /** Marker appended when the name outruns `maxLines`. Defaults to the "…" the canvas's
+   *  line-clamp draws; the DXF exporter passes "..." because several CAD readers
+   *  substitute three periods for the single glyph and then mis-measure the line. */
+  ellipsis?: string;
+}
+
+/**
+ * Break a device name into the header lines the canvas shows.
+ *
+ * Greedy word wrap against the header's own width, measured with the shared estimate —
+ * so an exporter that has no line wrapping of its own (DXF: one TEXT entity per line)
+ * splits at exactly the point the browser does, instead of ellipsising the tail of a
+ * name that the canvas shows in full (#299).
+ *
+ * Whitespace is collapsed the way HTML collapses it, and a word too long for a line of
+ * its own is broken mid-word, matching the span's `word-break: break-word`.
+ */
+export function wrapDeviceLabelLines(
+  text: string,
+  { maxLines = DEVICE_LABEL_MAX_LINES, ellipsis = "…" }: WrapDeviceLabelOptions = {},
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (deviceLabelWidthPx(candidate) <= DEVICE_LABEL_BUDGET_PX) {
+      line = candidate;
+      continue;
+    }
+    if (line) lines.push(line);
+    let rest = word;
+    while (deviceLabelWidthPx(rest) > DEVICE_LABEL_BUDGET_PX) {
+      let cut = 1;
+      while (cut < rest.length && deviceLabelWidthPx(rest.slice(0, cut + 1)) <= DEVICE_LABEL_BUDGET_PX) cut++;
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    line = rest;
+  }
+  if (line) lines.push(line);
+
+  const keep = Math.max(1, maxLines);
+  if (lines.length <= keep) return lines;
+  const clamped = lines.slice(0, keep);
+  let last = clamped[keep - 1];
+  while (last && deviceLabelWidthPx(last + ellipsis) > DEVICE_LABEL_BUDGET_PX) {
+    last = last.slice(0, -1).trimEnd();
+  }
+  clamped[keep - 1] = last + ellipsis;
+  return clamped;
 }
 
 export function resolveDeviceLabel(
