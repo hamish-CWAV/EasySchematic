@@ -3,9 +3,10 @@ import { useViewport, useReactFlow } from "@xyflow/react";
 import { useSchematicStore } from "../store";
 import { computePageGrid, type PageRect } from "../printPageGrid";
 import { PAGE_MARGIN_IN, getPaperSize } from "../printConfig";
-import type { TitleBlock, TitleBlockLayout, DeviceData, SignalType } from "../types";
+import type { TitleBlock, TitleBlockLayout, DeviceData, SignalType, LabelCaseMode } from "../types";
 import type { RoutedEdge } from "../edgeRouter";
 import { computeCellRects, normalizeSizes, getFieldValue, getFieldLabel } from "../titleBlockLayout";
+import { transformLabel } from "../labelCaseUtils";
 import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "../colorKeyLayout";
 import {
@@ -59,7 +60,8 @@ function computeCrossingLabels(
   edges: { id: string; source: string; target: string; data?: { signalType?: SignalType; stubbed?: boolean } }[],
   nodes: { id: string; type?: string; data: Record<string, unknown>; parentId?: string }[],
   _pxPerPt: number,
-  signalColorOverrides?: Partial<Record<SignalType, string>>,
+  signalColorOverrides: Partial<Record<SignalType, string>> | undefined,
+  labelCase: LabelCaseMode,
 ): CrossingLabel[] {
   if (pages.length <= 1) return [];
 
@@ -83,9 +85,12 @@ function computeCrossingLabels(
     let room: string | undefined;
     if (n.parentId) {
       const parent = nodes.find((p) => p.id === n.parentId);
-      if (parent) room = (parent.data as { label?: string }).label;
+      // Case-transform to match the PDF's pill text (#294) — pill placement is
+      // width-driven since #357, so differing text would also move the pills.
+      const parentLabel = parent ? (parent.data as { label?: string }).label : undefined;
+      if (parentLabel) room = transformLabel(parentLabel, labelCase);
     }
-    nodeInfo.set(n.id, { label: data.label, room });
+    nodeInfo.set(n.id, { label: transformLabel(data.label, labelCase), room });
   }
 
   // Build edge lookup
@@ -505,6 +510,7 @@ function PageBoundaryOverlay() {
   const printOriginOffsetX = useSchematicStore((s) => s.printOriginOffsetX);
   const printOriginOffsetY = useSchematicStore((s) => s.printOriginOffsetY);
   const setPrintOriginOffset = useSchematicStore((s) => s.setPrintOriginOffset);
+  const labelCase = useSchematicStore((s) => s.labelCase);
   // Subscribe to node positions so the overlay re-renders when nodes move
   useSchematicStore((s) =>
     s.nodes.map((n) => `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)},${n.measured?.width ?? 0},${n.measured?.height ?? 0}`).join("|"),
@@ -521,8 +527,8 @@ function PageBoundaryOverlay() {
   const pxPerPt = pxPerIn / 72;
 
   const crossingLabels = useMemo(
-    () => computeCrossingLabels(pages, routedEdges, storeEdges, storeNodes, pxPerPt, signalColors),
-    [pages, routedEdges, storeEdges, storeNodes, pxPerPt, signalColors],
+    () => computeCrossingLabels(pages, routedEdges, storeEdges, storeNodes, pxPerPt, signalColors, labelCase),
+    [pages, routedEdges, storeEdges, storeNodes, pxPerPt, signalColors, labelCase],
   );
 
   const titleBlockBands = useMemo(

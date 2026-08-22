@@ -2219,33 +2219,38 @@ function PatchPanelScheduleTabInline() {
     );
   }, [rows, filter, hideUnconnected]);
 
-  const sorted = useMemo(() => {
-    const copy = [...filtered];
-    if (sortKey === "position") {
-      // Natural rear-then-front-by-index order from compute(); keep the existing
-      // sort and only flip direction if user asks descending.
-      if (!sortAsc) copy.reverse();
-      return copy;
-    }
-    copy.sort((a, b) => {
-      const va = (a[sortKey] ?? "") as string;
-      const vb = (b[sortKey] ?? "") as string;
-      const cmp = va.localeCompare(vb);
-      return sortAsc ? cmp : -cmp;
-    });
-    return copy;
-  }, [filtered, sortKey, sortAsc]);
-
   const hiddenColsArr = useSchematicStore((s) => s.reportHiddenColumns["patchPanel"]);
   const setReportHiddenColumns = useSchematicStore((s) => s.setReportHiddenColumns);
   const [colMenu, setColMenu] = useState<{ x: number; y: number } | null>(null);
 
   // Single-face columns default to hidden unless a legacy paired-port row is actually in
   // view; a stored preference (even an empty "hide nothing") is the user's word (#311).
+  // Derived from filtered — same rows as sorted — so the sort below can consult it.
   const hiddenCols = useMemo(
-    () => resolvePatchPanelHiddenColumns(sorted, hiddenColsArr),
-    [sorted, hiddenColsArr],
+    () => resolvePatchPanelHiddenColumns(filtered, hiddenColsArr),
+    [filtered, hiddenColsArr],
   );
+
+  // Sorting by a column that is currently hidden would leave the rows ordered by an
+  // invisible field with no arrow on any header; fall back to the panel column.
+  const effectiveSortKey: PatchPanelSortKey = hiddenCols.has(sortKey) ? "panel" : sortKey;
+
+  const sorted = useMemo(() => {
+    const copy = [...filtered];
+    if (effectiveSortKey === "position") {
+      // Natural rear-then-front-by-index order from compute(); keep the existing
+      // sort and only flip direction if user asks descending.
+      if (!sortAsc) copy.reverse();
+      return copy;
+    }
+    copy.sort((a, b) => {
+      const va = (a[effectiveSortKey] ?? "") as string;
+      const vb = (b[effectiveSortKey] ?? "") as string;
+      const cmp = va.localeCompare(vb);
+      return sortAsc ? cmp : -cmp;
+    });
+    return copy;
+  }, [filtered, effectiveSortKey, sortAsc]);
   const legacyHiddenCount = PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => hiddenCols.has(id)).length;
   const toggleCol = useCallback((id: string) => {
     const next = new Set(hiddenCols);
@@ -2261,7 +2266,7 @@ function PatchPanelScheduleTabInline() {
   };
 
   const sortArrow = (key: PatchPanelSortKey) =>
-    sortKey === key ? (sortAsc ? " ▴" : " ▾") : "";
+    effectiveSortKey === key ? (sortAsc ? " ▴" : " ▾") : "";
 
   if (rows.length === 0) {
     return (

@@ -76,8 +76,9 @@ describe("print sheets title block (#359)", () => {
 
   it("is opaque in the sheets PDF too, so the export matches the screen", () => {
     const src = read("../printSheetPdf.ts");
-    expect(src).toContain("doc.setFillColor(255, 255, 255)");
-    expect(src).toMatch(/doc\.rect\(tbLeft, tbTop, tbWidthMm, tbHeightMm, "FD"\)/);
+    const block = slice(src, "async function drawTitleBlockMm", "export async function exportPrintSheetPdf");
+    expect(block).toContain("doc.setFillColor(255, 255, 255)");
+    expect(block).toMatch(/doc\.rect\(tbLeft, tbTop, tbWidthMm, tbHeightMm, "FD"\)/);
   });
 });
 
