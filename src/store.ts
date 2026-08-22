@@ -6331,6 +6331,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableIdLabelMode: data.cableIdLabelMode ?? "endpoint",
       stubLabelShowArrow: data.stubLabelShowArrow ?? DEFAULT_STUB_LABEL_SHOW_ARROW,
       stubLabelShowPort: data.stubLabelShowPort ?? DEFAULT_STUB_LABEL_SHOW_PORT,
+      stubLabelShowRoom: data.stubLabelShowRoom ?? DEFAULT_STUB_LABEL_SHOW_ROOM,
       stubLabelPageMode: data.stubLabelPageMode ?? DEFAULT_STUB_LABEL_PAGE_MODE,
       defaultConnectionType: data.defaultConnectionType ?? DEFAULT_CONNECTION_TYPE,
       useShortNames: data.useShortNames ?? false,
