@@ -145,10 +145,12 @@ async function drawTitleBlock(
   const cellRects = computeCellRects(layout);
   const pad = 0.05;
 
-  // Border
+  // Border. The block is drawn over the captured drawing raster, so a stroke-only
+  // rect lets cables routed under the band show through it — fill it white (#359).
   doc.setDrawColor(100, 100, 100);
+  doc.setFillColor(255, 255, 255);
   doc.setLineWidth(0.005);
-  doc.rect(tbLeft, tbTop, tbWidth, tbHeight);
+  doc.rect(tbLeft, tbTop, tbWidth, tbHeight, "FD");
 
   // Cumulative positions (normalized to 0..1)
   const normCols = normalizeSizes(layout.columns);

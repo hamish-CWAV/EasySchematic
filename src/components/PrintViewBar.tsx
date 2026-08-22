@@ -207,7 +207,8 @@ function PrintViewBar() {
         {pages.length} page{pages.length !== 1 ? "s" : ""}
       </span>
 
-      {/* Color Key */}
+      {/* Signal Key — the legend renders as "SIGNAL KEY" on every surface, so the
+          toggle says the same (#358). The colorKey* state names are unchanged. */}
       <div className="relative" ref={ckButtonRef}>
         <div className="flex items-center gap-0.5">
           <button
@@ -217,9 +218,9 @@ function PrintViewBar() {
                 : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
             }`}
             onClick={() => setColorKeyEnabled(!colorKeyEnabled)}
-            title="Toggle signal color key"
+            title="Toggle the signal key"
           >
-            Color Key
+            Signal Key
           </button>
           <button
             className={`px-1 py-0.5 rounded-r border-t border-b border-r text-xs cursor-pointer ${
@@ -228,7 +229,7 @@ function PrintViewBar() {
                 : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
             }`}
             onClick={() => setCkPopoverOpen(!ckPopoverOpen)}
-            title="Color key settings"
+            title="Signal key settings"
           >
             <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z" /></svg>
           </button>

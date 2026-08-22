@@ -650,13 +650,16 @@ function PageOverlay({
       {/* Title block */}
       {hasTitleBlock && (
         <g>
-          {/* Outer border */}
+          {/* Outer border — opaque so cables routed under the band are hidden
+              exactly as they are on the printed sheet (#359). Only this rect is
+              filled; the rest of the overlay stays transparent, and the wrapping
+              div keeps pointerEvents "none" so the band never swallows clicks. */}
           <rect
             x={tbBoxX}
             y={tbTop}
             width={tbBoxW}
             height={tbHeight}
-            fill="none"
+            fill="white"
             stroke="#000000"
             strokeWidth={stroke}
           />
