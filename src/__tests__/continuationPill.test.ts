@@ -458,16 +458,13 @@ describe("spreading a sheet's continuation pills", () => {
 // build that string here, so the printed sheet and the preview read the same and — far
 // more easily broken — measure the same width, which is what the spread runs on.
 describe("the pill's text", () => {
-  it("leads with the arrow pointing the way the connection carries on", () => {
-    expect(continuationPillText("left", "Rack Switch", 2)).toBe("→ Rack Switch Pg 2");
-    expect(continuationPillText("right", "Rack Switch", 2)).toBe("← Rack Switch Pg 2");
-    expect(continuationPillText("up", "Rack Switch", 2)).toBe("↓ Rack Switch Pg 2");
-    expect(continuationPillText("down", "Rack Switch", 2)).toBe("↑ Rack Switch Pg 2");
+  it("carries no direction arrow — the pill sits on its wire, which says it all (2026-08-23 pass)", () => {
+    expect(continuationPillText("Rack Switch", 2)).toBe("Rack Switch Pg 2");
   });
 
   it("leaves the page reference off when the far side is on no sheet at all", () => {
-    expect(continuationPillText("up", "Rack Switch", 0)).toBe("↓ Rack Switch");
-    expect(continuationPillText("up", "Rack Switch")).toBe("↓ Rack Switch");
+    expect(continuationPillText("Rack Switch", 0)).toBe("Rack Switch");
+    expect(continuationPillText("Rack Switch")).toBe("Rack Switch");
   });
 });
 
@@ -498,7 +495,7 @@ describe("editor and PDF agree on where the spread pills land", () => {
   /** Place the same crossings twice: once in the overlay's units, once in the PDF's. */
   function bothSurfaces(crossings: { xPx: number; text: string; pageNum: number }[]) {
     const widthsPt = crossings.map(
-      (c) => measurePt(continuationPillText("up", c.text, c.pageNum)) + 2 * PILL_PAD_PT,
+      (c) => measurePt(continuationPillText(c.text, c.pageNum)) + 2 * PILL_PAD_PT,
     );
     const editor = layoutContinuationPills(
       crossings.map((c, i) => ({

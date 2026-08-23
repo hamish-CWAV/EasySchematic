@@ -561,7 +561,7 @@ function drawCrossingLabels(
   const acrossSheet = { min: PAGE_MARGIN_IN, max: pageWIn - PAGE_MARGIN_IN };
   const downSheet = { min: PAGE_MARGIN_IN, max: pageHIn - PAGE_MARGIN_IN };
 
-  const texts = labels.map((l) => continuationPillText(l.anchor, l.text, l.pageNum));
+  const texts = labels.map((l) => continuationPillText(l.text, l.pageNum));
   const boxH = fontSize / 72 + pad * 2;
 
   // Grows inward from the boundary along its own wire — top/bottom-edge pills come

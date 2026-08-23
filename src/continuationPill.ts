@@ -76,14 +76,6 @@ export interface ContinuationPillPlacement extends ContinuationPill {
   limit?: PillLimit | null;
 }
 
-/** Arrow the pill leads with: it points the way the connection carries on. */
-const PILL_ARROWS: Record<PillAnchor, string> = {
-  left: "\u2192",  // → (points right, meaning "continues to the right")
-  right: "\u2190", // ← (points left, meaning "continues to the left")
-  up: "\u2193",    // ↓ (points down, meaning "continues downward")
-  down: "\u2191",  // ↑ (points up, meaning "continues upward")
-};
-
 /**
  * Pill type size and padding, in points. Shared so the editor overlay measures the
  * same box the PDF prints: the spread in deoverlapAlongAxis is driven by the pill's
@@ -102,8 +94,8 @@ export const PILL_GAP_PT = 1;
  * connection carries on to. `pageNum` of 0 means the far side is off the grid
  * altogether, and the reference is left off.
  */
-export function continuationPillText(anchor: PillAnchor, text: string, pageNum = 0): string {
-  return `${PILL_ARROWS[anchor]} ${text}${pageNum > 0 ? ` Pg ${pageNum}` : ""}`;
+export function continuationPillText(text: string, pageNum = 0): string {
+  return `${text}${pageNum > 0 ? ` Pg ${pageNum}` : ""}`;
 }
 
 /**

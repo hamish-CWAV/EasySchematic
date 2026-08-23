@@ -203,7 +203,7 @@ function CrossingLabels({ labels, pxPerPt, titleBlockBands }: { labels: Crossing
   const font = `500 ${fontSize}px Inter, system-ui, sans-serif`;
   const pillGap = PILL_GAP_PT * pxPerPt;
 
-  const texts = labels.map((l) => continuationPillText(l.anchor, l.text, l.pageNum));
+  const texts = labels.map((l) => continuationPillText(l.text, l.pageNum));
 
   // Box outer edge sits at l.x/l.y, growing INWARD (away from the page boundary)
   // along its own wire — top/bottom-edge pills come back rotated onto the vertical
