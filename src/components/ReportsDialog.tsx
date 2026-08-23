@@ -344,6 +344,15 @@ const PATCH_PANEL_LEGACY_COLUMN_LABELS: Record<PatchPanelLegacyColumnId, string>
   remoteDevice: "Remote Device",
   remotePort: "Remote Port",
   remoteRoom: "Remote Room",
+  cableId: "Cable ID",
+  cableType: "Cable Type",
+  cableLength: "Length",
+  computedLength: "Est. Length",
+  multicableLabel: "Snake",
+};
+
+const PATCH_PANEL_LEGACY_COLUMN_TITLES: Partial<Record<PatchPanelLegacyColumnId, string>> = {
+  computedLength: "Estimated length from room-to-room distance + slack",
 };
 
 /** Total Patch Panel Schedule columns with every single-face column showing: 5 panel +
@@ -2371,15 +2380,10 @@ function PatchPanelScheduleTabInline() {
             {/* Single-face (non-passthrough) columns — hidden by default when no row in
                 view is a legacy paired-port row; see hiddenCols above (#311). */}
             {PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => !hiddenCols.has(id)).map((id) => (
-              <th key={id} className={thClass} onClick={() => toggleSort(id)}>
+              <th key={id} className={thClass} onClick={() => toggleSort(id)} title={PATCH_PANEL_LEGACY_COLUMN_TITLES[id]}>
                 {PATCH_PANEL_LEGACY_COLUMN_LABELS[id]}{sortArrow(id)}
               </th>
             ))}
-            <th className={thClass} onClick={() => toggleSort("cableId")}>Cable ID{sortArrow("cableId")}</th>
-            <th className={thClass} onClick={() => toggleSort("cableType")}>Cable Type{sortArrow("cableType")}</th>
-            <th className={thClass} onClick={() => toggleSort("cableLength")}>Length{sortArrow("cableLength")}</th>
-            <th className={thClass} onClick={() => toggleSort("computedLength")} title="Estimated length from room-to-room distance + slack">Est. Length{sortArrow("computedLength")}</th>
-            <th className={thClass} onClick={() => toggleSort("multicableLabel")}>Snake{sortArrow("multicableLabel")}</th>
             {/* Passthrough-only columns */}
             <th className={thClass} onClick={() => toggleSort("rearConnector")}>Rear Connector{sortArrow("rearConnector")}</th>
             <th className={thClass} onClick={() => toggleSort("rearGender")}>Rear M/F{sortArrow("rearGender")}</th>
@@ -2429,13 +2433,8 @@ function PatchPanelScheduleTabInline() {
                     <td className={tdClass}>{r.signalType || "—"}</td>
                     {/* Single-face columns */}
                     {PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => !hiddenCols.has(id)).map((id) => (
-                      <td key={id} className={tdClass}>{r[id]}</td>
+                      <td key={id} className={id === "computedLength" ? `${tdClass} text-[var(--color-text-muted)]` : tdClass}>{r[id] || "—"}</td>
                     ))}
-                    <td className={tdClass}>{r.cableId || "—"}</td>
-                    <td className={tdClass}>{r.cableType || "—"}</td>
-                    <td className={tdClass}>{r.cableLength || "—"}</td>
-                    <td className={`${tdClass} text-[var(--color-text-muted)]`}>{r.computedLength || "—"}</td>
-                    <td className={tdClass}>{r.multicableLabel || "—"}</td>
                     {/* Passthrough columns */}
                     <td className={tdClass}>{r.rearConnector || "—"}</td>
                     <td className={tdClass}>{r.rearGender || "—"}</td>

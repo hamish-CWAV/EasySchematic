@@ -1,12 +1,14 @@
 /**
  * The Patch Panel Schedule's single-face columns (Connector, M/F, Remote Device, Remote
- * Port, Remote Room) only populate on the legacy paired input/output back-compat path; a
- * passthrough port leaves every one of them EMPTY and reports through the rear- and
- * front-face columns instead. A report of only passthrough panels therefore showed columns
- * that can never fill, which reads as missing data (#311).
+ * Port, Remote Room — and the bare cable columns Cable ID, Cable Type, Length, Est.
+ * Length, Snake, added after the 2026-08-22-2 test pass caught them still showing) only
+ * populate on the legacy paired input/output back-compat path; a passthrough port leaves
+ * every one of them empty and reports through the rear- and front-face columns instead. A
+ * report of only passthrough panels therefore showed columns that can never fill, which
+ * reads as missing data (#311).
  *
- * `resolvePatchPanelHiddenColumns` is the whole rule: hide those five by default unless a
- * legacy row is in view, and step aside the moment the user states a preference.
+ * `resolvePatchPanelHiddenColumns` is the whole rule: hide those columns by default unless
+ * a legacy row is in view, and step aside the moment the user states a preference.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -70,7 +72,8 @@ describe("patch panel schedule — single-face column visibility (#311)", () => 
     expect(rows).toHaveLength(8);
     expect(rows.every((r) => r.face === "Passthrough")).toBe(true);
     for (const id of PATCH_PANEL_LEGACY_COLUMN_IDS) {
-      expect(rows.every((r) => r[id] === "—")).toBe(true);
+      // Remote-end fields hold the em-dash sentinel; the bare cable fields hold "".
+      expect(rows.every((r) => r[id] === "—" || r[id] === "")).toBe(true);
     }
   });
 
@@ -88,7 +91,7 @@ describe("patch panel schedule — single-face column visibility (#311)", () => 
     expect(rows.every((r) => r.gender !== "")).toBe(true);
   });
 
-  it("hides all five single-face columns for a passthrough-only report", () => {
+  it("hides every single-face column for a passthrough-only report", () => {
     const rows = computePatchPanelSchedule([passthroughPanelNode("pp-1", "PP-01", 8)], []);
     expect([...resolvePatchPanelHiddenColumns(rows, undefined)].sort()).toEqual([...ALL_LEGACY].sort());
   });

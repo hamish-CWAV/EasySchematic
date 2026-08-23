@@ -74,10 +74,15 @@ export interface PatchPanelScheduleRow {
 const EMPTY = "—";
 
 /** Column ids for the single-face fields (Connector, M/F, Remote Device, Remote Port,
- *  Remote Room). These are always EMPTY on passthrough rows (see below) and only populate
- *  via the legacy paired input/output back-compat path, so a report made entirely of
- *  passthrough panels can never fill them (#311). */
-export const PATCH_PANEL_LEGACY_COLUMN_IDS = ["connector", "gender", "remoteDevice", "remotePort", "remoteRoom"] as const;
+ *  Remote Room, and the bare cable columns Cable ID / Cable Type / Length / Est. Length /
+ *  Snake). These are always empty on passthrough rows (see below) and only populate via
+ *  the legacy paired input/output back-compat path — passthrough rows report through the
+ *  rear-/front-face columns instead — so a report made entirely of passthrough panels can
+ *  never fill them (#311). */
+export const PATCH_PANEL_LEGACY_COLUMN_IDS = [
+  "connector", "gender", "remoteDevice", "remotePort", "remoteRoom",
+  "cableId", "cableType", "cableLength", "computedLength", "multicableLabel",
+] as const;
 
 export type PatchPanelLegacyColumnId = (typeof PATCH_PANEL_LEGACY_COLUMN_IDS)[number];
 
