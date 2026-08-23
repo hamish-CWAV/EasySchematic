@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from "react";
 import { useSchematicStore } from "../store";
 import type { StubLabelData, StubLabelMode, StubLabelPageMode } from "../types";
+import { selectedConnectionEdges, stubbedLinkIdsOf } from "../stubSelection";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 
 /** Right-click menu for stub-label nodes — what the tag prints, per-stub overrides for
@@ -89,6 +90,14 @@ export default function StubLabelContextMenu() {
     useSchematicStore.setState({ stubLabelContextMenu: null });
   }, [menu]);
 
+  const collapseSelection = useCallback(() => {
+    const store = useSchematicStore.getState();
+    store.collapseStubsForEdges(
+      selectedConnectionEdges(store.nodes, store.edges).map((e) => e.id),
+    );
+    useSchematicStore.setState({ stubLabelContextMenu: null });
+  }, []);
+
   if (!menu) return null;
 
   const store = useSchematicStore.getState();
@@ -102,6 +111,16 @@ export default function StubLabelContextMenu() {
   // The four content toggles say nothing about a cable-ID-only tag, so they come off the
   // menu in that mode rather than sitting there doing nothing when clicked.
   const cableIdOnly = data?.labelMode === "cableId";
+
+  // Bulk unstub (#349): the tag is the only part of a stub with real hit area, so this is
+  // the menu a user reaches for after selecting a column of them. Offered on the same
+  // terms as the connection menu's version — ≥2 stubbed connections selected, and the
+  // right-clicked tag among them.
+  const selectedEdges = selectedConnectionEdges(store.nodes, store.edges);
+  const selectedLinkIds = stubbedLinkIdsOf(selectedEdges);
+  const canBulkCollapse =
+    selectedLinkIds.length >= 2 && !!data?.linkedConnectionId
+    && selectedLinkIds.includes(data.linkedConnectionId);
 
   return (
     <div
@@ -130,6 +149,12 @@ export default function StubLabelContextMenu() {
       )}
       <div className="border-t border-gray-200 my-1" />
       <MenuItem label="Show Full Connection" onClick={collapseStubs} />
+      {canBulkCollapse && (
+        <MenuItem
+          label={`Show ${selectedLinkIds.length} Selected Connections in Full`}
+          onClick={collapseSelection}
+        />
+      )}
     </div>
   );
 }

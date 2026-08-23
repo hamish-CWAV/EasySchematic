@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 
 import { useSchematicStore } from "../store";
+import { selectedConnectionEdges, stubbedLinkIdsOf } from "../stubSelection";
 import { LINE_STYLE_LABELS, LINE_STYLE_DASHARRAY, type LineStyle } from "../types";
 
 const LINE_STYLES: LineStyle[] = ["solid", "dashed", "dotted", "dash-dot"];
@@ -12,6 +13,8 @@ interface Props {
 export default function BulkConnectionEditPanel({ onClose }: Props) {
   // Serialize to a stable string — avoids the "new array ref every tick" infinite-loop
   // trap. Include relevant data fields so the panel reflects applied patches.
+  // Selected stub tags are part of the key: they can be the only thing selected (#349),
+  // and the panel has to reflect the connections they stand for.
   const selectionKey = useSchematicStore((s) =>
     s.edges
       .filter((e) => e.selected)
@@ -19,13 +22,15 @@ export default function BulkConnectionEditPanel({ onClose }: Props) {
         (e) =>
           `${e.id}:${e.data?.lineStyle ?? ""}:${e.data?.directAttach ? "1" : "0"}:${e.data?.hideCableId ? "1" : "0"}:${String(e.data?.sourceLabel ?? "")}:${String(e.data?.label ?? "")}:${String(e.data?.targetLabel ?? "")}:${String(e.data?.color ?? "")}:${e.data?.bundleId ?? ""}:${e.data?.signalType ?? ""}:${e.data?.linkedConnectionId ?? ""}`,
       )
-      .join("|"),
+      .join("|")
+      + "#"
+      + s.nodes.filter((n) => n.selected && n.type === "stub-label").map((n) => n.id).join(","),
   );
   const bundles = useSchematicStore((s) => s.bundles);
 
   // selectionKey is the invalidation signal for this getState() snapshot
   const selectedEdges = useMemo(
-    () => useSchematicStore.getState().edges.filter((e) => e.selected),
+    () => selectedConnectionEdges(useSchematicStore.getState().nodes, useSchematicStore.getState().edges),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectionKey],
   );
@@ -55,9 +60,7 @@ export default function BulkConnectionEditPanel({ onClose }: Props) {
   // --- Stub state (#349) ---
   // A stubbed connection is two selected legs, so it is counted by its linked id, not by edge.
   const unstubbedEdges = selectedEdges.filter((e) => !e.data?.linkedConnectionId);
-  const stubbedLinkIds = [
-    ...new Set(selectedEdges.map((e) => e.data?.linkedConnectionId).filter(Boolean) as string[]),
-  ];
+  const stubbedLinkIds = stubbedLinkIdsOf(selectedEdges);
   const doStub = () => useSchematicStore.getState().convertEdgesToStubs(unstubbedEdges.map((e) => e.id));
   const doCollapse = () =>
     useSchematicStore.getState().collapseStubsForEdges(selectedEdges.map((e) => e.id));

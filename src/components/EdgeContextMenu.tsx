@@ -4,6 +4,7 @@ import { useSchematicStore, GRID_SIZE } from "../store";
 import { resolvePort } from "../packList";
 import { LINE_STYLE_LABELS, LINE_STYLE_DASHARRAY, type DeviceData, type LineStyle } from "../types";
 import { isAdapterHidden, toggleAdapterVisibility as nextAdapterVisibility } from "../adapterVisibility";
+import { selectedConnectionEdges, stubbedLinkIdsOf } from "../stubSelection";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 import MenuSubmenu from "./MenuSubmenu";
 
@@ -333,13 +334,17 @@ export default function EdgeContextMenu() {
 
   const stubSelection = useCallback(() => {
     const store = useSchematicStore.getState();
-    store.convertEdgesToStubs(store.edges.filter((e) => e.selected).map((e) => e.id));
+    store.convertEdgesToStubs(
+      selectedConnectionEdges(store.nodes, store.edges).map((e) => e.id),
+    );
     useSchematicStore.setState({ edgeContextMenu: null });
   }, []);
 
   const collapseSelection = useCallback(() => {
     const store = useSchematicStore.getState();
-    store.collapseStubsForEdges(store.edges.filter((e) => e.selected).map((e) => e.id));
+    store.collapseStubsForEdges(
+      selectedConnectionEdges(store.nodes, store.edges).map((e) => e.id),
+    );
     useSchematicStore.setState({ edgeContextMenu: null });
   }, []);
 
@@ -496,14 +501,14 @@ export default function EdgeContextMenu() {
 
   // Bulk stub/unstub (#349): same "≥2 selected and the right-clicked one is among them"
   // gate as bundling, but counted in logical connections — a stubbed connection is two
-  // selected legs and must not read as two connections.
-  const unstubbedSelected = selectedEdgeObjs.filter((e) => !e.data?.linkedConnectionId);
-  const stubbedSelectedLinkIds = [
-    ...new Set(selectedEdgeObjs.map((e) => e.data?.linkedConnectionId).filter(Boolean)),
-  ];
+  // selected legs and must not read as two connections. Unlike bundling it reads the
+  // selection through the stub tags too, so a stubs-only selection still offers unstub.
+  const stubSelectionEdges = selectedConnectionEdges(store.nodes, store.edges);
+  const unstubbedSelected = stubSelectionEdges.filter((e) => !e.data?.linkedConnectionId);
+  const stubbedSelectedLinkIds = stubbedLinkIdsOf(stubSelectionEdges);
   const selectedConnectionCount = unstubbedSelected.length + stubbedSelectedLinkIds.length;
   const canBulkStub =
-    selectedConnectionCount >= 2 && selectedEdgeObjs.some((e) => e.id === menu.edgeId);
+    selectedConnectionCount >= 2 && stubSelectionEdges.some((e) => e.id === menu.edgeId);
 
   // Check if this is a trunk (multicable) edge
   const srcNode = store.nodes.find((n) => n.id === edge?.source);

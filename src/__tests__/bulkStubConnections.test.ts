@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import fixture from "../testSchematic/schematic.json";
+import { selectedConnectionEdges, stubbedLinkIdsOf } from "../stubSelection";
 import type { ConnectionEdge, SchematicFile, SchematicNode } from "../types";
 
 class MemStorage {
@@ -302,3 +303,117 @@ describe("bulk show-in-full of a selection (#349)", () => {
     ).toBe(routed);
   });
 });
+
+/**
+ * A stub's legs are hairline segments; its tag is the only part big enough to marquee or
+ * click, and the selection bar's "keep only stubs" filter deselects every connection
+ * outright. So the bulk surfaces resolve the selection through the tags — otherwise a
+ * screen full of selected stubs reports zero connections and offers no unstub at all.
+ *
+ * These exercise the resolver the menus and the edit panel share, composed with the same
+ * collapseStubsForEdges the single-connection path uses.
+ */
+describe("stub tags stand in for their connection in a selection (#349)", () => {
+  /** Select nothing but stub tags — what the "keep only stubs" filter leaves behind. */
+  function selectTagsOnly(predicate: (n: SchematicNode) => boolean = () => true) {
+    useSchematicStore.setState({
+      nodes: state().nodes.map((n) => ({
+        ...n,
+        selected: n.type === "stub-label" && predicate(n),
+      })),
+      edges: state().edges.map((e) => ({ ...e, selected: false })),
+    });
+  }
+
+  const resolved = () => selectedConnectionEdges(state().nodes, state().edges);
+
+  beforeEach(() => {
+    state().convertEdgesToStubs(SELECTED);
+  });
+
+  it("resolves a tags-only selection to both legs of every tagged connection", () => {
+    selectTagsOnly();
+    expect(selectedIds()).toHaveLength(0); // nothing is selected as a connection
+
+    expect(resolved()).toHaveLength(SELECTED.length * 2);
+    expect(stubbedLinkIdsOf(resolved())).toHaveLength(SELECTED.length);
+  });
+
+  it("counts a connection whose source-side tag alone is selected", () => {
+    // A marquee down one column catches one tag per connection, not the pair.
+    selectTagsOnly((n) => (n.data as { side?: string }).side === "source");
+
+    expect(stubbedLinkIdsOf(resolved())).toHaveLength(SELECTED.length);
+    // Both legs still come along — the pair is one logical cable.
+    expect(resolved()).toHaveLength(SELECTED.length * 2);
+  });
+
+  it("unstubs every tag-selected connection in one undo step", () => {
+    selectTagsOnly();
+    const stubbed = normalized(); // after selecting: normalized() keeps node `selected`
+    const undoBefore = state().undoSize;
+
+    state().collapseStubsForEdges(resolved().map((e) => e.id));
+
+    expect(linkIds()).toHaveLength(0);
+    expect(stubLabels()).toHaveLength(0);
+    for (const id of SELECTED) expect(state().edges.find((e) => e.id === id)).toBeTruthy();
+    expect(state().undoSize).toBe(undoBefore + 1);
+
+    state().undo();
+    expect(normalized()).toBe(stubbed);
+  });
+
+  it("leaves routed connections alone in a mixed tag + connection selection", () => {
+    // Tags of two stubbed connections, plus one routed connection selected outright.
+    const oneSideStubs = new Set(
+      state()
+        .nodes.filter((n) => n.type === "stub-label")
+        .filter((n) => ["edge-1", "edge-3"].some((id) => n.id.startsWith(`stub-${id}-`)))
+        .map((n) => n.id),
+    );
+    useSchematicStore.setState({
+      nodes: state().nodes.map((n) => ({ ...n, selected: oneSideStubs.has(n.id) })),
+      edges: state().edges.map((e) => ({ ...e, selected: e.id === "edge-2" })),
+    });
+    const routed = JSON.stringify({ ...state().edges.find((e) => e.id === "edge-2")!, selected: undefined });
+    const untouched = normalizedStubsOf("edge-5");
+
+    state().collapseStubsForEdges(resolved().map((e) => e.id));
+
+    // The two tagged connections came back; the routed one and the untagged stub didn't move.
+    expect(state().edges.find((e) => e.id === "edge-1")).toBeTruthy();
+    expect(state().edges.find((e) => e.id === "edge-3")).toBeTruthy();
+    expect(
+      JSON.stringify({ ...state().edges.find((e) => e.id === "edge-2")!, selected: undefined }),
+    ).toBe(routed);
+    expect(normalizedStubsOf("edge-5")).toBe(untouched);
+  });
+
+  it("stubs only the routed connections of a mixed tag + connection selection", () => {
+    useSchematicStore.setState({
+      nodes: state().nodes.map((n) => ({ ...n, selected: n.type === "stub-label" })),
+      edges: state().edges.map((e) => ({ ...e, selected: e.id === "edge-2" })),
+    });
+    const undoBefore = state().undoSize;
+
+    state().convertEdgesToStubs(resolved().map((e) => e.id));
+
+    // The three already-stubbed connections stayed stubbed; only edge-2 was converted.
+    expect(linkIds()).toHaveLength(SELECTED.length + 1);
+    expect(state().edges.find((e) => e.id === "edge-2")).toBeUndefined();
+    expect(state().undoSize).toBe(undoBefore + 1);
+  });
+});
+
+/** The legs and tags of one originally-routed connection, for "did this move?" comparisons. */
+function normalizedStubsOf(originalEdgeId: string): string {
+  return JSON.stringify({
+    edges: state()
+      .edges.filter((e) => e.id.startsWith(`${originalEdgeId}-`))
+      .map(({ selected: _s, ...rest }) => rest),
+    nodes: state()
+      .nodes.filter((n) => n.id.startsWith(`stub-${originalEdgeId}-`))
+      .map(({ selected: _s, ...rest }) => rest),
+  });
+}
