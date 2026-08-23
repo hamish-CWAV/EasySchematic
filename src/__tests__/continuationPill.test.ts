@@ -140,16 +140,19 @@ describe("clamping a continuation pill off the title block", () => {
 describe("placing a continuation pill", () => {
   const noBands: TitleBlockBand[] = [];
 
-  it("grows the box inward from the boundary for each anchor", () => {
+  it("grows the box inward from the boundary, along the wire, for each anchor", () => {
     const size = { width: 1.0, height: 0.2 };
+    // Side exits: the wire is horizontal, the pill lies flat along it.
     expect(layoutContinuationPill({ anchor: "left", x: 4, y: 3, ...size }, noBands))
-      .toMatchObject({ x: 3, y: 2.9 });
+      .toEqual({ x: 3, y: 2.9, width: 1.0, height: 0.2 });
     expect(layoutContinuationPill({ anchor: "right", x: 4, y: 3, ...size }, noBands))
-      .toMatchObject({ x: 4, y: 2.9 });
+      .toEqual({ x: 4, y: 2.9, width: 1.0, height: 0.2 });
+    // Top and bottom exits: the wire is vertical, the pill is rotated onto it — the
+    // box is a pill-thickness wide, a text-length tall, and grows INTO the page.
     expect(layoutContinuationPill({ anchor: "up", x: 4, y: 3, ...size }, noBands))
-      .toMatchObject({ x: 3.5, y: 2.8 });
+      .toEqual({ x: 3.9, y: 2, width: 0.2, height: 1.0 });
     expect(layoutContinuationPill({ anchor: "down", x: 4, y: 3, ...size }, noBands))
-      .toMatchObject({ x: 3.5, y: 3 });
+      .toEqual({ x: 3.9, y: 3, width: 0.2, height: 1.0 });
   });
 
   it("keeps a bottom-exit pill off the block it would otherwise white out", () => {
@@ -162,19 +165,24 @@ describe("placing a continuation pill", () => {
     const anchorX = band.x + band.width / 2;
     const boxH = 12;
 
+    // Rotated, the pill's lower end still reaches down into the title-block strip.
     const unclamped = layoutContinuationPill({ anchor: "up", x: anchorX, y: anchorY, width: 90, height: boxH }, []);
-    expect(unclamped.y).toBeGreaterThan(band.y);
+    expect(unclamped.y + unclamped.height).toBeCloseTo(anchorY, 6);
+    expect(unclamped.y + unclamped.height).toBeGreaterThan(band.y);
 
     const box = layoutContinuationPill({ anchor: "up", x: anchorX, y: anchorY, width: 90, height: boxH }, [band]);
-    expect(box.y + box.height).toBeCloseTo(band.y, 6);
+    expect(box.y + box.height).toBeCloseTo(band.y, 6); // lower end rests on the band's top
+    expect(box.x).toBeCloseTo(anchorX - boxH / 2, 6); // and it stays on its own wire
     expect(box.y).toBeGreaterThan(page.contentY); // still inside the drawing border
   });
 });
 
 // Several connections crossing the same page edge close together used to drop their
-// pills on top of each other, and the last one drawn hid the rest (#357). The pills
-// now slide ALONG the edge — sorted by crossing point, spread just far enough to
-// clear each other, and kept inside the sheet's drawing border.
+// pills on top of each other, and the last one drawn hid the rest (#357). Pills that
+// still collide — which, with top/bottom pills rotated onto their wires, now means
+// crossings within a pill THICKNESS of each other — slide ALONG the edge: sorted by
+// crossing point, spread just far enough to clear each other, and kept inside the
+// sheet's drawing border.
 describe("spreading pills along a page edge", () => {
   it("leaves pills that already clear each other exactly where they are", () => {
     const spans = [
@@ -371,14 +379,28 @@ describe("spreading pills along a page edge", () => {
 describe("spreading a sheet's continuation pills", () => {
   const noBands: TitleBlockBand[] = [];
 
-  it("slides bottom-exit pills apart across the sheet, not up the page", () => {
+  it("still slides near-coincident bottom-exit pills apart, on the narrow rotated footprint", () => {
+    // Three vertical wires 5px apart — closer than the 12px pill thickness, so even
+    // the rotated pills collide and the shared de-overlap has to open the cluster.
     const pills = [100, 105, 110].map((x) => ({
       anchor: "up" as const, x, y: 500, width: 60, height: 12, sheet: 1,
     }));
     const boxes = layoutContinuationPills(pills, noBands);
-    expect(boxes.map((b) => b.x)).toEqual([15, 75, 135]);
+    expect(boxes.map((b) => b.x)).toEqual([87, 99, 111]);
     // All three keep the same y: the fix is a shift along the edge, not a stack.
-    expect(boxes.map((b) => b.y)).toEqual([488, 488, 488]);
+    expect(boxes.map((b) => b.y)).toEqual([440, 440, 440]);
+    expect(boxes.map((b) => b.width)).toEqual([12, 12, 12]);
+  });
+
+  it("leaves bottom-exit pills on their own wires once the wires clear a pill thickness", () => {
+    // The same three wires 15px apart. Flat pills 60 wide would have slid apart;
+    // rotated ones occupy only their 12px thickness on the edge and stay put.
+    const pills = [100, 115, 130].map((x) => ({
+      anchor: "up" as const, x, y: 500, width: 60, height: 12, sheet: 1,
+    }));
+    const boxes = layoutContinuationPills(pills, noBands);
+    expect(boxes.map((b) => b.x)).toEqual([94, 109, 124]);
+    expect(boxes.map((b) => b.y)).toEqual([440, 440, 440]);
   });
 
   it("slides side-exit pills apart down the sheet", () => {
@@ -399,7 +421,7 @@ describe("spreading a sheet's continuation pills", () => {
       ],
       noBands,
     );
-    expect(boxes.map((b) => b.x)).toEqual([70, 70, 70]);
+    expect(boxes.map((b) => b.x)).toEqual([94, 94, 94]);
   });
 
   it("holds the spread inside the sheet's drawing border", () => {
@@ -408,7 +430,7 @@ describe("spreading a sheet's continuation pills", () => {
       anchor: "up" as const, x, y: 500, width: 60, height: 12, sheet: 1, limit,
     }));
     const boxes = layoutContinuationPills(pills, noBands);
-    expect(boxes.map((b) => b.x)).toEqual([120, 180, 240]);
+    expect(boxes.map((b) => b.x)).toEqual([264, 276, 288]);
     expect(boxes[2].x + boxes[2].width).toBeCloseTo(300, 6);
   });
 
@@ -421,7 +443,7 @@ describe("spreading a sheet's continuation pills", () => {
       ],
       [band],
     );
-    expect(boxes.map((b) => b.x)).toEqual([42.5, 102.5]);
+    expect(boxes.map((b) => b.x)).toEqual([90.5, 102.5]);
     expect(boxes.map((b) => b.y + b.height)).toEqual([band.y, band.y]);
   });
 
@@ -451,10 +473,11 @@ describe("the pill's text", () => {
 
 // The two surfaces draw the same pills in different units — canvas pixels in the
 // editor overlay, sheet inches in the PDF export. #337 put the title-block clamp in
-// one place to stop them drifting; the spread has to hold the same parity, and it is
-// far more sensitive: how far a pill moves is set by the WIDTH of its neighbours, so
-// two surfaces sizing their pills differently no longer merely draw different boxes,
-// they draw them in different places.
+// one place to stop them drifting; the rotated placement has to hold the same parity:
+// the measured text length sets how far a rotated pill reaches up its wire, the
+// thickness sets its footprint on the edge and so how a crowded cluster opens — two
+// surfaces sizing their pills differently no longer merely draw different boxes, they
+// draw them in different places.
 describe("editor and PDF agree on where the spread pills land", () => {
   const page = pages[0];
   const marginPx = page.contentX - page.x;
@@ -505,11 +528,11 @@ describe("editor and PDF agree on where the spread pills land", () => {
     return { editor, pdf };
   }
 
-  /** Four connections leaving the bottom of the sheet within a pill's width of each other. */
+  /** Four bottom exits, two of them within a pill THICKNESS of each other. */
   const crowd = [
     { xPx: 470, text: "Lobby Display (Conference Room)", pageNum: 2 },
     { xPx: 500, text: "Rack Switch (MDF)", pageNum: 2 },
-    { xPx: 515, text: "Ceiling Speaker 3 (Atrium)", pageNum: 2 },
+    { xPx: 506, text: "Ceiling Speaker 3 (Atrium)", pageNum: 2 },
     { xPx: 560, text: "Wall Plate (Huddle 2)", pageNum: 2 },
   ];
 
@@ -519,6 +542,7 @@ describe("editor and PDF agree on where the spread pills land", () => {
       expect(toPageX(box.x)).toBeCloseTo(pdf[i].x, 6);
       expect(toPageY(box.y)).toBeCloseTo(pdf[i].y, 6);
       expect(box.width * SCALE / DPI).toBeCloseTo(pdf[i].width, 6);
+      expect(box.height * SCALE / DPI).toBeCloseTo(pdf[i].height, 6);
     });
   });
 
@@ -533,12 +557,14 @@ describe("editor and PDF agree on where the spread pills land", () => {
     expect(last.x + last.width).toBeLessThanOrEqual(page.contentX + page.contentW + 1e-9);
   });
 
-  // Nine crossings on one edge overrun the border, so the squeeze takes over. Both
-  // surfaces have to take it at the same moment, or the preview shows a spread the
-  // print does not have.
-  it("agrees on the squeeze when the edge cannot hold the run", () => {
+  // Nine near-coincident crossings force the whole cluster to open on the rotated
+  // pills' thickness. Both surfaces have to open it identically, or the preview
+  // shows a spread the print does not have. (With the narrow rotated footprint an
+  // edge that genuinely cannot hold its run takes dozens of crossings, but the
+  // squeeze still guards it — deoverlapAlongAxis pins that path directly above.)
+  it("agrees on how a dense cluster of vertical wires opens", () => {
     const dense = Array.from({ length: 9 }, (_, i) => ({
-      xPx: 300 + i * 25,
+      xPx: 300 + i * 3,
       text: `Ceiling Speaker ${i + 1} (Atrium)`,
       pageNum: 2,
     }));

@@ -189,6 +189,11 @@ describe("PDF off-page continuation labels — clear of the title block (#337)",
       { anchor: label.anchor, x: label.x, y: label.y, width: PILL_W, height: PILL_H },
       [BAND],
     );
+    // Rotated onto its vertical wire: a pill-thickness wide, a text-length tall,
+    // its lower end resting on the top of the title block.
+    expect(box.width).toBeCloseTo(PILL_H, 6);
+    expect(box.height).toBeCloseTo(PILL_W, 6);
+    expect(box.x).toBeCloseTo(label.x - PILL_H / 2, 6); // still centred on the wire
     expect(box.y + box.height).toBeCloseTo(BAND.y, 6);
     expect(box.y).toBeGreaterThan(PAGE_MARGIN_IN);
   });
@@ -204,8 +209,10 @@ describe("PDF off-page continuation labels — clear of the title block (#337)",
       { anchor: label.anchor, x: label.x, y: label.y, width: PILL_W, height: PILL_H },
       [BAND],
     );
-    expect(box.y).toBeCloseTo(label.y - PILL_H, 6);
-    expect(box.y).toBeGreaterThan(BAND.y);
+    // The rotated pill runs a PILL_W up the wire from its unmoved anchor: it shares
+    // no width with the right-aligned block, so the clamp leaves it alone.
+    expect(box.y).toBeCloseTo(label.y - PILL_W, 6);
+    expect(box.x + box.width).toBeLessThan(BAND.x);
   });
 });
 

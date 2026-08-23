@@ -19,6 +19,7 @@ import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "./co
 import {
   continuationPillText,
   layoutContinuationPills,
+  pillIsRotated,
   titleBlockBandInches,
   PILL_FONT_SIZE_PT,
   PILL_GAP_PT,
@@ -544,8 +545,8 @@ function drawCrossingLabels(
   doc.saveGraphicsState();
 
   // Type size, padding, gap and the pill text itself are shared with the editor
-  // overlay: the spread below is driven by pill width, so the preview has to measure
-  // the same box the sheet prints or it stops showing what prints (#357).
+  // overlay: placement is driven by the pill's measured box, so the preview has to
+  // measure the same box the sheet prints or it stops showing what prints (#357).
   const fontSize = PILL_FONT_SIZE_PT; // points
   const pad = PILL_PAD_PT / 72; // inches — uniform on all sides
   const radius = 0.02;
@@ -563,17 +564,21 @@ function drawCrossingLabels(
   const texts = labels.map((l) => continuationPillText(l.anchor, l.text, l.pageNum));
   const boxH = fontSize / 72 + pad * 2;
 
-  // Grows inward from the boundary, slides along the edge to clear the pills of any
-  // connections crossing alongside it (#357), then rides up off the title block if it
-  // landed on one — the pill is opaque and would white the block out (#337).
+  // Grows inward from the boundary along its own wire — top/bottom-edge pills come
+  // back rotated 90° onto the vertical wire they belong to, as an axis-aligned
+  // narrow-and-tall box. Near-coincident crossings still slide apart along the edge
+  // (#357), and a pill that landed on the title block rides up off it — the pill is
+  // opaque and would white the block out (#337).
   const boxes = layoutContinuationPills(
     labels.map((l, i) => ({
       anchor: l.anchor,
       x: l.x,
       y: l.y,
+      // getTextWidth is pure font metrics in the document unit — rotation happens at
+      // draw time and does not change how long the text run is.
       width: doc.getTextWidth(texts[i]) + pad * 2,
       height: boxH,
-      limit: l.anchor === "up" || l.anchor === "down" ? acrossSheet : downSheet,
+      limit: pillIsRotated(l.anchor) ? acrossSheet : downSheet,
     })),
     bands,
     pillGap,
@@ -581,20 +586,33 @@ function drawCrossingLabels(
 
   labels.forEach((l, i) => {
     const displayText = texts[i];
-    const { x: boxX, y: boxY, width: boxW } = boxes[i];
+    const box = boxes[i];
 
-    // White pill background with signal-colored border
+    // White pill background with signal-colored border. The 90° rotation keeps the
+    // box axis-aligned, so roundedRect draws both orientations as-is.
     const [cr, cg, cb] = hexToRgb(l.color);
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(cr, cg, cb);
     doc.setLineWidth(0.004);
-    doc.roundedRect(boxX, boxY, boxW, boxH, radius, radius, "FD");
+    doc.roundedRect(box.x, box.y, box.width, box.height, radius, radius, "FD");
 
     // Arrow + text as single string
     doc.setFont("Inter", "normal");
     doc.setFontSize(fontSize);
     doc.setTextColor(55, 65, 81);
-    doc.text(displayText, boxX + pad, boxY + boxH / 2 + (fontSize / 72) * 0.35);
+    if (pillIsRotated(l.anchor)) {
+      // Along the vertical wire, reading bottom-to-top (the drawing convention).
+      // jsPDF's angle is counterclockwise; the baseline offset that centres flat
+      // text in its box turns into a horizontal offset once the text is upright.
+      doc.text(
+        displayText,
+        box.x + box.width / 2 + (fontSize / 72) * 0.35,
+        box.y + box.height - pad,
+        { angle: 90 },
+      );
+    } else {
+      doc.text(displayText, box.x + pad, box.y + box.height / 2 + (fontSize / 72) * 0.35);
+    }
   });
   doc.restoreGraphicsState();
 }

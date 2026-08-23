@@ -12,6 +12,7 @@ import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "../c
 import {
   continuationPillText,
   layoutContinuationPills,
+  pillIsRotated,
   titleBlockBandPx,
   PILL_FONT_SIZE_PT,
   PILL_GAP_PT,
@@ -193,9 +194,9 @@ function measureTextWidth(text: string, font: string): number {
 
 function CrossingLabels({ labels, pxPerPt, titleBlockBands }: { labels: CrossingLabel[]; pxPerPt: number; titleBlockBands: TitleBlockBand[] }) {
   if (labels.length === 0) return null;
-  // Type size, padding and pill text all come from the shared module: the spread is
-  // driven by pill width, so a preview that measured its pills differently would push
-  // them to different places than the PDF does (#357).
+  // Type size, padding and pill text all come from the shared module: placement is
+  // driven by the pill's measured box, so a preview that measured its pills
+  // differently would push them to different places than the PDF does (#357).
   const fontSize = PILL_FONT_SIZE_PT * pxPerPt;
   const pad = PILL_PAD_PT * pxPerPt;
   const radius = 1.5 * pxPerPt;
@@ -204,9 +205,11 @@ function CrossingLabels({ labels, pxPerPt, titleBlockBands }: { labels: Crossing
 
   const texts = labels.map((l) => continuationPillText(l.anchor, l.text, l.pageNum));
 
-  // Box outer edge sits at l.x/l.y, growing INWARD (away from the page boundary).
-  // Pills crowding the same page edge then slide along it until they clear each
-  // other, and any that landed on the title block ride up off it.
+  // Box outer edge sits at l.x/l.y, growing INWARD (away from the page boundary)
+  // along its own wire — top/bottom-edge pills come back rotated onto the vertical
+  // wire they belong to. Pills crossing within a thickness of each other still slide
+  // along the edge until they clear, and any that landed on the title block ride up
+  // off it.
   const boxes = layoutContinuationPills(
     labels.map((l, i) => ({
       anchor: l.anchor,
@@ -229,8 +232,13 @@ function CrossingLabels({ labels, pxPerPt, titleBlockBands }: { labels: Crossing
       {labels.map((l, i) => {
         const displayText = texts[i];
         const box = boxes[i];
-        const textX = box.x + pad;
-        const textY = box.y + box.height / 2;
+        // A top- or bottom-edge pill lies along its vertical wire, so the text is
+        // rotated to read bottom-to-top (the drawing convention) from the pill's
+        // lower end; the box itself stays an axis-aligned narrow rect. Side-edge
+        // pills read flat along their horizontal wire, as before.
+        const rotated = pillIsRotated(l.anchor);
+        const textX = rotated ? box.x + box.width / 2 : box.x + pad;
+        const textY = rotated ? box.y + box.height - pad : box.y + box.height / 2;
 
         return (
           <g key={i}>
@@ -248,6 +256,7 @@ function CrossingLabels({ labels, pxPerPt, titleBlockBands }: { labels: Crossing
             <text
               x={textX}
               y={textY}
+              transform={rotated ? `rotate(-90 ${textX} ${textY})` : undefined}
               dominantBaseline="central"
               fill="#374151"
               fontSize={fontSize}

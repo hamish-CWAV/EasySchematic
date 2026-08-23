@@ -5,6 +5,13 @@
 // applied to one could silently disagree with the other. Both now go through
 // layoutContinuationPills, which places the boxes, slides the ones sharing a page
 // edge apart, AND keeps them clear of the title block.
+//
+// A pill runs PARALLEL to its wire at the crossing (#357). A wire leaving through the
+// top or bottom of a sheet is vertical there, so its pill is rotated 90° and reads
+// bottom-to-top along the wire; a wire leaving through a side is horizontal, so its
+// pill stays horizontal. Sitting on its own wire is what tells the reader which
+// connection a pill belongs to — which is why the pills may not slide away from their
+// crossings into a row, the first #357 attempt.
 
 import { PAGE_MARGIN_IN } from "./printConfig";
 import type { PageRect } from "./printPageGrid";
@@ -27,8 +34,22 @@ export interface ContinuationPill {
   /** Anchor point — the box edge that faces the page boundary. */
   x: number;
   y: number;
+  /**
+   * Length of the pill ALONG its text run (arrow, name, page reference) — measured
+   * text plus padding. For a rotated pill this is the box's on-page HEIGHT.
+   */
   width: number;
+  /** Thickness across the text run — type size plus padding. */
   height: number;
+}
+
+/**
+ * A pill on a top or bottom page edge is rotated 90°: its wire is vertical at the
+ * crossing, and the pill lies along the wire. Both surfaces ask this one question,
+ * so neither can rotate a pill the other draws flat.
+ */
+export function pillIsRotated(anchor: PillAnchor): boolean {
+  return anchor === "up" || anchor === "down";
 }
 
 /** How far a pill may travel along the page edge it sits on, in the pill's units. */
@@ -65,9 +86,11 @@ const PILL_ARROWS: Record<PillAnchor, string> = {
 
 /**
  * Pill type size and padding, in points. Shared so the editor overlay measures the
- * same box the PDF prints: the spread in deoverlapAlongAxis is driven by pill WIDTH,
- * so a preview that sized its pills differently would push them to different places
- * than the export does and stop showing what prints (#357).
+ * same box the PDF prints: the spread in deoverlapAlongAxis is driven by the pill's
+ * footprint on its page edge — its measured length for a flat pill, its thickness
+ * for a rotated one — and the title-block clamp by the whole box, so a preview that
+ * sized its pills differently would push them to different places than the export
+ * does and stop showing what prints (#357).
  */
 export const PILL_FONT_SIZE_PT = 6;
 export const PILL_PAD_PT = 1.44; // 0.02in, the padding the PDF has always used
@@ -124,7 +147,13 @@ export function titleBlockBandPx(
   };
 }
 
-/** Top-left corner of the pill's box: it grows inward, away from the boundary. */
+/**
+ * Top-left corner of the pill's box: it grows inward, away from the boundary, along
+ * its own wire. Side-exit pills lie flat, centred on their horizontal wire; top- and
+ * bottom-exit pills are rotated 90° onto their vertical wire, so their on-page box
+ * swaps the pill's length and thickness — the box is narrow across the page edge and
+ * long up the wire, into the content area rather than off the sheet.
+ */
 function placePill(pill: ContinuationPill): PillRect {
   const { anchor, x, y, width, height } = pill;
   switch (anchor) {
@@ -133,9 +162,9 @@ function placePill(pill: ContinuationPill): PillRect {
     case "right":
       return { x, y: y - height / 2, width, height };
     case "up":
-      return { x: x - width / 2, y: y - height, width, height };
+      return { x: x - height / 2, y: y - width, width: height, height: width };
     case "down":
-      return { x: x - width / 2, y, width, height };
+      return { x: x - height / 2, y, width: height, height: width };
   }
 }
 
@@ -304,11 +333,16 @@ export function deoverlapAlongAxis(
 }
 
 /**
- * Place a run of continuation pills: each box grows inward from its boundary, pills
- * sharing a page edge shift along it until they clear each other, and any pill still
- * covering a title-block band rides up off it. Both the editor overlay and the PDF
- * export call this on their full set of pills for a sheet, so the two surfaces
- * cannot drift apart.
+ * Place a run of continuation pills: each box grows inward from its boundary along
+ * its own wire, pills sharing a page edge shift along it until they clear each
+ * other, and any pill still covering a title-block band rides up off it. Both the
+ * editor overlay and the PDF export call this on their full set of pills for a
+ * sheet, so the two surfaces cannot drift apart.
+ *
+ * Top- and bottom-edge pills are rotated onto their vertical wires, so their
+ * footprint on the edge axis is the pill's THICKNESS: the spread only has work to do
+ * when two wires cross within a few points of each other, and each pill otherwise
+ * sits exactly on its own crossing.
  *
  * `gap` is the breathing room left between neighbours, in the caller's units.
  */
