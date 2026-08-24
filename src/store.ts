@@ -46,6 +46,12 @@ import { resolveHiddenAdapterIds } from "./adapterVisibility";
 import { findPortByHandle } from "./portHandles";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_ARROW, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE, DEFAULT_CONNECTION_TYPE, portSide } from "./types";
+import {
+  loadAppDefaultHeaderColor,
+  normalizeHeaderColor,
+  resolveDefaultDeviceHeaderColor,
+  saveAppDefaultHeaderColor,
+} from "./deviceHeaderColor";
 import { pairKey } from "./roomDistance";
 import type { Orientation } from "./printConfig";
 import { computeAlignment, resolveAlignmentOverlaps, type AlignOperation } from "./alignUtils";
@@ -817,6 +823,15 @@ interface SchematicState {
   setUseShortNames: (use: boolean) => void;
   wrapDeviceLabels: boolean;
   setWrapDeviceLabels: (wrap: boolean) => void;
+
+  /** Default device header color (#354). The app preference is an editor preference shared
+   *  by every project on this machine (localStorage); the project override travels with the
+   *  schematic file and wins where set. Both apply to devices placed from here on —
+   *  devices already on the canvas are never recolored. */
+  appDefaultDeviceHeaderColor: string | undefined;
+  setAppDefaultDeviceHeaderColor: (color: string | undefined) => void;
+  defaultDeviceHeaderColor: string | undefined;
+  setDefaultDeviceHeaderColor: (color: string | undefined) => void;
   patchStubLabelData: (nodeId: string, patch: Partial<import("./types").StubLabelData>) => void;
   /** Attach a free-text stub to a single device port (#196). No edge/connection is
    *  created; the new node starts in edit mode. */
@@ -2095,6 +2110,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   defaultConnectionType: DEFAULT_CONNECTION_TYPE,
   useShortNames: false,
   wrapDeviceLabels: false,
+  appDefaultDeviceHeaderColor: loadAppDefaultHeaderColor(),
+  defaultDeviceHeaderColor: undefined,
   cableIdMap: {},
   cloudSchematicId: null,
   cloudSavedAt: null,
@@ -2339,6 +2356,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       ports.forEach((p, i) => { p.templatePortId = template.ports[i].id; });
     }
 
+    // Header color for a freshly placed device — project override, then app preference,
+    // then nothing at all (the theme's surface color). Stamped here so a later change to
+    // either setting leaves this device alone (#354).
+    const headerColor = resolveDefaultDeviceHeaderColor(
+      state.defaultDeviceHeaderColor,
+      state.appDefaultDeviceHeaderColor,
+    );
+
     // Initialize expansion slots from template (recursively handles sub-slots)
     let installedSlots: InstalledSlot[] | undefined;
     if (template.slots && template.slots.length > 0) {
@@ -2356,6 +2381,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         deviceType: template.deviceType,
         ports,
         color,
+        ...(headerColor ? { headerColor } : {}),
         baseLabel: template.label,
         model: template.label,
         ...(template.shortName ? { shortName: template.shortName } : {}),
@@ -3388,6 +3414,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       ...(oldData.hostname ? { hostname: oldData.hostname } : (newTemplate.hostname ? { hostname: newTemplate.hostname } : {})),
       ...(oldData.useShortName !== undefined ? { useShortName: oldData.useShortName } : {}),
       ...(oldData.wrapLabel !== undefined ? { wrapLabel: oldData.wrapLabel } : {}),
+      // The header color is the device's own, not the template's — a swap changes the
+      // model, not the color the user (or the default header color setting) gave it (#354).
+      ...(oldData.headerColor ? { headerColor: oldData.headerColor } : {}),
     };
 
     // 6. Remap edges. For each mapping with a target, compute the new handle. Otherwise drop.
@@ -4496,6 +4525,13 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       adapterPorts = clonePorts(template.ports);
     }
 
+    // An auto-inserted adapter is a new device like any other, so it takes the same
+    // default header color (#354).
+    const adapterHeaderColor = resolveDefaultDeviceHeaderColor(
+      state.defaultDeviceHeaderColor,
+      state.appDefaultDeviceHeaderColor,
+    );
+
     const adapterId = nextNodeId();
     let adapterNode: DeviceNode = {
       id: adapterId,
@@ -4507,6 +4543,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         deviceType: template.deviceType,
         ports: adapterPorts,
         color,
+        ...(adapterHeaderColor ? { headerColor: adapterHeaderColor } : {}),
         baseLabel: template.label,
         model: template.label,
         ...(template.shortName ? { shortName: template.shortName } : {}),
@@ -5088,6 +5125,20 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   setWrapDeviceLabels: (wrap) => {
     set({ wrapDeviceLabels: wrap });
+    get().saveToLocalStorage();
+  },
+
+  // The app-level default header color is an editor preference, so it goes to
+  // localStorage rather than into the schematic file (#354). Neither setter touches
+  // existing devices — the color is stamped at placement, not resolved at paint time.
+  setAppDefaultDeviceHeaderColor: (color) => {
+    const normalized = normalizeHeaderColor(color);
+    set({ appDefaultDeviceHeaderColor: normalized });
+    saveAppDefaultHeaderColor(normalized);
+  },
+
+  setDefaultDeviceHeaderColor: (color) => {
+    set({ defaultDeviceHeaderColor: normalizeHeaderColor(color) });
     get().saveToLocalStorage();
   },
 
@@ -6087,6 +6138,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       defaultConnectionType: state.defaultConnectionType !== DEFAULT_CONNECTION_TYPE ? state.defaultConnectionType : undefined,
       useShortNames: state.useShortNames || undefined,
       wrapDeviceLabels: state.wrapDeviceLabels || undefined,
+      defaultDeviceHeaderColor: state.defaultDeviceHeaderColor,
       hideAdapters: state.hideAdapters || undefined,
       autoRoute: state.autoRoute === false ? false : undefined,
       edgeHitboxSize: state.edgeHitboxSize !== 10 ? state.edgeHitboxSize : undefined,
@@ -6190,6 +6242,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
             defaultConnectionType: data.defaultConnectionType ?? DEFAULT_CONNECTION_TYPE,
             useShortNames: data.useShortNames ?? false,
             wrapDeviceLabels: data.wrapDeviceLabels ?? false,
+            defaultDeviceHeaderColor: normalizeHeaderColor(data.defaultDeviceHeaderColor),
             hideAdapters: data.hideAdapters ?? false,
             categoryOrder: data.categoryOrder ?? null,
             showOwnedGearPane: data.showOwnedGearPane ?? false,
@@ -6288,6 +6341,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         defaultConnectionType: data.defaultConnectionType ?? DEFAULT_CONNECTION_TYPE,
         useShortNames: data.useShortNames ?? false,
         wrapDeviceLabels: data.wrapDeviceLabels ?? false,
+        defaultDeviceHeaderColor: normalizeHeaderColor(data.defaultDeviceHeaderColor),
         hideAdapters: data.hideAdapters ?? false,
         autoRoute: data.autoRoute ?? true,
         edgeHitboxSize: data.edgeHitboxSize ?? 10,
@@ -6386,6 +6440,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       defaultConnectionType: state.defaultConnectionType !== DEFAULT_CONNECTION_TYPE ? state.defaultConnectionType : undefined,
       useShortNames: state.useShortNames || undefined,
       wrapDeviceLabels: state.wrapDeviceLabels || undefined,
+      defaultDeviceHeaderColor: state.defaultDeviceHeaderColor,
       hideAdapters: state.hideAdapters || undefined,
       autoRoute: state.autoRoute === false ? false : undefined,
       edgeHitboxSize: state.edgeHitboxSize !== 10 ? state.edgeHitboxSize : undefined,
@@ -6489,6 +6544,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       defaultConnectionType: data.defaultConnectionType ?? DEFAULT_CONNECTION_TYPE,
       useShortNames: data.useShortNames ?? false,
       wrapDeviceLabels: data.wrapDeviceLabels ?? false,
+      defaultDeviceHeaderColor: normalizeHeaderColor(data.defaultDeviceHeaderColor),
       hideAdapters: data.hideAdapters ?? false,
       autoRoute: data.autoRoute ?? true,
       edgeHitboxSize: data.edgeHitboxSize ?? 10,
@@ -6614,6 +6670,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         defaultConnectionType: DEFAULT_CONNECTION_TYPE,
         useShortNames: false,
         wrapDeviceLabels: false,
+        // The project override resets with the document; the app preference persists.
+        defaultDeviceHeaderColor: undefined,
         autoRoute: true,
         edgeHitboxSize: 10,
         panMode: DEFAULT_PAN_MODE,

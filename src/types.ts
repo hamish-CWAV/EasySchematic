@@ -930,6 +930,10 @@ export interface SchematicFile {
   wrapDeviceLabels?: boolean;
   /** How a freshly drawn connection is rendered — a routed wire, or stubbed at both ends (#353) */
   defaultConnectionType?: DefaultConnectionType;
+  /** Header background color stamped onto devices placed in THIS project (#354). Overrides
+   *  the app-level preference; unset = fall back to it, then to the built-in surface color.
+   *  Applies at placement only — devices already on the canvas keep their own colors. */
+  defaultDeviceHeaderColor?: string;
   /** Project lifecycle status, surfaced in project metadata / file lists (#P2-007) */
   status?: ProjectStatus;
 }

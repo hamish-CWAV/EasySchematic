@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSchematicStore } from "../store";
+import { HEADER_COLOR_SWATCH_FALLBACK, resolveDefaultDeviceHeaderColor } from "../deviceHeaderColor";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_ARROW, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE, DEFAULT_CONNECTION_TYPE, PROJECT_STATUS_LABELS } from "../types";
 import type { DefaultConnectionType, LabelCaseMode, PanMode, ProjectStatus, ScrollAction, ScrollConfig, StubLabelPageMode } from "../types";
 
@@ -71,6 +72,89 @@ function SensitivityRow({
   );
 }
 
+/** How long the picker sits still before the chosen color is committed (#354). */
+const COLOR_COMMIT_DELAY_MS = 250;
+
+/** Header-color picker row (#354) — the same swatch + Reset pairing the device editor's
+ *  header color picker uses, laid out as a preferences row. `undefined` = not set.
+ *
+ *  Dragging in the OS color wheel fires an event per frame, and committing the project
+ *  override autosaves the whole document, so the swatch tracks the wheel from local state
+ *  and only commits once the picker goes quiet, loses focus, or the row unmounts. */
+function ColorRow({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string | undefined;
+  /** Swatch shown while nothing is set — the color that would apply anyway. */
+  placeholder: string;
+  onChange: (v: string | undefined) => void;
+}) {
+  // null = no uncommitted choice, so the swatch follows the setting itself.
+  const [draft, setDraft] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Read by the delayed commit and by the unmount cleanup, neither of which can see the
+  // render they were scheduled from.
+  const pending = useRef<{ draft: string | null; onChange: (v: string | undefined) => void }>({
+    draft: null,
+    onChange,
+  });
+  useEffect(() => {
+    pending.current = { draft, onChange };
+  });
+
+  const commit = () => {
+    clearTimeout(timer.current);
+    const next = pending.current.draft;
+    if (next === null) return;
+    setDraft(null);
+    pending.current.onChange(next);
+  };
+
+  // Closing the dialog mid-drag still keeps the color the user picked.
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    const next = pending.current.draft;
+    if (next !== null) pending.current.onChange(next);
+  }, []);
+
+  return (
+    <div className="flex items-center justify-between py-1">
+      <span className="text-xs text-[var(--color-text)]">{label}</span>
+      <div className="flex items-center gap-2 w-[140px] justify-end">
+        {(draft ?? value) ? (
+          <button
+            className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+            onClick={() => {
+              clearTimeout(timer.current);
+              setDraft(null);
+              onChange(undefined);
+            }}
+          >
+            Reset
+          </button>
+        ) : (
+          <span className="text-[10px] text-[var(--color-text-muted)]">Not set</span>
+        )}
+        <input
+          type="color"
+          className="w-6 h-6 rounded border border-[var(--color-border)] cursor-pointer p-0"
+          value={draft ?? value ?? placeholder}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            clearTimeout(timer.current);
+            timer.current = setTimeout(commit, COLOR_COMMIT_DELAY_MS);
+          }}
+          onBlur={commit}
+        />
+      </div>
+    </div>
+  );
+}
+
 type PrefTab = "canvas" | "display" | "ai";
 
 const TAB_LABELS: Record<PrefTab, string> = {
@@ -113,6 +197,10 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
   const setUseShortNames = useSchematicStore((s) => s.setUseShortNames);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
   const setWrapDeviceLabels = useSchematicStore((s) => s.setWrapDeviceLabels);
+  const appHeaderColor = useSchematicStore((s) => s.appDefaultDeviceHeaderColor);
+  const setAppHeaderColor = useSchematicStore((s) => s.setAppDefaultDeviceHeaderColor);
+  const projectHeaderColor = useSchematicStore((s) => s.defaultDeviceHeaderColor);
+  const setProjectHeaderColor = useSchematicStore((s) => s.setDefaultDeviceHeaderColor);
   const mcpEnabled = useSchematicStore((s) => s.mcpBridgeEnabled);
   const setMcpEnabled = useSchematicStore((s) => s.setMcpBridgeEnabled);
   const mcpToken = useSchematicStore((s) => s.mcpBridgeToken);
@@ -129,6 +217,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
   const update = (patch: Partial<ScrollConfig>) =>
     setScrollConfig({ ...scrollConfig, ...patch });
 
+  // Which of the two header-color settings a device placed right now would take (#354).
+  const effectiveHeaderColor = resolveDefaultDeviceHeaderColor(projectHeaderColor, appHeaderColor);
+
   const isDefault =
     scrollConfig.scroll === DEFAULT_SCROLL_CONFIG.scroll &&
     scrollConfig.shiftScroll === DEFAULT_SCROLL_CONFIG.shiftScroll &&
@@ -144,7 +235,10 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
     stubLabelShowArrow === DEFAULT_STUB_LABEL_SHOW_ARROW &&
     stubLabelShowPort === DEFAULT_STUB_LABEL_SHOW_PORT &&
     stubLabelPageMode === DEFAULT_STUB_LABEL_PAGE_MODE &&
-    defaultConnectionType === DEFAULT_CONNECTION_TYPE;
+    defaultConnectionType === DEFAULT_CONNECTION_TYPE &&
+    // The per-project override is document data (like the project status), so it is not
+    // part of "reset preferences" — only the app-level default header color is (#354).
+    appHeaderColor === undefined;
 
   return (
     <div
@@ -413,6 +507,60 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 </p>
               </div>
 
+              {/* Device header color (#354) */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
+                  Device header color
+                </div>
+                <ColorRow
+                  label="Default for new devices"
+                  value={appHeaderColor}
+                  placeholder={HEADER_COLOR_SWATCH_FALLBACK}
+                  onChange={setAppHeaderColor}
+                />
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  Header bar color given to every device you place from here on, in this and
+                  every other project on this computer. Not set = the standard header color.
+                </p>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  This is the device's header color everywhere it is drawn, not just on the
+                  canvas: it also overrides the device's own color in the rack elevation, the
+                  rack SVG and PDF, the face plate editor, and the DXF export. Set it and every
+                  new device shares one color in those views instead of being colored by device
+                  type — leave it unset, or clear a device's header color in the device editor,
+                  to keep that color coding.
+                </p>
+                <div className="mt-2">
+                  <ColorRow
+                    label="This project only"
+                    value={projectHeaderColor}
+                    placeholder={appHeaderColor ?? HEADER_COLOR_SWATCH_FALLBACK}
+                    onChange={setProjectHeaderColor}
+                  />
+                </div>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  Overrides the default above for this schematic, and is saved in the schematic
+                  file so it travels with it. Devices already on the canvas keep their own
+                  colors either way — change one from the device editor's header color picker.
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                    New devices here get
+                  </span>
+                  <span
+                    className="w-4 h-4 shrink-0 rounded border border-[var(--color-border)]"
+                    style={{ backgroundColor: effectiveHeaderColor ?? "var(--color-surface)" }}
+                  />
+                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                    {effectiveHeaderColor
+                      ? projectHeaderColor
+                        ? `${effectiveHeaderColor} (this project)`
+                        : `${effectiveHeaderColor} (app default)`
+                      : "the standard header color"}
+                  </span>
+                </div>
+              </div>
+
               {/* Stub labels */}
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
@@ -618,6 +766,7 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 setStubLabelShowPort(DEFAULT_STUB_LABEL_SHOW_PORT);
                 setStubLabelPageMode(DEFAULT_STUB_LABEL_PAGE_MODE);
                 setDefaultConnectionType(DEFAULT_CONNECTION_TYPE);
+                setAppHeaderColor(undefined);
               }}
               className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
             >

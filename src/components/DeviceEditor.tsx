@@ -36,6 +36,7 @@ import FacePlateEditor from "./FacePlateEditor";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
+import { HEADER_COLOR_SWATCH_FALLBACK, resolveDefaultDeviceHeaderColor } from "../deviceHeaderColor";
 import { carriesPowerCapacity } from "../deviceTypeCategories";
 import { visibleSaveActions, SAVE_ACTION_LABELS, SAVE_ACTION_TITLES, type SaveActionId } from "../deviceEditorActions";
 import { visiblePortRowControls, PORT_ROW_CONTROL_TITLES, type PortRowControlId } from "../portRowControls";
@@ -139,6 +140,8 @@ export default function DeviceEditor() {
   const customTemplates = useSchematicStore((s) => s.customTemplates);
   const templateHiddenSignals = useSchematicStore((s) => s.templateHiddenSignals);
   const currency = useSchematicStore((s) => s.currency);
+  const projectHeaderColor = useSchematicStore((s) => s.defaultDeviceHeaderColor);
+  const appHeaderColor = useSchematicStore((s) => s.appDefaultDeviceHeaderColor);
   const setTemplateHiddenSignals = useSchematicStore((s) => s.setTemplateHiddenSignals);
   const templatePresets = useSchematicStore((s) => s.templatePresets);
   const setTemplatePreset = useSchematicStore((s) => s.setTemplatePreset);
@@ -1162,16 +1165,33 @@ export default function DeviceEditor() {
             <input
               type="color"
               className="w-6 h-6 rounded border border-[var(--color-border)] cursor-pointer p-0"
-              value={headerColor ?? "#4b5563"}
+              value={headerColor ?? HEADER_COLOR_SWATCH_FALLBACK}
               onChange={(e) => setHeaderColor(e.target.value)}
             />
-            {headerColor && (
+            {headerColor ? (
               <button
                 className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
                 onClick={() => setHeaderColor(undefined)}
               >
                 Reset
               </button>
+            ) : (
+              // This device has no header color of its own — show what a device placed now
+              // would get, as a hint beside the picker rather than inside it, so the swatch
+              // never claims a color the device isn't actually painted with (#354).
+              (() => {
+                const fallback = resolveDefaultDeviceHeaderColor(projectHeaderColor, appHeaderColor);
+                if (!fallback) return null;
+                return (
+                  <span className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
+                    <span
+                      className="w-3 h-3 shrink-0 rounded-sm border border-[var(--color-border)]"
+                      style={{ backgroundColor: fallback }}
+                    />
+                    default for new devices
+                  </span>
+                );
+              })()
             )}
           </div>
 

@@ -572,6 +572,9 @@ let importCounter = 0;
 export function buildImportResult(
   connections: ParsedConnection[],
   deviceMatches: Map<string, DeviceMatch>,
+  /** Header color for the devices this import creates — already resolved from the project
+   *  override / app preference by the caller (#354). Omitted = no header color at all. */
+  opts?: { defaultHeaderColor?: string },
 ): { nodes: SchematicNode[]; edges: ConnectionEdge[] } {
   importCounter = Date.now();
   const nodes: SchematicNode[] = [];
@@ -700,6 +703,7 @@ export function buildImportResult(
         deviceType,
         ports,
         ...(color ? { color } : {}),
+        ...(opts?.defaultHeaderColor ? { headerColor: opts.defaultHeaderColor } : {}),
         ...(match.template?.manufacturer ? { manufacturer: match.template.manufacturer } : {}),
         ...(match.template?.modelNumber ? { modelNumber: match.template.modelNumber } : {}),
         baseLabel: name,

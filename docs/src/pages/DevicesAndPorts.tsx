@@ -332,6 +332,36 @@ export default function DevicesAndPortsPage() {
         <li>Toggle the <strong>venue-provided</strong> flag to mark devices supplied by the venue</li>
       </ul>
 
+      <h3>Default header color</h3>
+      <p>
+        If you would rather not set the header color device by device, pick a default under{" "}
+        <strong>Preferences → Display → Device header color</strong>. There are two settings:
+      </p>
+      <ul>
+        <li>
+          <strong>Default for new devices</strong> — your own preference, applied in every project
+          you open on that computer.
+        </li>
+        <li>
+          <strong>This project only</strong> — an override saved inside the schematic file, so it
+          travels with the drawing and wins over your personal default wherever it is set.
+        </li>
+      </ul>
+      <p>
+        Either way the color is applied as each device is placed — from the library, as a custom
+        device, through a CSV import, or as an auto-inserted adapter. Devices already on the canvas
+        keep the colors they have; change one from the device editor's header color picker, and a
+        device keeps its header color through a swap.
+      </p>
+      <p>
+        A header color is the device's color everywhere it is drawn, not only on the canvas. It
+        also stands in for the device's own color in the rack elevation, the rack SVG and PDF
+        exports, the face plate editor, and the DXF export. So a default header color makes every
+        new device share one color in those views rather than being colored by device type — leave
+        the default unset, or clear a device's header color in the device editor, if you want that
+        color coding back.
+      </p>
+
       <h2>Swapping devices</h2>
       <p>
         Right-click any device and choose <strong>Swap Device...</strong> to replace it with a
