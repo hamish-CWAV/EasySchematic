@@ -22,6 +22,7 @@ import {
   PILL_PAD_PT,
   type TitleBlockBand,
 } from "../continuationPill";
+import { computeCrossingLabels } from "../crossingLabels";
 import { computePageGrid } from "../printPageGrid";
 import { getPaperSize, PAGE_MARGIN_IN } from "../printConfig";
 import { createDefaultLayout } from "../titleBlockLayout";
@@ -579,30 +580,77 @@ describe("editor and PDF agree on where the spread pills land", () => {
 
 // computeCrossingLabels decides, per pill, which sheet it is drawn on and which of that
 // sheet's borders bounds its slide. Getting one of those backwards would group pills
-// across the wrong page edge and clamp them to the wrong border, and no geometry test
-// would notice — the function is internal to the overlay component, so this pins the
-// pairings from the source the way roomLabelCase.test.ts pins its own.
+// across the wrong page edge and clamp them to the wrong border, so both pairings are
+// pinned here — on a 2×2 grid, where every sheet has a boundary on two of its sides.
 describe("the overlay's per-pill sheet and border wiring", () => {
   const overlaySrc = readFileSync(
     fileURLToPath(new URL("../components/PageBoundaryOverlay.tsx", import.meta.url)),
     "utf8",
   );
 
+  /** Four devices, one per cell of a 2×2 page grid. */
+  const grid = [
+    { id: "dev-tl", x: 100, y: 100, label: "Top Left" },
+    { id: "dev-tr", x: 1000, y: 100, label: "Top Right" },
+    { id: "dev-bl", x: 100, y: 1200, label: "Bottom Left" },
+    { id: "dev-br", x: 1000, y: 1200, label: "Bottom Right" },
+  ].map((d) => ({
+    id: d.id, type: "device", position: { x: d.x, y: d.y },
+    measured: { width: 144, height: 64 },
+    data: { label: d.label, ports: [] },
+  })) as unknown as SchematicNode[];
+
+  const gridPages = computePageGrid(LETTER, "portrait", SCALE, grid, LAYOUT.heightIn, 0, 0);
+  const sheetOf = (col: number, row: number) =>
+    gridPages.find((p) => p.col === col && p.row === row)!.index + 1;
+  const asTyped = (l: string | null | undefined) => l ?? "";
+
+  const route = (axis: "h" | "v", x1: number, y1: number, x2: number, y2: number) =>
+    ({ e1: { segments: [{ x1, y1, x2, y2, axis }], waypoints: [], labelX: x1, labelY: y1 } }) as never;
+  const conn = [{ id: "e1", source: "dev-tl", target: "dev-br", data: {} }] as never;
+
+  /** The two pills a crossing produces, keyed by the side each sits on. */
+  const pillsFor = (routed: never) =>
+    Object.fromEntries(
+      computeCrossingLabels(gridPages, routed, conn, grid, undefined, asTyped)
+        .map((l) => [l.anchor, l]),
+    );
+
   it("gives each pill the sheet it is drawn on, not the one it points at", () => {
-    // A pill drawn on the LEFT of a vertical boundary points at the page on the right.
-    expect(overlaySrc).toMatch(/anchor: "left",[^}]*sheet: leftPageNum/);
-    expect(overlaySrc).toMatch(/anchor: "right",[^}]*sheet: rightPageNum/);
-    // A pill drawn ABOVE a horizontal boundary points at the page below.
-    expect(overlaySrc).toMatch(/anchor: "up",[^}]*sheet: upPageNum/);
-    expect(overlaySrc).toMatch(/anchor: "down",[^}]*sheet: downPageNum/);
+    // A run left-to-right across the TOP row, crossing the column boundary.
+    const sideways = pillsFor(route("h", 244, 130, 1000, 130));
+    expect(sideways.left.sheet).toBe(sheetOf(0, 0));
+    expect(sideways.left.pageNum).toBe(sheetOf(1, 0));
+    expect(sideways.right.sheet).toBe(sheetOf(1, 0));
+    expect(sideways.right.pageNum).toBe(sheetOf(0, 0));
+
+    // A run top-to-bottom down the LEFT column, crossing the row boundary.
+    const vertical = pillsFor(route("v", 150, 164, 150, 1200));
+    expect(vertical.up.sheet).toBe(sheetOf(0, 0));
+    expect(vertical.up.pageNum).toBe(sheetOf(0, 1));
+    expect(vertical.down.sheet).toBe(sheetOf(0, 1));
+    expect(vertical.down.pageNum).toBe(sheetOf(0, 0));
   });
 
   it("bounds each pill by the border of the sheet it is drawn on", () => {
-    // Side exits slide down the sheet, bottom and top exits slide across it.
-    expect(overlaySrc).toMatch(/anchor: "left",[^}]*limit: slideY\(leftPageNum\)/);
-    expect(overlaySrc).toMatch(/anchor: "right",[^}]*limit: slideY\(rightPageNum\)/);
-    expect(overlaySrc).toMatch(/anchor: "up",[^}]*limit: slideX\(upPageNum\)/);
-    expect(overlaySrc).toMatch(/anchor: "down",[^}]*limit: slideX\(downPageNum\)/);
+    const marginPx = gridPages[0].contentX - gridPages[0].x;
+    const borderOf = (sheet: number) => {
+      const p = gridPages.find((q) => q.index + 1 === sheet)!;
+      return {
+        acrossSheet: { min: p.contentX, max: p.contentX + p.contentW },
+        // Down to the bottom margin, not to contentH, which stops a title-block short.
+        downSheet: { min: p.contentY, max: p.y + p.heightPx - marginPx },
+      };
+    };
+
+    // Side exits slide DOWN the sheet they are drawn on...
+    const sideways = pillsFor(route("h", 244, 130, 1000, 130));
+    expect(sideways.left.limit).toEqual(borderOf(sheetOf(0, 0)).downSheet);
+    expect(sideways.right.limit).toEqual(borderOf(sheetOf(1, 0)).downSheet);
+    // ...and bottom/top exits slide ACROSS it.
+    const vertical = pillsFor(route("v", 150, 164, 150, 1200));
+    expect(vertical.up.limit).toEqual(borderOf(sheetOf(0, 0)).acrossSheet);
+    expect(vertical.down.limit).toEqual(borderOf(sheetOf(0, 1)).acrossSheet);
   });
 
   it("builds its pill text and metrics from the shared module", () => {

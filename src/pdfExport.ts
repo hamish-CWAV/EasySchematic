@@ -8,11 +8,11 @@ import {
   PAGE_MARGIN_IN,
 } from "./printConfig";
 import { computePageGrid, type PageRect } from "./printPageGrid";
-import type { TitleBlock, TitleBlockLayout, DeviceData, SchematicNode, ConnectionEdge } from "./types";
+import type { TitleBlock, TitleBlockLayout, SchematicNode, ConnectionEdge } from "./types";
 import type { RoutedEdge } from "./edgeRouter";
 import { computeCellRects, normalizeSizes, getFieldValue } from "./titleBlockLayout";
 import { useSchematicStore } from "./store";
-import { hopHiddenAdapters } from "./adapterVisibility";
+import { buildCrossingLabelInfo, crossingLabelText } from "./crossingLabels";
 import { DEFAULT_SIGNAL_COLORS } from "./signalColors";
 import { transformLabelNow } from "./labelCaseUtils";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "./colorKeyLayout";
@@ -387,54 +387,19 @@ export function computePdfCrossingLabels(
   const drawnTop = page.y + marginPx;
   const drawnBottom = page.y + page.heightPx - marginPx;
 
-  // Build node info lookup. Devices use their own label/room. Stub-label nodes
-  // proxy to the FAR device of their logical connection (the device on the other
-  // side of the linkedConnectionId pair) — so cross-page indicators on a stub-leg
-  // edge still point the reader toward the actual destination.
-  const nodeInfo = new Map<string, { label: string; room?: string }>();
-  for (const n of nodes) {
-    if (n.type !== "device") continue;
-    const data = n.data as DeviceData;
-    let room: string | undefined;
-    if (n.parentId) {
-      const parent = nodes.find((p) => p.id === n.parentId);
-      // The room rides along in the cross-page indicator as "Device (Room)", so it takes
-      // the display-case preference just like the device label beneath it (#294).
-      const parentLabel = parent ? (parent.data as { label?: string }).label : undefined;
-      if (parentLabel) room = transformLabelNow(parentLabel);
-    }
-    nodeInfo.set(n.id, { label: transformLabelNow(data.label), room });
-  }
-  const hiddenAdapterIds = useSchematicStore.getState().hiddenAdapterNodeIds;
-  for (const n of nodes) {
-    if (n.type !== "stub-label") continue;
-    const stubData = n.data as { linkedConnectionId?: string; side?: "source" | "target" };
-    if (!stubData.linkedConnectionId) continue;
-    // Find the partner leg (the OTHER edge with the same linkedConnectionId)
-    const myEdge = edges.find((e) =>
-      e.data?.linkedConnectionId === stubData.linkedConnectionId &&
-      (stubData.side === "source" ? e.target === n.id : e.source === n.id),
-    );
-    if (!myEdge) continue;
-    const partnerEdge = edges.find((e) =>
-      e.data?.linkedConnectionId === stubData.linkedConnectionId && e.id !== myEdge.id,
-    );
-    if (!partnerEdge) continue;
-    // Past a hidden inline adapter to the device the run really reaches, so the
-    // indicator and the stub tag on the same leg name the same device (#348).
-    const { nodeId: farDeviceId } = hopHiddenAdapters(
-      {
-        nodeId: stubData.side === "source" ? partnerEdge.target : partnerEdge.source,
-        handleId: null,
-      },
-      partnerEdge.id,
-      nodes,
-      edges,
-      hiddenAdapterIds,
-    );
-    const farInfo = nodeInfo.get(farDeviceId);
-    if (farInfo) nodeInfo.set(n.id, farInfo);
-  }
+  // Devices name themselves; stub-label nodes proxy to the FAR device of their
+  // logical connection, past any hidden inline adapter. The editor overlay builds
+  // the very same lookup from the very same function, so neither surface can emit a
+  // pill the other skips — and since the spread moves each edge's pills as a group,
+  // an extra pill on one surface displaces the ones they share (#361).
+  const nodeInfo = buildCrossingLabelInfo(
+    nodes,
+    edges,
+    // The room rides along as "Device (Room)", so it takes the display-case
+    // preference just like the device label beneath it (#294).
+    transformLabelNow,
+    useSchematicStore.getState().hiddenAdapterNodeIds,
+  );
 
   const edgeMap = new Map(edges.map((e) => [e.id, e]));
   const labels: PdfCrossingLabel[] = [];
@@ -485,11 +450,11 @@ export function computePdfCrossingLabels(
             const leftPageNum = pdfPageAtPoint(bx - 1, y, pages);
 
             if (leftPx >= drawnLeft && leftPx <= drawnRight) {
-              const text = fmtLabel(rightwardTarget);
+              const text = crossingLabelText(rightwardTarget);
               labels.push({ x: toPageX(leftPx), y: toPageY(y), text, anchor: "left", color: edgeColor, pageNum: rightPageNum });
             }
             if (rightPx >= drawnLeft && rightPx <= drawnRight) {
-              const text = fmtLabel(leftwardTarget);
+              const text = crossingLabelText(leftwardTarget);
               labels.push({ x: toPageX(rightPx), y: toPageY(y), text, anchor: "right", color: edgeColor, pageNum: leftPageNum });
             }
           }
@@ -513,11 +478,11 @@ export function computePdfCrossingLabels(
             const upPageNum = pdfPageAtPoint(x, by - 1, pages);
 
             if (upPx >= drawnTop && upPx <= drawnBottom) {
-              const text = fmtLabel(downwardTarget);
+              const text = crossingLabelText(downwardTarget);
               labels.push({ x: toPageX(x), y: toPageY(upPx), text, anchor: "up", color: edgeColor, pageNum: downPageNum });
             }
             if (downPx >= drawnTop && downPx <= drawnBottom) {
-              const text = fmtLabel(upwardTarget);
+              const text = crossingLabelText(upwardTarget);
               labels.push({ x: toPageX(x), y: toPageY(downPx), text, anchor: "down", color: edgeColor, pageNum: upPageNum });
             }
           }
@@ -527,11 +492,6 @@ export function computePdfCrossingLabels(
   }
 
   return labels;
-}
-
-function fmtLabel(info: { label: string; room?: string }): string {
-  if (info.room) return `${info.label} (${info.room})`;
-  return info.label;
 }
 
 function drawCrossingLabels(

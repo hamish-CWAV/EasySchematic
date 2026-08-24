@@ -3,11 +3,10 @@ import { useViewport, useReactFlow } from "@xyflow/react";
 import { useSchematicStore } from "../store";
 import { computePageGrid, type PageRect } from "../printPageGrid";
 import { PAGE_MARGIN_IN, getPaperSize } from "../printConfig";
-import type { TitleBlock, TitleBlockLayout, DeviceData, SignalType, LabelCaseMode } from "../types";
-import type { RoutedEdge } from "../edgeRouter";
+import type { TitleBlock, TitleBlockLayout } from "../types";
 import { computeCellRects, normalizeSizes, getFieldValue, getFieldLabel } from "../titleBlockLayout";
 import { transformLabel } from "../labelCaseUtils";
-import { DEFAULT_SIGNAL_COLORS } from "../signalColors";
+import { computeCrossingLabels, type CrossingLabel } from "../crossingLabels";
 import { collectColorKeyEntries, layoutColorKey, type ColorKeyEntry } from "../colorKeyLayout";
 import {
   continuationPillText,
@@ -17,170 +16,15 @@ import {
   PILL_FONT_SIZE_PT,
   PILL_GAP_PT,
   PILL_PAD_PT,
-  type PillLimit,
   type TitleBlockBand,
 } from "../continuationPill";
 
 // ─── Page crossing labels ─────────────────────────────────────────
-
-interface CrossingLabel {
-  /** Position of the label in canvas coords */
-  x: number;
-  y: number;
-  /** Text to display */
-  text: string;
-  /** Page number the signal continues on */
-  pageNum: number;
-  /** Anchor side: which direction the label text should flow from the crossing */
-  anchor: "left" | "right" | "up" | "down";
-  /** Signal wire color (hex) */
-  color: string;
-  /** Page the pill itself is drawn on (1-indexed, 0 when it lands off every page) */
-  sheet: number;
-  /** The sheet's drawing border along the axis the pill can slide on (#357) */
-  limit: PillLimit | null;
-}
-
-/** Find which page (1-indexed) contains a given point, or 0 if none. */
-function pageAtPoint(x: number, y: number, pages: PageRect[]): number {
-  for (const p of pages) {
-    if (x >= p.x && x < p.x + p.widthPx && y >= p.y && y < p.y + p.heightPx) {
-      return p.index + 1;
-    }
-  }
-  return 0;
-}
-
-/**
- * Find all points where routed edge segments cross page boundary lines,
- * and generate labels showing the device (and room) on the other side.
- */
-function computeCrossingLabels(
-  pages: PageRect[],
-  routedEdges: Record<string, RoutedEdge>,
-  edges: { id: string; source: string; target: string; data?: { signalType?: SignalType; stubbed?: boolean } }[],
-  nodes: { id: string; type?: string; data: Record<string, unknown>; parentId?: string }[],
-  _pxPerPt: number,
-  signalColorOverrides: Partial<Record<SignalType, string>> | undefined,
-  labelCase: LabelCaseMode,
-): CrossingLabel[] {
-  if (pages.length <= 1) return [];
-
-  // Collect unique page boundary lines (internal edges only)
-  const minCol = Math.min(...pages.map((p) => p.col));
-  const minRow = Math.min(...pages.map((p) => p.row));
-  const vLines = new Set<number>(); // vertical boundaries (x values)
-  const hLines = new Set<number>(); // horizontal boundaries (y values)
-  for (const p of pages) {
-    if (p.col > minCol) vLines.add(p.x);
-    if (p.row > minRow) hLines.add(p.y);
-    vLines.add(p.x + p.widthPx);
-    hLines.add(p.y + p.heightPx);
-  }
-
-  // Build lookup: nodeId → label and room name
-  const nodeInfo = new Map<string, { label: string; room?: string }>();
-  for (const n of nodes) {
-    if (n.type !== "device") continue;
-    const data = n.data as DeviceData;
-    let room: string | undefined;
-    if (n.parentId) {
-      const parent = nodes.find((p) => p.id === n.parentId);
-      // Case-transform to match the PDF's pill text (#294) — pill placement is
-      // width-driven since #357, so differing text would also move the pills.
-      const parentLabel = parent ? (parent.data as { label?: string }).label : undefined;
-      if (parentLabel) room = transformLabel(parentLabel, labelCase);
-    }
-    nodeInfo.set(n.id, { label: transformLabel(data.label, labelCase), room });
-  }
-
-  // Build edge lookup
-  const edgeMap = new Map(edges.map((e) => [e.id, e]));
-
-  const labels: CrossingLabel[] = [];
-  // Margin width in canvas px (distance from page edge to content border)
-  const marginPx = pages.length > 0 ? pages[0].contentX - pages[0].x : 0;
-  // Inset from content border — 15% of margin keeps pills visually separated
-  const inset = marginPx * 0.15;
-
-  // How far a pill may slide along the sheet it sits on before it leaves the drawing
-  // border. The vertical span runs to the bottom margin, not to contentH, which stops
-  // a title-block height short of it.
-  const pageByNumber = new Map(pages.map((p) => [p.index + 1, p]));
-  const slideX = (pageNum: number): PillLimit | null => {
-    const p = pageByNumber.get(pageNum);
-    return p ? { min: p.contentX, max: p.contentX + p.contentW } : null;
-  };
-  const slideY = (pageNum: number): PillLimit | null => {
-    const p = pageByNumber.get(pageNum);
-    return p ? { min: p.contentY, max: p.y + p.heightPx - marginPx } : null;
-  };
-
-  // Resolve signal colors
-  const resolveColor = (edge: { data?: { signalType?: SignalType } }): string => {
-    const st = edge.data?.signalType;
-    if (!st) return DEFAULT_SIGNAL_COLORS.custom;
-    return signalColorOverrides?.[st] ?? DEFAULT_SIGNAL_COLORS[st];
-  };
-
-  for (const [edgeId, route] of Object.entries(routedEdges)) {
-    const edge = edgeMap.get(edgeId);
-    if (!edge) continue;
-    // Stubbed edges only render short stubs — their invisible middle section shouldn't generate crossing labels
-    if (edge.data?.stubbed) continue;
-    const sourceInfo = nodeInfo.get(edge.source);
-    const targetInfo = nodeInfo.get(edge.target);
-    if (!sourceInfo || !targetInfo) continue;
-
-    for (const seg of route.segments) {
-      if (seg.axis === "h") {
-        const y = seg.y1;
-        const minX = Math.min(seg.x1, seg.x2);
-        const maxX = Math.max(seg.x1, seg.x2);
-        const goingRight = seg.x2 > seg.x1;
-        for (const bx of vLines) {
-          if (bx > minX && bx < maxX) {
-            const rightwardTarget = goingRight ? targetInfo : sourceInfo;
-            const leftwardTarget = goingRight ? sourceInfo : targetInfo;
-
-            const rightPageNum = pageAtPoint(bx + 1, y, pages);
-            const leftPageNum = pageAtPoint(bx - 1, y, pages);
-
-            // Position inside the content border (margin + inset from boundary)
-            const edgeColor = resolveColor(edge);
-            labels.push({ x: bx - marginPx - inset, y, text: formatLabel(rightwardTarget), pageNum: rightPageNum, anchor: "left", color: edgeColor, sheet: leftPageNum, limit: slideY(leftPageNum) });
-            labels.push({ x: bx + marginPx + inset, y, text: formatLabel(leftwardTarget), pageNum: leftPageNum, anchor: "right", color: edgeColor, sheet: rightPageNum, limit: slideY(rightPageNum) });
-          }
-        }
-      } else {
-        const x = seg.x1;
-        const minY = Math.min(seg.y1, seg.y2);
-        const maxY = Math.max(seg.y1, seg.y2);
-        const goingDown = seg.y2 > seg.y1;
-        for (const by of hLines) {
-          if (by > minY && by < maxY) {
-            const downwardTarget = goingDown ? targetInfo : sourceInfo;
-            const upwardTarget = goingDown ? sourceInfo : targetInfo;
-
-            const downPageNum = pageAtPoint(x, by + 1, pages);
-            const upPageNum = pageAtPoint(x, by - 1, pages);
-
-            const edgeColor = resolveColor(edge);
-            labels.push({ x, y: by - marginPx - inset, text: formatLabel(downwardTarget), pageNum: downPageNum, anchor: "up", color: edgeColor, sheet: upPageNum, limit: slideX(upPageNum) });
-            labels.push({ x, y: by + marginPx + inset, text: formatLabel(upwardTarget), pageNum: upPageNum, anchor: "down", color: edgeColor, sheet: downPageNum, limit: slideX(downPageNum) });
-          }
-        }
-      }
-    }
-  }
-
-  return labels;
-}
-
-function formatLabel(info: { label: string; room?: string }): string {
-  if (info.room) return `${info.label} (${info.room})`;
-  return info.label;
-}
+//
+// The scan itself, and the nodeId → pill-name lookup it runs on, live in
+// crossingLabels.ts — the PDF export builds its pills from the same lookup, so a
+// crossing one surface draws a pill for is a crossing the other draws one for too
+// (#361). This file only measures and paints them.
 
 /** Measure text width using a canvas 2D context for pixel-accurate sizing. */
 let measureCtx: CanvasRenderingContext2D | null = null;
@@ -520,6 +364,9 @@ function PageBoundaryOverlay() {
   const printOriginOffsetY = useSchematicStore((s) => s.printOriginOffsetY);
   const setPrintOriginOffset = useSchematicStore((s) => s.setPrintOriginOffset);
   const labelCase = useSchematicStore((s) => s.labelCase);
+  // A stub leg whose partner ends on a hidden inline adapter names the device beyond
+  // it, exactly as the stub tag on that leg does (#348).
+  const hiddenAdapterNodeIds = useSchematicStore((s) => s.hiddenAdapterNodeIds);
   // Subscribe to node positions so the overlay re-renders when nodes move
   useSchematicStore((s) =>
     s.nodes.map((n) => `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)},${n.measured?.width ?? 0},${n.measured?.height ?? 0}`).join("|"),
@@ -536,8 +383,18 @@ function PageBoundaryOverlay() {
   const pxPerPt = pxPerIn / 72;
 
   const crossingLabels = useMemo(
-    () => computeCrossingLabels(pages, routedEdges, storeEdges, storeNodes, pxPerPt, signalColors, labelCase),
-    [pages, routedEdges, storeEdges, storeNodes, pxPerPt, signalColors, labelCase],
+    () => computeCrossingLabels(
+      pages,
+      routedEdges,
+      storeEdges,
+      storeNodes,
+      signalColors,
+      // Case-transform to match the PDF's pill text (#294) — pill placement is
+      // width-driven since #357, so differing text would also move the pills.
+      (label) => transformLabel(label, labelCase),
+      hiddenAdapterNodeIds,
+    ),
+    [pages, routedEdges, storeEdges, storeNodes, signalColors, labelCase, hiddenAdapterNodeIds],
   );
 
   const titleBlockBands = useMemo(
