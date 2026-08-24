@@ -279,14 +279,15 @@ describe("test schematic — #307 coverage", () => {
 });
 
 describe("test schematic — #368 adapter-bench spacing", () => {
-  it("keeps every adapter-bench pair in different columns with clear space for insertAdapterBetween's nudge", () => {
-    // store.ts insertAdapterBetween nudges an overlapping adapter with
-    // pushLeft = other.position.x - adapterW(144) - MIN_GAP(80), so a single
-    // pass only clears the neighboring device when the gap between the two
-    // paired devices is at least 144 + 80 = 224px — below that the adapter can
-    // overlap the device it was nudged away from (see README.md and the
-    // COL_GAP comment in build.ts).
-    const MIN_CLEAR = 224;
+  it("keeps every adapter-bench pair in different columns with clear space for insertAdapterBetween's free-slot search", () => {
+    // store.ts insertAdapterBetween places the adapter via findFreeAdapterSlot
+    // (adapterPlacement.ts), which prefers the midpoint between the pair. That
+    // slot is only collision-free when the gap between the two paired devices
+    // clears DEVICE_W_EST(144) + 2 * ADAPTER_GAP.x(80) = 304px (strict
+    // inequality, so exactly 304 still fits) — below that the search falls
+    // back to slots away from the bench (see README.md and the COL_GAP
+    // comment in build.ts).
+    const MIN_CLEAR = 304;
     const roomById = new Map(rooms.map((r) => [r.id, r]));
     const byId = new Map(devices.map((d) => [d.id, d]));
     const absX = (dev: SchematicNode) => {

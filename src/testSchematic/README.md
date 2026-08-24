@@ -44,14 +44,16 @@ a converted-to-stub connection's tag room to render without crowding its
 neighbor.
 
 `COL_GAP=320` isn't an arbitrary round number: `insertAdapterBetween` in
-`store.ts` nudges an adapter that overlaps a neighboring device with
-`pushLeft = other.position.x - adapterW(144) - MIN_GAP(80)`, so its single
-nudge pass only clears that neighbor once the gap between the two paired
-devices is at least `144 + 80 = 224px`. `COL_GAP` is set well past that floor
-so an adapter lands with room on both sides rather than exactly at the edge of
+`store.ts` places the adapter via `findFreeAdapterSlot` (`adapterPlacement.ts`,
+#363), which prefers the midpoint between the pair and only takes it when the
+gap between the two paired devices clears
+`DEVICE_W_EST(144) + 2 * ADAPTER_GAP.x(80) = 304px` (strict-inequality
+collision, so exactly 304 still fits). `COL_GAP` is set past that floor so an
+adapter lands on its bench with slack rather than exactly at the edge of
 clearing — `testSchematic.test.ts`'s `#368 adapter-bench spacing` guard pins
-the 224px floor so a future layout change can't quietly re-stack a bench
-without a test noticing. Column *order* within a room also isn't free: a
+the 304px floor so a future layout change can't quietly re-stack a bench
+(the adapter would still land, just off in whatever free space the search
+finds instead of on the bench) without a test noticing. Column *order* within a room also isn't free: a
 device with real wiring should sit in whichever column is nearest the room its
 wires actually run to (see the comment above `rackRoom` in `build.ts`), or
 widening the gaps here just makes cross-room runs longer instead of shorter.
