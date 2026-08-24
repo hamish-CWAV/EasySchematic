@@ -84,7 +84,11 @@ export default function PatchPanelsPage() {
           <strong>Schedule report…</strong> — opens the Patch Panel Schedule: one row per port with
           rear/front cable IDs, remote devices, rooms, and lengths. Patched (virtual) assignments and
           physically drawn connections appear side by side, with the same cable numbers as the
-          schematic. Export to CSV or PDF from the Reports dialog.
+          schematic. Export to CSV or PDF from the Reports dialog. The PDF mirrors the table on
+          screen — same columns in the same order, same filter, grouping and sort — so use the
+          tab's <strong>Columns</strong> menu to decide what a printed schedule shows. The CSV
+          always exports every column and every row, so a spreadsheet has the full data to work
+          from.
         </li>
       </ul>
 

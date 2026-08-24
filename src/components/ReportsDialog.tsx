@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState, useCallback, useEffect } from "react";
+import React, { memo, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useSchematicStore } from "../store";
 import { computeNetworkReport, computeDhcpServerSummary, computePoeBudget, buildNetworkReportCsv, type NetworkReportRow } from "../networkReport";
 import { isValidIpv4, isValidSubnetMask, isValidVlan, findDuplicateIps, computeDhcpWarnings, computeSubnetConflicts, type DhcpWarning } from "../networkValidation";
@@ -27,10 +27,19 @@ import {
   exportPatchPanelScheduleCsv,
   getPatchPanelScheduleTableData,
   resolvePatchPanelHiddenColumns,
-  PATCH_PANEL_LEGACY_COLUMN_IDS,
-  type PatchPanelLegacyColumnId,
+  filterPatchPanelScheduleRows,
+  sortPatchPanelScheduleRows,
+  groupPatchPanelScheduleRows,
+  patchPanelCellText,
   type PatchPanelScheduleRow,
 } from "../patchPanelSchedule";
+import {
+  PATCH_PANEL_SCHEDULE_COLUMNS,
+  PATCH_PANEL_COLUMN_GROUP_LABELS,
+  defaultPatchPanelTableView,
+  type PatchPanelColumnGroup,
+  type PatchPanelTableView,
+} from "../patchPanelColumns";
 import { createDefaultPackListLayout, createDefaultNetworkReportLayout, createDefaultCableScheduleLayout, createDefaultPatchPanelScheduleLayout, createDefaultPowerReportLayout } from "../reportLayout";
 import { getNetworkReportTableData } from "../networkReport";
 import { computePowerReport, exportPowerReportCsv, getPowerReportTableData } from "../powerReport";
@@ -62,8 +71,19 @@ function ReportsDialog({ initialTab, onClose }: ReportsDialogProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [showNetworkPreview, setShowNetworkPreview] = useState(false);
   const [showCableSchedulePreview, setShowCableSchedulePreview] = useState(false);
-  const [showPatchPanelPreview, setShowPatchPanelPreview] = useState(false);
   const [showPowerPreview, setShowPowerPreview] = useState(false);
+
+  // The Patch Panels PDF mirrors the tab (#362): the tab publishes what it is showing here,
+  // and clicking PDF freezes that into the layout the preview opens with.
+  const patchPanelView = useRef<PatchPanelTableView>(defaultPatchPanelTableView());
+  const [patchPanelPreview, setPatchPanelPreview] = useState<PatchPanelTableView | null>(null);
+  const patchPanelPreviewLayout = useMemo(
+    () => (patchPanelPreview ? createDefaultPatchPanelScheduleLayout(patchPanelPreview) : null),
+    [patchPanelPreview],
+  );
+  const publishPatchPanelView = useCallback((v: PatchPanelTableView) => {
+    patchPanelView.current = v;
+  }, []);
 
   const nodes = useSchematicStore((s) => s.nodes);
   const edges = useSchematicStore((s) => s.edges);
@@ -114,7 +134,6 @@ function ReportsDialog({ initialTab, onClose }: ReportsDialogProps) {
   const defaultLayout = useMemo(() => createDefaultPackListLayout(), []);
   const networkDefaultLayout = useMemo(() => createDefaultNetworkReportLayout(), []);
   const cableScheduleDefaultLayout = useMemo(() => createDefaultCableScheduleLayout(), []);
-  const patchPanelDefaultLayout = useMemo(() => createDefaultPatchPanelScheduleLayout(), []);
   const powerDefaultLayout = useMemo(() => createDefaultPowerReportLayout(), []);
 
   const tabLabels: Record<ReportsTab, string> = {
@@ -165,7 +184,7 @@ function ReportsDialog({ initialTab, onClose }: ReportsDialogProps) {
               </button>
             )}
             {tab === "patchPanel" && (
-              <button onClick={() => setShowPatchPanelPreview(true)} className={btnClass}>
+              <button onClick={() => setPatchPanelPreview(patchPanelView.current)} className={btnClass}>
                 PDF
               </button>
             )}
@@ -213,7 +232,7 @@ function ReportsDialog({ initialTab, onClose }: ReportsDialogProps) {
             {tab === "devices" && <DeviceReportTab />}
             {tab === "packList" && <PackListTabInline />}
             {tab === "cableSchedule" && <CableScheduleTabInline />}
-            {tab === "patchPanel" && <PatchPanelScheduleTabInline />}
+            {tab === "patchPanel" && <PatchPanelScheduleTabInline onViewChange={publishPatchPanelView} />}
             {tab === "power" && <PowerReportTab />}
           </div>
         </div>
@@ -265,10 +284,11 @@ function ReportsDialog({ initialTab, onClose }: ReportsDialogProps) {
         />
       )}
 
-      {showPatchPanelPreview && (
+      {patchPanelPreview && patchPanelPreviewLayout && (
         <ReportPreviewDialog
           reportKey={PATCH_PANEL_LAYOUT_KEY}
-          defaultLayout={patchPanelDefaultLayout}
+          defaultLayout={patchPanelPreviewLayout}
+          mirrorScreen
           titleBlock={titleBlock}
           getTableData={(layout) => {
             const s = useSchematicStore.getState();
@@ -278,9 +298,12 @@ function ReportsDialog({ initialTab, onClose }: ReportsDialogProps) {
                 distanceSettings: s.distanceSettings,
               }),
               layout,
+              // The tab's filter box and "Hide empty" checkbox; the columns, sort and
+              // grouping ride along in the layout above (#362).
+              patchPanelPreview,
             );
           }}
-          onClose={() => setShowPatchPanelPreview(false)}
+          onClose={() => setPatchPanelPreview(null)}
           filename={`${schematicName.replace(/[^a-zA-Z0-9-_ ]/g, "")} - Patch Panel Schedule.pdf`}
         />
       )}
@@ -335,29 +358,17 @@ const CABLE_COLUMNS: { id: string; label: string }[] = [
   { id: "multicableLabel", label: "Snake" },
 ];
 
-// Headings for the Patch Panel Schedule's single-face columns. Keyed off the id list in
-// patchPanelSchedule so the picker, the cells and the group-header colSpan can't drift
-// apart from the visibility rule (#311).
-const PATCH_PANEL_LEGACY_COLUMN_LABELS: Record<PatchPanelLegacyColumnId, string> = {
-  connector: "Connector",
-  gender: "M/F",
-  remoteDevice: "Remote Device",
-  remotePort: "Remote Port",
-  remoteRoom: "Remote Room",
-  cableId: "Cable ID",
-  cableType: "Cable Type",
-  cableLength: "Length",
-  computedLength: "Est. Length",
-  multicableLabel: "Snake",
-};
-
-const PATCH_PANEL_LEGACY_COLUMN_TITLES: Partial<Record<PatchPanelLegacyColumnId, string>> = {
-  computedLength: "Estimated length from room-to-room distance + slack",
-};
-
-/** Total Patch Panel Schedule columns with every single-face column showing: 5 panel +
- *  5 single-face + 5 cable + 9 rear + 9 front + 1 normalling. */
-const PATCH_PANEL_COLUMN_COUNT = 34;
+// The Patch Panel Schedule's Columns menu, sectioned. Built from the one list the table
+// rows and the print layout are built from, so the picker can't drift from either (#362).
+// Every column is offered — the PDF mirrors the tab now, so this menu is where a user
+// narrows a printed schedule, and it persists with the document.
+const PATCH_PANEL_COLUMN_SECTIONS = (
+  Object.keys(PATCH_PANEL_COLUMN_GROUP_LABELS) as PatchPanelColumnGroup[]
+).map((group) => ({
+  group,
+  label: PATCH_PANEL_COLUMN_GROUP_LABELS[group],
+  columns: PATCH_PANEL_SCHEDULE_COLUMNS.filter((c) => c.group === group),
+}));
 
 // ─── Network Report Tab ────────────────────────────────────────
 
@@ -2165,18 +2176,13 @@ function renderGroupedCableSchedule(
 
 // ─── Patch Panel Schedule Tab ──────────────────────────────────
 
-type PatchPanelSortKey =
-  | "panel" | "panelRoom" | "face" | "position" | "signalType"
-  | "connector" | "gender"
-  | "remoteDevice" | "remotePort" | "remoteRoom"
-  | "cableId" | "cableType" | "cableLength" | "computedLength" | "multicableLabel"
-  | "rearConnector" | "rearGender" | "rearRemoteDevice" | "rearRemotePort" | "rearCableId" | "rearCableType" | "rearCableLength"
-  | "frontConnector" | "frontGender" | "frontRemoteDevice" | "frontRemotePort" | "frontCableId" | "frontCableType" | "frontCableLength"
-  | "normalling";
+/** A column key from PATCH_PANEL_SCHEDULE_COLUMNS — every column whose header is a sort
+ *  handle (all but the few marked `sortable: false`). */
+type PatchPanelSortKey = string;
 
 type PatchPanelGroupBy = "" | "panel" | "panelRoom" | "signalType" | "face";
 
-function PatchPanelScheduleTabInline() {
+function PatchPanelScheduleTabInline({ onViewChange }: { onViewChange: (v: PatchPanelTableView) => void }) {
   const nodes = useSchematicStore((s) => s.nodes);
   const edges = useSchematicStore((s) => s.edges);
   const cableNamingScheme = useSchematicStore((s) => s.cableNamingScheme);
@@ -2194,39 +2200,10 @@ function PatchPanelScheduleTabInline() {
     [nodes, edges, cableNamingScheme, roomDistances, distanceSettings],
   );
 
-  const filtered = useMemo(() => {
-    let list = rows;
-    if (hideUnconnected) list = list.filter((r) => r.edgeId !== "");
-    const q = filter.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (r) =>
-        r.panel.toLowerCase().includes(q) ||
-        r.panelRoom.toLowerCase().includes(q) ||
-        r.face.toLowerCase().includes(q) ||
-        r.position.toLowerCase().includes(q) ||
-        r.signalType.toLowerCase().includes(q) ||
-        r.connector.toLowerCase().includes(q) ||
-        r.remoteDevice.toLowerCase().includes(q) ||
-        r.remotePort.toLowerCase().includes(q) ||
-        r.remoteRoom.toLowerCase().includes(q) ||
-        r.cableId.toLowerCase().includes(q) ||
-        r.cableType.toLowerCase().includes(q) ||
-        r.cableLength.toLowerCase().includes(q) ||
-        r.computedLength.toLowerCase().includes(q) ||
-        r.multicableLabel.toLowerCase().includes(q) ||
-        (r.rearConnector ?? "").toLowerCase().includes(q) ||
-        (r.rearRemoteDevice ?? "").toLowerCase().includes(q) ||
-        (r.rearRemotePort ?? "").toLowerCase().includes(q) ||
-        (r.rearRemoteRoom ?? "").toLowerCase().includes(q) ||
-        (r.rearCableId ?? "").toLowerCase().includes(q) ||
-        (r.frontConnector ?? "").toLowerCase().includes(q) ||
-        (r.frontRemoteDevice ?? "").toLowerCase().includes(q) ||
-        (r.frontRemotePort ?? "").toLowerCase().includes(q) ||
-        (r.frontRemoteRoom ?? "").toLowerCase().includes(q) ||
-        (r.frontCableId ?? "").toLowerCase().includes(q),
-    );
-  }, [rows, filter, hideUnconnected]);
+  const filtered = useMemo(
+    () => filterPatchPanelScheduleRows(rows, { filter, hideUnconnected }),
+    [rows, filter, hideUnconnected],
+  );
 
   const hiddenColsArr = useSchematicStore((s) => s.reportHiddenColumns["patchPanel"]);
   const setReportHiddenColumns = useSchematicStore((s) => s.setReportHiddenColumns);
@@ -2244,23 +2221,30 @@ function PatchPanelScheduleTabInline() {
   // invisible field with no arrow on any header; fall back to the panel column.
   const effectiveSortKey: PatchPanelSortKey = hiddenCols.has(sortKey) ? "panel" : sortKey;
 
-  const sorted = useMemo(() => {
-    const copy = [...filtered];
-    if (effectiveSortKey === "position") {
-      // Natural rear-then-front-by-index order from compute(); keep the existing
-      // sort and only flip direction if user asks descending.
-      if (!sortAsc) copy.reverse();
-      return copy;
-    }
-    copy.sort((a, b) => {
-      const va = (a[effectiveSortKey] ?? "") as string;
-      const vb = (b[effectiveSortKey] ?? "") as string;
-      const cmp = va.localeCompare(vb);
-      return sortAsc ? cmp : -cmp;
+  const sorted = useMemo(
+    () => sortPatchPanelScheduleRows(filtered, effectiveSortKey, sortAsc),
+    [filtered, effectiveSortKey, sortAsc],
+  );
+
+  // Columns the table is actually rendering, in order — the PDF is built from this same
+  // list so the two surfaces show the same columns in the same order (#362).
+  const visibleColumns = useMemo(
+    () => PATCH_PANEL_SCHEDULE_COLUMNS.filter((c) => !hiddenCols.has(c.key)),
+    [hiddenCols],
+  );
+
+  // Publish what the table is showing so the PDF button can mirror it (#362).
+  useEffect(() => {
+    onViewChange({
+      filter,
+      hideUnconnected,
+      hiddenColumns: [...hiddenCols],
+      sortBy: effectiveSortKey,
+      sortDir: sortAsc ? "asc" : "desc",
+      groupBy: groupByKey || null,
     });
-    return copy;
-  }, [filtered, effectiveSortKey, sortAsc]);
-  const legacyHiddenCount = PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => hiddenCols.has(id)).length;
+  }, [onViewChange, filter, hideUnconnected, hiddenCols, effectiveSortKey, sortAsc, groupByKey]);
+
   const toggleCol = useCallback((id: string) => {
     const next = new Set(hiddenCols);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -2285,20 +2269,10 @@ function PatchPanelScheduleTabInline() {
     );
   }
 
-  const groups: { label: string; rows: PatchPanelScheduleRow[] }[] = [];
-  if (groupByKey) {
-    const map = new Map<string, PatchPanelScheduleRow[]>();
-    for (const r of sorted) {
-      const k = groupByKey === "signalType"
-        ? (r.signalType || "Unconnected")
-        : (r[groupByKey] || "—");
-      const arr = map.get(k);
-      if (arr) arr.push(r); else map.set(k, [r]);
-    }
-    for (const [label, list] of map) groups.push({ label, rows: list });
-  } else {
-    groups.push({ label: "", rows: sorted });
-  }
+  const grouped = groupPatchPanelScheduleRows(sorted, groupByKey || null);
+  const groups: { label: string; rows: PatchPanelScheduleRow[] }[] = grouped
+    ? [...grouped].map(([label, list]) => ({ label, rows: list }))
+    : [{ label: "", rows: sorted }];
 
   // Occupancy summary: unique panels × (connected / total ports).
   const perPanel = new Map<string, { connected: number; total: number; label: string }>();
@@ -2343,7 +2317,7 @@ function PatchPanelScheduleTabInline() {
         </label>
         <button
           className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-xs outline-none cursor-pointer hover:text-[var(--color-text)] whitespace-nowrap"
-          title="Show / hide the single-face columns"
+          title="Show / hide columns — the PDF prints what the table shows"
           onClick={(e) => setColMenu({ x: e.clientX, y: e.clientY })}
         >
           Columns ▾
@@ -2372,38 +2346,19 @@ function PatchPanelScheduleTabInline() {
       <table className="w-full border-collapse">
         <thead>
           <tr onContextMenu={(e) => { e.preventDefault(); setColMenu({ x: e.clientX, y: e.clientY }); }}>
-            <th className={thClass} onClick={() => toggleSort("panel")}>Panel{sortArrow("panel")}</th>
-            <th className={thClass} onClick={() => toggleSort("panelRoom")}>Panel Room{sortArrow("panelRoom")}</th>
-            <th className={thClass} onClick={() => toggleSort("face")}>Face{sortArrow("face")}</th>
-            <th className={thClass} onClick={() => toggleSort("position")}>Position{sortArrow("position")}</th>
-            <th className={thClass} onClick={() => toggleSort("signalType")}>Signal{sortArrow("signalType")}</th>
-            {/* Single-face (non-passthrough) columns — hidden by default when no row in
-                view is a legacy paired-port row; see hiddenCols above (#311). */}
-            {PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => !hiddenCols.has(id)).map((id) => (
-              <th key={id} className={thClass} onClick={() => toggleSort(id)} title={PATCH_PANEL_LEGACY_COLUMN_TITLES[id]}>
-                {PATCH_PANEL_LEGACY_COLUMN_LABELS[id]}{sortArrow(id)}
+            {/* Rendered straight off the shared column list, minus whatever is hidden —
+                the single-face columns hide themselves when no legacy paired-port row is
+                in view (#311), and the PDF prints exactly this set (#362). */}
+            {visibleColumns.map((col) => (
+              <th
+                key={col.key}
+                className={thClass}
+                title={col.title}
+                onClick={col.sortable === false ? undefined : () => toggleSort(col.key)}
+              >
+                {col.header}{col.sortable === false ? "" : sortArrow(col.key)}
               </th>
             ))}
-            {/* Passthrough-only columns */}
-            <th className={thClass} onClick={() => toggleSort("rearConnector")}>Rear Connector{sortArrow("rearConnector")}</th>
-            <th className={thClass} onClick={() => toggleSort("rearGender")}>Rear M/F{sortArrow("rearGender")}</th>
-            <th className={thClass} onClick={() => toggleSort("rearRemoteDevice")}>Rear Remote Device{sortArrow("rearRemoteDevice")}</th>
-            <th className={thClass} onClick={() => toggleSort("rearRemotePort")}>Rear Remote Port{sortArrow("rearRemotePort")}</th>
-            <th className={thClass} title="Room of the rear-face remote device">Rear Remote Room</th>
-            <th className={thClass} onClick={() => toggleSort("rearCableId")}>Rear Cable ID{sortArrow("rearCableId")}</th>
-            <th className={thClass} onClick={() => toggleSort("rearCableType")}>Rear Cable Type{sortArrow("rearCableType")}</th>
-            <th className={thClass} onClick={() => toggleSort("rearCableLength")}>Rear Length{sortArrow("rearCableLength")}</th>
-            <th className={thClass} title="Estimated length from room-to-room distance + slack">Rear Est. Length</th>
-            <th className={thClass} onClick={() => toggleSort("frontConnector")}>Front Connector{sortArrow("frontConnector")}</th>
-            <th className={thClass} onClick={() => toggleSort("frontGender")}>Front M/F{sortArrow("frontGender")}</th>
-            <th className={thClass} onClick={() => toggleSort("frontRemoteDevice")}>Front Remote Device{sortArrow("frontRemoteDevice")}</th>
-            <th className={thClass} onClick={() => toggleSort("frontRemotePort")}>Front Remote Port{sortArrow("frontRemotePort")}</th>
-            <th className={thClass} title="Room of the front-face remote device">Front Remote Room</th>
-            <th className={thClass} onClick={() => toggleSort("frontCableId")}>Front Cable ID{sortArrow("frontCableId")}</th>
-            <th className={thClass} onClick={() => toggleSort("frontCableType")}>Front Cable Type{sortArrow("frontCableType")}</th>
-            <th className={thClass} onClick={() => toggleSort("frontCableLength")}>Front Length{sortArrow("frontCableLength")}</th>
-            <th className={thClass} title="Estimated length from room-to-room distance + slack">Front Est. Length</th>
-            <th className={thClass} onClick={() => toggleSort("normalling")}>Normalling{sortArrow("normalling")}</th>
           </tr>
         </thead>
         <tbody>
@@ -2412,7 +2367,7 @@ function PatchPanelScheduleTabInline() {
               {g.label && (
                 <tr>
                   <td
-                    colSpan={PATCH_PANEL_COLUMN_COUNT - legacyHiddenCount}
+                    colSpan={visibleColumns.length}
                     className="bg-[var(--color-surface)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] py-1 px-2"
                   >
                     {g.label}
@@ -2426,35 +2381,11 @@ function PatchPanelScheduleTabInline() {
                     key={r.rowId}
                     className={`${rowClass(i)} ${unconnected ? "opacity-60" : ""}`}
                   >
-                    <td className={tdClass}>{r.panel}</td>
-                    <td className={tdClass}>{r.panelRoom}</td>
-                    <td className={tdClass}>{r.face}</td>
-                    <td className={tdClass}>{r.position}</td>
-                    <td className={tdClass}>{r.signalType || "—"}</td>
-                    {/* Single-face columns */}
-                    {PATCH_PANEL_LEGACY_COLUMN_IDS.filter((id) => !hiddenCols.has(id)).map((id) => (
-                      <td key={id} className={id === "computedLength" ? `${tdClass} text-[var(--color-text-muted)]` : tdClass}>{r[id] || "—"}</td>
+                    {visibleColumns.map((col) => (
+                      <td key={col.key} className={col.muted ? `${tdClass} text-[var(--color-text-muted)]` : tdClass}>
+                        {patchPanelCellText(r, col.key)}
+                      </td>
                     ))}
-                    {/* Passthrough columns */}
-                    <td className={tdClass}>{r.rearConnector || "—"}</td>
-                    <td className={tdClass}>{r.rearGender || "—"}</td>
-                    <td className={tdClass}>{r.rearRemoteDevice || "—"}</td>
-                    <td className={tdClass}>{r.rearRemotePort || "—"}</td>
-                    <td className={tdClass}>{r.rearRemoteRoom || "—"}</td>
-                    <td className={tdClass}>{r.rearCableId || "—"}</td>
-                    <td className={tdClass}>{r.rearCableType || "—"}</td>
-                    <td className={tdClass}>{r.rearCableLength || "—"}</td>
-                    <td className={`${tdClass} text-[var(--color-text-muted)]`}>{r.rearComputedLength || "—"}</td>
-                    <td className={tdClass}>{r.frontConnector || "—"}</td>
-                    <td className={tdClass}>{r.frontGender || "—"}</td>
-                    <td className={tdClass}>{r.frontRemoteDevice || "—"}</td>
-                    <td className={tdClass}>{r.frontRemotePort || "—"}</td>
-                    <td className={tdClass}>{r.frontRemoteRoom || "—"}</td>
-                    <td className={tdClass}>{r.frontCableId || "—"}</td>
-                    <td className={tdClass}>{r.frontCableType || "—"}</td>
-                    <td className={tdClass}>{r.frontCableLength || "—"}</td>
-                    <td className={`${tdClass} text-[var(--color-text-muted)]`}>{r.frontComputedLength || "—"}</td>
-                    <td className={tdClass}>{r.normalling || "—"}</td>
                   </tr>
                 );
               })}
@@ -2467,12 +2398,14 @@ function PatchPanelScheduleTabInline() {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setColMenu(null)} />
           <div
-            className="fixed z-50 bg-white border border-[var(--color-border)] rounded shadow-lg py-1 text-xs max-h-[70vh] overflow-y-auto"
-            style={{ left: colMenu.x, top: colMenu.y }}
+            className="fixed z-50 bg-white border border-[var(--color-border)] rounded shadow-lg py-1 text-xs overflow-y-auto"
+            // All 34 columns are listed now, so bound the menu to whatever is left below
+            // the click rather than a flat 70vh that can run off the bottom of the window.
+            style={{ left: colMenu.x, top: colMenu.y, maxHeight: `calc(100vh - ${colMenu.y + 16}px)` }}
           >
-            <div className="flex items-center justify-between gap-3 px-3 py-1">
+            <div className="flex items-center justify-between gap-3 px-3 py-1 border-b border-[var(--color-border)] mb-1">
               <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
-                Single-Face Columns
+                Columns
               </span>
               <button
                 onClick={showAllCols}
@@ -2482,25 +2415,43 @@ function PatchPanelScheduleTabInline() {
                 Show all
               </button>
             </div>
-            {PATCH_PANEL_LEGACY_COLUMN_IDS.map((id) => (
-              <label
-                key={id}
-                className="flex items-center gap-2 px-3 py-1 hover:bg-[var(--color-surface)] cursor-pointer whitespace-nowrap"
-              >
-                <input
-                  type="checkbox"
-                  checked={!hiddenCols.has(id)}
-                  onChange={() => toggleCol(id)}
-                  className="w-3 h-3 accent-blue-500 cursor-pointer"
-                />
-                {PATCH_PANEL_LEGACY_COLUMN_LABELS[id]}
-              </label>
+            {PATCH_PANEL_COLUMN_SECTIONS.map((section) => (
+              <React.Fragment key={section.group}>
+                <div className="px-3 pt-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
+                  {section.label}
+                </div>
+                {section.columns.map((col) => {
+                  const shown = !hiddenCols.has(col.key);
+                  // Never let the table (and so the PDF) end up with no columns at all.
+                  const isLastShown = shown && visibleColumns.length === 1;
+                  return (
+                    <label
+                      key={col.key}
+                      title={isLastShown ? "The table needs at least one column" : col.title}
+                      className={`flex items-center gap-2 px-3 py-1 whitespace-nowrap ${
+                        isLastShown
+                          ? "opacity-50 cursor-default"
+                          : "hover:bg-[var(--color-surface)] cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={shown}
+                        disabled={isLastShown}
+                        onChange={() => toggleCol(col.key)}
+                        className="w-3 h-3 accent-blue-500 cursor-pointer disabled:cursor-default"
+                      />
+                      {col.header}
+                    </label>
+                  );
+                })}
+              </React.Fragment>
             ))}
             <div className="border-t border-[var(--color-border)] mt-1 pt-1 px-3 py-1">
               <button
                 onClick={resetCols}
                 disabled={hiddenColsArr === undefined}
-                title="Show these columns only when a panel with separate rear/front ports is in view"
+                title="Show the single-face columns only when a panel with separate rear/front ports is in view"
                 className="text-[10px] text-blue-600 hover:text-blue-500 disabled:text-[var(--color-text-muted)] disabled:opacity-50 disabled:cursor-default cursor-pointer"
               >
                 {hiddenColsArr === undefined ? "Automatic (in use)" : "Back to automatic"}

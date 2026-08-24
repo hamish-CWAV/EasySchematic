@@ -3,6 +3,7 @@ import type { TitleBlock } from "./types";
 import type { ReportLayout, ReportTableDef } from "./reportLayout";
 import {
   getVisibleColumns,
+  getTableColumnGapMm,
   getPageDimensions,
   REPORT_MARGIN_MM,
 } from "./reportLayout";
@@ -10,11 +11,10 @@ import { normalizeSizes, getFieldValue, getFieldLabel } from "./titleBlockLayout
 
 // ─── Constants ───
 
-const COL_GAP = 4;
 const ROW_HEIGHT = 6;
 const HEADER_HEIGHT = 7;
-const FONT_SIZE = 8;
-const HEADER_FONT_SIZE = 9;
+export const FONT_SIZE = 8;
+export const HEADER_FONT_SIZE = 9;
 
 // ─── Inter font embedding ───
 
@@ -50,6 +50,33 @@ async function loadInterFont(doc: jsPDF) {
   doc.addFileToVFS("Inter-Bold.ttf", interBoldB64!);
   doc.addFont("Inter-Regular.ttf", "Inter", "normal");
   doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+}
+
+// ─── Text fitting ───
+
+/**
+ * The longest head of `text` that fits in `widthMm`, tail-trimmed with an ellipsis.
+ *
+ * Cells and headers must never be handed to jsPDF with a `maxWidth`, because jsPDF's answer
+ * to an over-wide string is to WRAP it — and the row height here is a fixed 6mm, so the
+ * second line lands on top of the row beneath. Clipping is what the on-screen preview does
+ * and what the table on the Patch Panels tab does, so it is also what prints (#362).
+ */
+export function fitText(doc: jsPDF, text: string, widthMm: number): string {
+  if (!text || widthMm <= 0) return "";
+  if (doc.getTextWidth(text) <= widthMm) return text;
+  const ellipsis = "…";
+  const ellipsisW = doc.getTextWidth(ellipsis);
+  if (ellipsisW > widthMm) return "";
+  // Longest prefix that still leaves room for the ellipsis.
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (doc.getTextWidth(text.slice(0, mid)) + ellipsisW <= widthMm) lo = mid;
+    else hi = mid - 1;
+  }
+  return text.slice(0, lo) + ellipsis;
 }
 
 // ─── Table data types ───
@@ -173,11 +200,12 @@ function drawTableSection(
   bottomLimit: number,
   contentWidthMm: number,
 ): number {
-  const visCols = getVisibleColumns(tableDef, contentWidthMm, COL_GAP);
+  const colGap = getTableColumnGapMm(tableDef, contentWidthMm);
+  const visCols = getVisibleColumns(tableDef, contentWidthMm, colGap);
   if (visCols.length === 0) return startY;
 
   const borders = tableDef.borderStyle ?? "none";
-  const totalW = visCols.reduce((s, c) => s + c.widthMm + COL_GAP, -COL_GAP);
+  const totalW = visCols.reduce((s, c) => s + c.widthMm + colGap, -colGap);
   const tableLeft = REPORT_MARGIN_MM - 1;
   const tableWidth = totalW + 2; // 1mm padding on each side
   const tableRight = tableLeft + tableWidth;
@@ -201,8 +229,8 @@ function drawTableSection(
     setupBorderStyle();
     let x = tableLeft;
     for (let ci = 0; ci < visCols.length - 1; ci++) {
-      x += visCols[ci].widthMm + COL_GAP;
-      doc.line(x - COL_GAP / 2, fromY, x - COL_GAP / 2, toY);
+      x += visCols[ci].widthMm + colGap;
+      doc.line(x - colGap / 2, fromY, x - colGap / 2, toY);
     }
   };
 
@@ -231,7 +259,7 @@ function drawTableSection(
     doc.setFontSize(11);
     doc.setFont("Inter", "bold");
     doc.setTextColor(0);
-    doc.text(label, REPORT_MARGIN_MM, y);
+    doc.text(fitText(doc, label, contentWidthMm), REPORT_MARGIN_MM, y);
     y += HEADER_HEIGHT;
     doc.setFont("Inter", "normal");
   };
@@ -249,8 +277,8 @@ function drawTableSection(
     doc.setTextColor(0);
     let x = REPORT_MARGIN_MM;
     for (const col of visCols) {
-      doc.text(col.header, x, y);
-      x += col.widthMm + COL_GAP;
+      doc.text(fitText(doc, col.header, col.widthMm), x, y);
+      x += col.widthMm + colGap;
     }
     doc.setFont("Inter", "normal");
     doc.setFontSize(FONT_SIZE);
@@ -295,8 +323,8 @@ function drawTableSection(
     for (const col of visCols) {
       const text = row[col.key] ?? "";
       const indent = isSubItem && col.key !== "count" ? 4 : 0;
-      doc.text(text, x + indent, y, { maxWidth: col.widthMm - indent });
-      x += col.widthMm + COL_GAP;
+      doc.text(fitText(doc, text, col.widthMm - indent), x + indent, y);
+      x += col.widthMm + colGap;
     }
 
     // Horizontal line under this row
@@ -317,7 +345,7 @@ function drawTableSection(
     doc.setFillColor(230, 235, 245);
     doc.rect(tableLeft, ghTop - 2, tableWidth, ROW_HEIGHT, "F");
     doc.setTextColor(0);
-    doc.text(label, REPORT_MARGIN_MM, y);
+    doc.text(fitText(doc, label, contentWidthMm), REPORT_MARGIN_MM, y);
     doc.setFont("Inter", "normal");
 
     // Border under group header

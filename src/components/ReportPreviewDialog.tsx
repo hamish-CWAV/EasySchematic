@@ -3,7 +3,9 @@ import type { TitleBlock, TitleBlockLayout, TitleBlockCell } from "../types";
 import type { ReportLayout, ReportTableDef, PaperSize, TableBorderStyle } from "../reportLayout";
 import {
   getVisibleColumns,
+  getTableColumnGapMm,
   getPageDimensions,
+  resolveLayout,
   REPORT_MARGIN_MM,
   PAPER_LABELS,
 } from "../reportLayout";
@@ -16,44 +18,6 @@ import {
   getFieldValue,
   getFieldLabel,
 } from "../titleBlockLayout";
-
-/**
- * Resolve a layout by combining hardcoded defaults with saved user preferences.
- * Column definitions, headers, and groupByOptions always come from code.
- * Only user selections (visibility, widths, groupBy, sort) are restored from saved data.
- */
-function resolveLayout(defaults: ReportLayout, saved: ReportLayout | null): ReportLayout {
-  if (!saved) return defaults;
-  return {
-    ...defaults,
-    // Restore user's page/header/footer preferences
-    headerLayout: saved.headerLayout ?? defaults.headerLayout,
-    headerHeightMm: saved.headerHeightMm ?? defaults.headerHeightMm,
-    footerLayout: saved.footerLayout ?? defaults.footerLayout,
-    footerHeightMm: saved.footerHeightMm ?? defaults.footerHeightMm,
-    orientation: saved.orientation ?? defaults.orientation,
-    paperSize: saved.paperSize ?? defaults.paperSize,
-    tables: defaults.tables.map((defaultTable) => {
-      const savedTable = saved.tables.find((t) => t.id === defaultTable.id);
-      if (!savedTable) return defaultTable;
-      // Apply saved visibility and widths onto hardcoded column definitions
-      const savedVis = new Map(savedTable.columns.map((c) => [c.key, c.visible]));
-      const savedWidths = new Map(savedTable.columns.map((c) => [c.key, c.widthMm]));
-      return {
-        ...defaultTable, // id, label, columns (definitions), groupByOptions from code
-        columns: defaultTable.columns.map((col) => ({
-          ...col,
-          visible: savedVis.has(col.key) ? savedVis.get(col.key)! : col.visible,
-          widthMm: savedWidths.has(col.key) ? savedWidths.get(col.key)! : col.widthMm,
-        })),
-        groupBy: savedTable.groupBy,
-        sortBy: savedTable.sortBy,
-        sortDir: savedTable.sortDir,
-        borderStyle: savedTable.borderStyle,
-      };
-    }),
-  };
-}
 
 // ─── Page Break Computation ───
 // Heights in mm — must match the PDF renderer constants in reportPdf.ts
@@ -185,6 +149,8 @@ interface ReportPreviewDialogProps {
   getTableData: (layout: ReportLayout) => ReportTableData[];
   onClose: () => void;
   filename: string;
+  /** True when `defaultLayout` already mirrors an on-screen table — see resolveLayout. */
+  mirrorScreen?: boolean;
 }
 
 // ─── Main Component ───
@@ -196,6 +162,7 @@ function ReportPreviewDialog({
   getTableData,
   onClose,
   filename,
+  mirrorScreen = false,
 }: ReportPreviewDialogProps) {
   const storedLayout = useSchematicStore((s) => s.reportLayouts[reportKey]) as ReportLayout | undefined;
   const setReportLayout = useSchematicStore((s) => s.setReportLayout);
@@ -218,7 +185,7 @@ function ReportPreviewDialog({
       } catch { /* ignore */ }
     }
     // Resolve: hardcoded definitions + saved user preferences
-    return resolveLayout(defaultLayout, saved);
+    return resolveLayout(defaultLayout, saved, mirrorScreen);
   });
 
   const tables = getTableData(layout);
@@ -500,6 +467,12 @@ function ReportPreviewDialog({
                     />
                   ))}
                 </div>
+                {mirrorScreen && (
+                  <p className="mt-1.5 text-[10px] leading-snug text-[var(--color-text-muted)]">
+                    Columns, sort and grouping mirror the report tab. Changes here apply to
+                    this export; use the tab&rsquo;s Columns menu to keep them.
+                  </p>
+                )}
                 {tableDef.groupByOptions.length > 1 && (
                   <div className="mt-2">
                     <label className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">
@@ -961,10 +934,14 @@ function PageContentRenderer({
             style={{
               position: "absolute",
               left: mm(REPORT_MARGIN_MM),
+              right: mm(REPORT_MARGIN_MM),
               top: mm(y),
               fontWeight: 700,
               fontSize: mm(3.8),
               color: "#000",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
             {item.label}
@@ -1656,8 +1633,13 @@ function PreviewColumnHeaders({
   setLayout: React.Dispatch<React.SetStateAction<ReportLayout>>;
   contentWidthMm: number;
 }) {
-  const visCols = getVisibleColumns(tableDef, contentWidthMm);
-  const colGap = mm(1.5);
+  // Same gap the PDF renderer uses, so the preview shows the widths that will actually
+  // print rather than columns ~1.6x too wide on a crowded table (#362).
+  const gapMm = useMemo(() => getTableColumnGapMm(tableDef, contentWidthMm), [tableDef, contentWidthMm]);
+  const visCols = useMemo(
+    () => getVisibleColumns(tableDef, contentWidthMm, gapMm),
+    [tableDef, contentWidthMm, gapMm],
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState<{
@@ -1729,9 +1711,9 @@ function PreviewColumnHeaders({
         <div
           key={col.key}
           style={{
-            width: mm(col.widthMm),
+            width: mm(col.widthMm + (i < visCols.length - 1 ? gapMm : 0)),
             paddingLeft: mm(0.5),
-            paddingRight: colGap,
+            paddingRight: mm(i < visCols.length - 1 ? gapMm : 0.5),
             paddingBottom: mm(0.5),
             fontWeight: 700,
             fontSize: mm(3),
@@ -1740,7 +1722,19 @@ function PreviewColumnHeaders({
             borderRight: borders === "grid" && i < visCols.length - 1 ? borderLine : undefined,
           }}
         >
-          {col.header}
+          {/* Clipped, not wrapped — the PDF ellipsizes an over-wide header too. The clip
+              lives on this span so it doesn't swallow the resize handle beside it. */}
+          <span
+            style={{
+              display: "block",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={col.header}
+          >
+            {col.header}
+          </span>
           {i < visCols.length - 1 && (
             <div
               style={{
@@ -1783,8 +1777,8 @@ function PreviewDataRow({
   contentWidthMm: number;
   isLastRow?: boolean;
 }) {
-  const visCols = getVisibleColumns(tableDef, contentWidthMm);
-  const colGap = mm(1.5);
+  const gapMm = getTableColumnGapMm(tableDef, contentWidthMm);
+  const visCols = getVisibleColumns(tableDef, contentWidthMm, gapMm);
   const isSubItem = row._isSubItem === "true";
   const borders = tableDef.borderStyle ?? "none";
   const borderLine = "1px solid #ccc";
@@ -1811,9 +1805,9 @@ function PreviewDataRow({
           <div
             key={col.key}
             style={{
-              width: mm(col.widthMm),
+              width: mm(col.widthMm + (i < visCols.length - 1 ? gapMm : 0)),
               paddingLeft: mm(0.5) + indent,
-              paddingRight: colGap,
+              paddingRight: mm(i < visCols.length - 1 ? gapMm : 0.5),
               fontSize: mm(2.7),
               color: isSubItem ? "#888" : "#222",
               overflow: "hidden",

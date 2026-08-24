@@ -27,7 +27,10 @@ import {
   computePatchPanelSchedule,
   buildPatchPanelScheduleCsv,
   getPatchPanelScheduleTableData,
+  resolvePatchPanelHiddenColumns,
+  type PatchPanelScheduleRow,
 } from "../patchPanelSchedule";
+import { defaultPatchPanelTableView, type PatchPanelTableView } from "../patchPanelColumns";
 import {
   findDuplicateIps,
   computeDhcpWarnings,
@@ -109,6 +112,18 @@ export function defaultLayouts(): Record<string, ReportLayout> {
   };
 }
 
+/**
+ * What the Patch Panels tab would be showing for these rows, untouched by the user — the
+ * view the print layout has to be built from if the golden is to pin a shape the app can
+ * actually produce. Notably it resolves the #311 auto-hide, which the bare no-argument
+ * default does not, so the golden guards the auto-hide in the print path too.
+ * Exported so the invariants can rebuild the same layout the snapshot printed with.
+ */
+export function patchPanelTabView(rows: PatchPanelScheduleRow[]): PatchPanelTableView {
+  const view = defaultPatchPanelTableView();
+  return { ...view, hiddenColumns: [...resolvePatchPanelHiddenColumns(rows, undefined)] };
+}
+
 export function computeReportsSnapshot(fx: ReportFixture): ReportsSnapshot {
   const snap = computeRaw(fx);
   // JSON round-trip so undefined-valued keys vanish exactly as they do in the
@@ -145,6 +160,7 @@ function computeRaw(fx: ReportFixture): ReportsSnapshot {
   // Patch panel schedule
   const patchRows = computePatchPanelSchedule(nodes, edges);
   const patchCsv = buildPatchPanelScheduleCsv(patchRows, fx.name, GENERATED_DATE);
+  const patchView = patchPanelTabView(patchRows);
 
   return {
     fixture: fx.name,
@@ -174,7 +190,16 @@ function computeRaw(fx: ReportFixture): ReportsSnapshot {
     patchPanelSchedule: {
       rows: patchRows,
       csv: patchCsv,
-      printTables: toSnapshotTables(getPatchPanelScheduleTableData(patchRows, layouts.patchPanelSchedule)),
+      // Printed through the tab's view, because that is the only way the app ever prints
+      // this report now (#362) — the bare default layout would pin 34 columns the tab
+      // would never show for these rows.
+      printTables: toSnapshotTables(
+        getPatchPanelScheduleTableData(
+          patchRows,
+          createDefaultPatchPanelScheduleLayout(patchView),
+          patchView,
+        ),
+      ),
     },
     warnings: {
       duplicateIps,

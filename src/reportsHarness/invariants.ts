@@ -8,12 +8,14 @@
 
 import type { ReportFixture } from "./fixtures";
 import type { ReportsSnapshot, SnapshotTable } from "./snapshot";
-import { defaultLayouts } from "./snapshot";
+import { defaultLayouts, patchPanelTabView } from "./snapshot";
 import type { DeviceData, ConnectionEdge } from "../types";
 import type { CableScheduleRow } from "../cableSchedule";
 import type { PackListData } from "../packList";
 import type { NetworkReportRow } from "../networkReport";
 import type { PowerReportData } from "../powerReport";
+import type { PatchPanelScheduleRow } from "../patchPanelSchedule";
+import { createDefaultPatchPanelScheduleLayout, type ReportLayout } from "../reportLayout";
 
 const BOM = "\uFEFF";
 
@@ -89,22 +91,31 @@ function checkCsv(
   }
 }
 
-/** Every column key defined in the print layout must exist on every table-data row (and vice versa
- *  for table ids) — catches "column added on-screen but not in the print report" drift (#217). */
+/**
+ * Every column key defined in the print layout must exist on every table-data row (and vice
+ * versa for table ids) — catches "column added on-screen but not in the print report"
+ * drift (#217).
+ *
+ * `visibleOnly` is for a report whose table data carries only the columns it is printing —
+ * the Patch Panel Schedule projects the tab's visible set and nothing else (#362). There
+ * the check runs both ways: every visible layout column must be a row key, and every row
+ * key must be a visible layout column, so a row can't quietly gain or lose one.
+ */
 function checkPrintTables(
   problems: string[],
   reportLabel: string,
-  layoutKey: string,
   tables: SnapshotTable[],
+  layout: ReportLayout,
+  visibleOnly = false,
 ): void {
-  const layout = defaultLayouts()[layoutKey];
   for (const tableDef of layout.tables) {
     const table = tables.find((t) => t.id === tableDef.id);
     if (!table) {
       problems.push(`${reportLabel}: layout table "${tableDef.id}" has no table data`);
       continue;
     }
-    for (const col of tableDef.columns) {
+    const wanted = visibleOnly ? tableDef.columns.filter((c) => c.visible) : tableDef.columns;
+    for (const col of wanted) {
       for (const row of table.rows) {
         if (!(col.key in row)) {
           problems.push(
@@ -113,6 +124,20 @@ function checkPrintTables(
           break; // one report per column is enough
         }
       }
+    }
+    if (!visibleOnly) continue;
+    const printable = new Set(wanted.map((c) => c.key));
+    const strays = new Set<string>();
+    for (const row of table.rows) {
+      // Keys starting with "_" are renderer hints (e.g. _isSubItem), not columns.
+      for (const key of Object.keys(row)) {
+        if (!key.startsWith("_") && !printable.has(key)) strays.add(key);
+      }
+    }
+    for (const key of strays) {
+      problems.push(
+        `${reportLabel} table "${tableDef.id}": row data carries "${key}", which the layout is not printing`,
+      );
     }
   }
 }
@@ -128,11 +153,22 @@ export function checkInvariants(fx: ReportFixture, snap: ReportsSnapshot): strin
   checkCsv(problems, "networkReport.csv", snap.networkReport.csv, { bom: false, headerLine: 0 });
 
   // ── Print layout ↔ table data drift ──
-  checkPrintTables(problems, "cableSchedule", "cableSchedule", snap.cableSchedule.printTables);
-  checkPrintTables(problems, "packList", "packList", snap.packList.printTables);
-  checkPrintTables(problems, "networkReport", "networkReport", snap.networkReport.printTables);
-  checkPrintTables(problems, "powerReport", "powerReport", snap.powerReport.printTables);
-  checkPrintTables(problems, "patchPanelSchedule", "patchPanelSchedule", snap.patchPanelSchedule.printTables);
+  const layouts = defaultLayouts();
+  checkPrintTables(problems, "cableSchedule", snap.cableSchedule.printTables, layouts.cableSchedule);
+  checkPrintTables(problems, "packList", snap.packList.printTables, layouts.packList);
+  checkPrintTables(problems, "networkReport", snap.networkReport.printTables, layouts.networkReport);
+  checkPrintTables(problems, "powerReport", snap.powerReport.printTables, layouts.powerReport);
+  // The patch panel schedule prints through the tab's view, so rebuild that view from the
+  // snapshot's own rows and check against the layout the app would have used (#362).
+  checkPrintTables(
+    problems,
+    "patchPanelSchedule",
+    snap.patchPanelSchedule.printTables,
+    createDefaultPatchPanelScheduleLayout(
+      patchPanelTabView(snap.patchPanelSchedule.rows as PatchPanelScheduleRow[]),
+    ),
+    true,
+  );
 
   // ── Network report semantics ──
   for (const row of snap.networkReport.rows as NetworkReportRow[]) {

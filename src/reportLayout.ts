@@ -1,5 +1,10 @@
 import type { TitleBlockLayout, TitleBlockCell } from "./types";
 import { nextCellId, normalizeSizes } from "./titleBlockLayout";
+import {
+  PATCH_PANEL_SCHEDULE_COLUMNS,
+  defaultPatchPanelTableView,
+  type PatchPanelTableView,
+} from "./patchPanelColumns";
 import { getFieldValue as tbGetFieldValue, getFieldLabel as tbGetFieldLabel } from "./titleBlockLayout";
 
 // ─── Types ───
@@ -360,7 +365,29 @@ export function createDefaultPatchPanelScheduleHeaderLayout(): TitleBlockLayout 
   };
 }
 
-export function createDefaultPatchPanelScheduleLayout(): ReportLayout {
+/** How the section title says the table was narrowed, so a printed schedule that shows 3
+ *  of 40 ports says so on the page instead of looking like the whole panel (#362). */
+function patchPanelScheduleLabel(view: PatchPanelTableView): string {
+  const notes: string[] = [];
+  if (view.hideUnconnected) notes.push("connected ports only");
+  if (view.filter.trim()) notes.push(`filtered: "${view.filter.trim()}"`);
+  return notes.length > 0 ? `Patch Panel Schedule (${notes.join("; ")})` : "Patch Panel Schedule";
+}
+
+/**
+ * The Patch Panel Schedule print layout mirrors the on-screen table (#362): the columns,
+ * their order, which ones are hidden, the sort and the grouping all come from the tab's
+ * published view.
+ *
+ * The no-argument form is a bare skeleton — every column visible, no filtering — not a
+ * picture of an untouched tab, which auto-hides the single-face columns whenever no legacy
+ * paired-port row is in view (#311). Callers that want what the tab would actually show
+ * must pass a view with `hiddenColumns` resolved off the rows.
+ */
+export function createDefaultPatchPanelScheduleLayout(
+  view: PatchPanelTableView = defaultPatchPanelTableView(),
+): ReportLayout {
+  const hidden = new Set(view.hiddenColumns);
   return {
     headerLayout: createDefaultPatchPanelScheduleHeaderLayout(),
     headerHeightMm: 22,
@@ -369,25 +396,14 @@ export function createDefaultPatchPanelScheduleLayout(): ReportLayout {
     tables: [
       {
         id: "patchPanelSchedule",
-        label: "Patch Panel Schedule",
-        columns: [
-          { key: "panel",           header: "Panel",         widthMm: 30, visible: true },
-          { key: "panelRoom",       header: "Panel Room",    widthMm: 24, visible: true },
-          { key: "face",            header: "Face",          widthMm: 14, visible: true },
-          { key: "position",        header: "Position",      widthMm: 20, visible: true },
-          { key: "connector",       header: "Connector",     widthMm: 18, visible: true },
-          { key: "gender",          header: "M/F",           widthMm: 10, visible: true },
-          { key: "remoteDevice",    header: "Remote Device", widthMm: 30, visible: true },
-          { key: "remotePort",      header: "Remote Port",   widthMm: 22, visible: true },
-          { key: "remoteRoom",      header: "Remote Room",   widthMm: 24, visible: true },
-          { key: "cableId",         header: "Cable ID",      widthMm: 18, visible: true },
-          { key: "cableType",       header: "Cable Type",    widthMm: 22, visible: true },
-          { key: "signalType",      header: "Signal",        widthMm: 20, visible: true },
-          { key: "cableLength",     header: "Length",        widthMm: 16, visible: true },
-          { key: "computedLength",  header: "Est. Length",   widthMm: 18, visible: true },
-          { key: "multicableLabel", header: "Snake",         widthMm: 20, visible: false },
-        ],
-        groupBy: "panel",
+        label: patchPanelScheduleLabel(view),
+        columns: PATCH_PANEL_SCHEDULE_COLUMNS.map((c) => ({
+          key: c.key,
+          header: c.header,
+          widthMm: c.widthMm,
+          visible: !hidden.has(c.key),
+        })),
+        groupBy: view.groupBy,
         groupByOptions: [
           { key: "",           label: "None" },
           { key: "panel",      label: "Panel" },
@@ -395,12 +411,15 @@ export function createDefaultPatchPanelScheduleLayout(): ReportLayout {
           { key: "signalType", label: "Signal Type" },
           { key: "face",       label: "Face" },
         ],
-        sortBy: "position",
-        sortDir: "asc",
+        sortBy: view.sortBy,
+        sortDir: view.sortDir,
       },
     ],
     orientation: "landscape",
-    paperSize: "letter",
+    // Tabloid, not Letter: mirroring the table means a passthrough project prints 24
+    // columns and a mixed one all 34, which Letter squeezes past legibility (#362). A
+    // saved paper size still wins, and the preview's Paper control changes it per report.
+    paperSize: "tabloid",
   };
 }
 
@@ -475,7 +494,79 @@ export function createDefaultPowerReportLayout(): ReportLayout {
   };
 }
 
+// ─── Saved-preference resolution ───
+
+/**
+ * Resolve a layout by combining hardcoded defaults with saved user preferences.
+ * Column definitions, headers, and groupByOptions always come from code.
+ * Only user selections (visibility, widths, groupBy, sort) are restored from saved data.
+ *
+ * `mirrorScreen` reports (the Patch Panel Schedule) hand in a layout already built from
+ * what their tab is showing, so which columns show and how the rows are sorted and grouped
+ * is the tab's business, not a saved print preference — only widths and page furniture are
+ * restored for them (#362). Nothing is lost by that: the tab's own Columns menu covers
+ * every column and persists with the document, so it is the durable way to narrow the
+ * print. Changes made in this dialog's column list apply to the export in hand.
+ */
+export function resolveLayout(
+  defaults: ReportLayout,
+  saved: ReportLayout | null,
+  mirrorScreen = false,
+): ReportLayout {
+  if (!saved) return defaults;
+  return {
+    ...defaults,
+    // Restore user's page/header/footer preferences
+    headerLayout: saved.headerLayout ?? defaults.headerLayout,
+    headerHeightMm: saved.headerHeightMm ?? defaults.headerHeightMm,
+    footerLayout: saved.footerLayout ?? defaults.footerLayout,
+    footerHeightMm: saved.footerHeightMm ?? defaults.footerHeightMm,
+    orientation: saved.orientation ?? defaults.orientation,
+    paperSize: saved.paperSize ?? defaults.paperSize,
+    tables: defaults.tables.map((defaultTable) => {
+      const savedTable = saved.tables.find((t) => t.id === defaultTable.id);
+      if (!savedTable) return defaultTable;
+      // Apply saved visibility and widths onto hardcoded column definitions
+      const savedVis = new Map(savedTable.columns.map((c) => [c.key, c.visible]));
+      const savedWidths = new Map(savedTable.columns.map((c) => [c.key, c.widthMm]));
+      return {
+        ...defaultTable, // id, label, columns (definitions), groupByOptions from code
+        columns: defaultTable.columns.map((col) => ({
+          ...col,
+          visible: !mirrorScreen && savedVis.has(col.key) ? savedVis.get(col.key)! : col.visible,
+          widthMm: savedWidths.has(col.key) ? savedWidths.get(col.key)! : col.widthMm,
+        })),
+        groupBy: mirrorScreen ? defaultTable.groupBy : savedTable.groupBy,
+        sortBy: mirrorScreen ? defaultTable.sortBy : savedTable.sortBy,
+        sortDir: mirrorScreen ? defaultTable.sortDir : savedTable.sortDir,
+        borderStyle: savedTable.borderStyle,
+      };
+    }),
+  };
+}
+
 // ─── Helpers ───
+
+/** The gutter a table with no crowding problem uses between columns. */
+export const REPORT_COL_GAP_MM = 4;
+
+/**
+ * Gap to put between printed columns.
+ *
+ * A flat 4mm is fine for a dozen columns but ruinous for a wide table: the Patch Panel
+ * Schedule mirroring a mixed project prints 34 columns, whose 33 gaps would eat 132mm of a
+ * 251mm content width before a single character is drawn (#362). Cap the gutters at a
+ * quarter of the width and let the columns have the rest.
+ */
+export function getColumnGapMm(columnCount: number, availableWidthMm: number): number {
+  if (columnCount < 2 || availableWidthMm <= 0) return REPORT_COL_GAP_MM;
+  return Math.min(REPORT_COL_GAP_MM, (availableWidthMm * 0.25) / (columnCount - 1));
+}
+
+/** The gap the renderers will use for this table — visible column count decides it. */
+export function getTableColumnGapMm(table: ReportTableDef, availableWidthMm: number): number {
+  return getColumnGapMm(table.columns.filter((c) => c.visible).length, availableWidthMm);
+}
 
 /**
  * Get visible columns, optionally scaled to fill the available page width.
