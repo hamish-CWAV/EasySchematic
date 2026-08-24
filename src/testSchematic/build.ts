@@ -59,16 +59,25 @@ import type {
 
 /** Device node width the app settles on for these port counts. */
 const DEVICE_W = 176;
-/** Horizontal gap between device columns inside a room. */
-const COL_GAP = 96;
-/** Vertical gap between devices in the same column. */
-const ROW_GAP = 64;
+/**
+ * Horizontal gap between device columns inside a room. Wide enough that an
+ * auto-inserted adapter (~144-176px, placed near the midpoint between the two
+ * devices it bridges) lands in open space instead of overlapping either
+ * neighbor — the #368 complaint about the adapter benches having "no space to
+ * awkwardly fit in". Adapter-bench pairs are laid out in adjacent columns
+ * specifically so this gap is the room the auto-insert has to work with.
+ */
+const COL_GAP = 320;
+/** Vertical gap between devices in the same column — also wide enough that a
+ *  stub tag (or an adapter, for the rare vertically-stacked pair) has open
+ *  space to render in without crowding the device above or below it. */
+const ROW_GAP = 160;
 const ROOM_PAD_X = 32;
 /** Room header band sits above the first device row. */
 const ROOM_PAD_TOP = 96;
 const ROOM_PAD_BOTTOM = 48;
 /** Horizontal gap between rooms. */
-const ROOM_GAP = 128;
+const ROOM_GAP = 192;
 
 const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
 
@@ -456,26 +465,39 @@ const mainHall: RoomSpec = {
   ],
 };
 
+// Three columns, not one per device: the room only has two real adapter-bench
+// adjacencies to satisfy (Speaker 1 ↔ Rack UPS, Rack UPS ↔ Utility Bar) plus
+// the unrelated USB Hub ↔ Core Switch bench, and Rack UPS sitting between its
+// two partners covers both power benches in a single middle column (#368).
+// Column order also follows the room's actual wiring instead of fighting it:
+// Rack UPS (edge-11/edge-12) only ever talks to main Hall devices, which sit
+// in the room to the *left*, so it anchors column 0 rather than column 2;
+// PP-01 (edge-6/edge-9/edge-10) only ever talks to TECH TABLE devices, which
+// sit in the room to the *right*, so it's parked in column 2, nearest that
+// room, instead of column 0 where a purely bench-driven layout would put it.
 const rackRoom: RoomSpec = {
   id: "room-2",
   label: ROOM_ACRONYM,
   columns: [
     [
       {
-        id: "device-8",
-        label: "PP-01",
-        ports: [ppRj45, ppEtherCon, ppBnc, ppXlr, ppFiber, ppTrsA, ppTrsB, ppTerminal],
+        // Edison Out → this IEC In is the Edison (M) → IEC (F) auto-insert,
+        // with Rack UPS in the next column over (#368: side by side, not
+        // stacked, so the adapter has the COL_GAP to land in).
+        id: "device-12",
+        label: "Powered Speaker (IEC) 1",
+        ports: [spkIecIn, spkXlrIn],
         data: {
-          deviceType: "patch-panel",
-          model: "PP-01",
+          deviceType: "speaker",
+          model: "Powered Speaker (IEC)",
+          baseLabel: "Powered Speaker (IEC)",
           manufacturer: "TestCo",
-          modelNumber: "PP-8U",
-          unitCost: 240,
+          modelNumber: "PS-12",
+          powerDrawW: 300,
+          unitCost: 1100,
           auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
         },
       },
-    ],
-    [
       {
         id: "device-9",
         label: "Core Switch 48-Port",
@@ -504,53 +526,10 @@ const rackRoom: RoomSpec = {
         },
       },
       {
-        // Unwired on purpose — this plus the switch is the USB ↔ Ethernet
-        // adapter auto-insert bench, in both drag directions.
-        id: "device-10",
-        label: "USB Hub (USB-A)",
-        ports: [hubUsbOut1, hubUsbOut2, hubUsbIn],
-        data: {
-          deviceType: "usb",
-          model: "USB Hub (USB-A)",
-          manufacturer: "TestCo",
-          modelNumber: "HUB-4A",
-          auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
-        },
-      },
-    ],
-    [
-      {
-        id: "device-11",
-        label: "Rack UPS",
-        ports: [upsIecIn, upsEdisonOut1, upsEdisonOut2, upsEdisonOut3, upsIecOut1],
-        data: {
-          deviceType: "power-distribution",
-          model: "Rack UPS",
-          manufacturer: "TestCo",
-          modelNumber: "UPS-1500",
-          powerCapacityW: 1500,
-          voltage: "120V",
-          unitCost: 890,
-          auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
-        },
-      },
-      {
-        // Edison Out → this IEC In is the Edison (M) → IEC (F) auto-insert.
-        id: "device-12",
-        label: "Powered Speaker (IEC) 1",
-        ports: [spkIecIn, spkXlrIn],
-        data: {
-          deviceType: "speaker",
-          model: "Powered Speaker (IEC)",
-          baseLabel: "Powered Speaker (IEC)",
-          manufacturer: "TestCo",
-          modelNumber: "PS-12",
-          powerDrawW: 300,
-          unitCost: 1100,
-          auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
-        },
-      },
-      {
+        // Not part of either adapter bench — just the second placed unit for
+        // the owned-gear "short" state. Parked below Core Switch, off the
+        // bench rows, so it can't land between two adapter partners and crowd
+        // an auto-insert.
         id: "device-13",
         label: "Powered Speaker (IEC) 2",
         ports: [
@@ -568,9 +547,49 @@ const rackRoom: RoomSpec = {
           auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
         },
       },
+    ],
+    [
+      {
+        // Sits between its two adapter partners (Powered Speaker (IEC) 1 to
+        // the left, Utility Bar to the right) so BOTH auto-insert benches get
+        // a clear adjacent-column gap instead of one of them having to reach
+        // past a third device (#368).
+        id: "device-11",
+        label: "Rack UPS",
+        ports: [upsIecIn, upsEdisonOut1, upsEdisonOut2, upsEdisonOut3, upsIecOut1],
+        data: {
+          deviceType: "power-distribution",
+          model: "Rack UPS",
+          manufacturer: "TestCo",
+          modelNumber: "UPS-1500",
+          powerCapacityW: 1500,
+          voltage: "120V",
+          unitCost: 890,
+          auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
+        },
+      },
+      {
+        // Unwired on purpose — this plus Core Switch (one column to the left)
+        // is the USB ↔ Ethernet adapter auto-insert bench, in both drag
+        // directions. Side by side rather than stacked, so the auto-inserted
+        // adapter lands in the COL_GAP between them instead of squeezing into
+        // the ROW_GAP a single stacked column would leave (#368).
+        id: "device-10",
+        label: "USB Hub (USB-A)",
+        ports: [hubUsbOut1, hubUsbOut2, hubUsbIn],
+        data: {
+          deviceType: "usb",
+          model: "USB Hub (USB-A)",
+          manufacturer: "TestCo",
+          modelNumber: "HUB-4A",
+          auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
+        },
+      },
+    ],
+    [
       {
         // IEC Out → this Edison In is the IEC (M) → Edison (F) auto-insert,
-        // the mirror of the pair above.
+        // the mirror of the Edison↔IEC pair one column over.
         id: "device-14",
         label: "Utility Bar (Edison)",
         ports: [barEdisonIn, barEdisonOut1, barEdisonOut2],
@@ -584,6 +603,23 @@ const rackRoom: RoomSpec = {
           auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
         },
       },
+      {
+        // Every wired connection PP-01 carries (edge-6, edge-9, edge-10) runs
+        // to TECH TABLE, the room immediately to the right — parked in this
+        // room's rightmost column, nearest that room, instead of the bench
+        // layout's leftmost slot, so those runs don't cross the whole room.
+        id: "device-8",
+        label: "PP-01",
+        ports: [ppRj45, ppEtherCon, ppBnc, ppXlr, ppFiber, ppTrsA, ppTrsB, ppTerminal],
+        data: {
+          deviceType: "patch-panel",
+          model: "PP-01",
+          manufacturer: "TestCo",
+          modelNumber: "PP-8U",
+          unitCost: 240,
+          auxiliaryData: [{ text: "{{deviceType}}", position: "header" }],
+        },
+      },
     ],
   ],
 };
@@ -594,6 +630,9 @@ const techTable: RoomSpec = {
   columns: [
     [
       {
+        // Row 0 here sits directly beside Playback Deck's row 0 in the next
+        // column — the mirrored XLR-3 ↔ 1/4" TRS adapter bench (#368) — so the
+        // auto-inserted adapter lands in the COL_GAP between them.
         id: "device-15",
         label: "FOH Console",
         ports: [fohXlrOutL, fohXlrOutR, fohTrsIn1, fohTrsIn2, fohPower],

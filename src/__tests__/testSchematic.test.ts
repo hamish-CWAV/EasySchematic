@@ -278,6 +278,46 @@ describe("test schematic — #307 coverage", () => {
   });
 });
 
+describe("test schematic — #368 adapter-bench spacing", () => {
+  it("keeps every adapter-bench pair in different columns with clear space for insertAdapterBetween's nudge", () => {
+    // store.ts insertAdapterBetween nudges an overlapping adapter with
+    // pushLeft = other.position.x - adapterW(144) - MIN_GAP(80), so a single
+    // pass only clears the neighboring device when the gap between the two
+    // paired devices is at least 144 + 80 = 224px — below that the adapter can
+    // overlap the device it was nudged away from (see README.md and the
+    // COL_GAP comment in build.ts).
+    const MIN_CLEAR = 224;
+    const roomById = new Map(rooms.map((r) => [r.id, r]));
+    const byId = new Map(devices.map((d) => [d.id, d]));
+    const absX = (dev: SchematicNode) => {
+      const room = dev.parentId ? roomById.get(dev.parentId) : undefined;
+      return dev.position.x + (room?.position.x ?? 0);
+    };
+    // The three unwired adapter benches, plus the second Edison↔IEC pairing
+    // Rack UPS sits between (Powered Speaker (IEC) 1 on one side, Utility Bar
+    // on the other).
+    const benches: [string, string][] = [
+      ["device-10", "device-9"], // USB Hub ↔ Core Switch (USB-A ↔ RJ45)
+      ["device-15", "device-17"], // FOH Console ↔ Playback Deck (XLR-3 ↔ TRS)
+      ["device-12", "device-11"], // Powered Speaker (IEC) 1 ↔ Rack UPS (Edison ↔ IEC)
+      ["device-11", "device-14"], // Rack UPS ↔ Utility Bar (IEC ↔ Edison)
+    ];
+    for (const [aId, bId] of benches) {
+      const a = byId.get(aId)!;
+      const b = byId.get(bId)!;
+      expect(a.parentId, `${aId} has no room`).toBeDefined();
+      expect(a.parentId, `${aId}/${bId} must share a room`).toBe(b.parentId);
+      const ax = absX(a);
+      const bx = absX(b);
+      const aw = a.measured?.width ?? 0;
+      const bw = b.measured?.width ?? 0;
+      expect(ax, `${aId}/${bId} must sit in different columns`).not.toBe(bx);
+      const gap = ax < bx ? bx - (ax + aw) : ax - (bx + bw);
+      expect(gap, `${aId} ↔ ${bId} clear gap`).toBeGreaterThanOrEqual(MIN_CLEAR);
+    }
+  });
+});
+
 /** Port ids with at least one connection on them. */
 function usedPortIds(): Set<string> {
   const used = new Set<string>();

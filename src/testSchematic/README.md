@@ -35,6 +35,27 @@ Device positions are computed from `deviceContentHeight`, the same height
 contract `DeviceNode` renders to, so adding or removing ports re-flows the
 layout instead of overlapping devices.
 
+`COL_GAP` and `ROW_GAP` are deliberately generous (#368): the three adapter
+benches below each pair their two devices in *adjacent* columns rather than
+stacking them in one column, so the auto-inserted adapter lands in open
+`COL_GAP` space instead of squeezing into a tight vertical gap — before this, a
+test pass had to drag one device out of the way first. The same wide gaps give
+a converted-to-stub connection's tag room to render without crowding its
+neighbor.
+
+`COL_GAP=320` isn't an arbitrary round number: `insertAdapterBetween` in
+`store.ts` nudges an adapter that overlaps a neighboring device with
+`pushLeft = other.position.x - adapterW(144) - MIN_GAP(80)`, so its single
+nudge pass only clears that neighbor once the gap between the two paired
+devices is at least `144 + 80 = 224px`. `COL_GAP` is set well past that floor
+so an adapter lands with room on both sides rather than exactly at the edge of
+clearing — `testSchematic.test.ts`'s `#368 adapter-bench spacing` guard pins
+the 224px floor so a future layout change can't quietly re-stack a bench
+without a test noticing. Column *order* within a room also isn't free: a
+device with real wiring should sit in whichever column is nearest the room its
+wires actually run to (see the comment above `rackRoom` in `build.ts`), or
+widening the gaps here just makes cross-room runs longer instead of shorter.
+
 ## What it covers
 
 Each of these is asserted by `testSchematic.test.ts` — if you remove one from

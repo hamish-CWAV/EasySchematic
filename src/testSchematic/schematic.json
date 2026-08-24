@@ -14,13 +14,13 @@
         "locked": true
       },
       "style": {
-        "width": 784,
-        "height": 608
+        "width": 1232,
+        "height": 800
       },
       "zIndex": -1,
       "measured": {
-        "width": 784,
-        "height": 608
+        "width": 1232,
+        "height": 800
       }
     },
     {
@@ -91,7 +91,7 @@
       "type": "device",
       "position": {
         "x": 32,
-        "y": 256
+        "y": 352
       },
       "parentId": "room-1",
       "measured": {
@@ -139,7 +139,7 @@
       "id": "device-3",
       "type": "device",
       "position": {
-        "x": 304,
+        "x": 528,
         "y": 96
       },
       "parentId": "room-1",
@@ -201,8 +201,8 @@
       "id": "device-4",
       "type": "device",
       "position": {
-        "x": 304,
-        "y": 256
+        "x": 528,
+        "y": 352
       },
       "parentId": "room-1",
       "measured": {
@@ -250,7 +250,7 @@
       "id": "device-5",
       "type": "device",
       "position": {
-        "x": 576,
+        "x": 1024,
         "y": 96
       },
       "parentId": "room-1",
@@ -311,8 +311,8 @@
       "id": "device-6",
       "type": "device",
       "position": {
-        "x": 576,
-        "y": 304
+        "x": 1024,
+        "y": 400
       },
       "parentId": "room-1",
       "measured": {
@@ -375,8 +375,8 @@
       "id": "device-7",
       "type": "device",
       "position": {
-        "x": 576,
-        "y": 464
+        "x": 1024,
+        "y": 656
       },
       "parentId": "room-1",
       "measured": {
@@ -423,7 +423,7 @@
       "id": "room-2",
       "type": "room",
       "position": {
-        "x": 912,
+        "x": 1424,
         "y": 0
       },
       "data": {
@@ -431,21 +431,369 @@
         "locked": true
       },
       "style": {
-        "width": 784,
-        "height": 688
+        "width": 1232,
+        "height": 784
       },
       "zIndex": -1,
       "measured": {
-        "width": 784,
-        "height": 688
+        "width": 1232,
+        "height": 784
+      }
+    },
+    {
+      "id": "device-12",
+      "type": "device",
+      "position": {
+        "x": 32,
+        "y": 96
+      },
+      "parentId": "room-2",
+      "measured": {
+        "width": 176,
+        "height": 80
+      },
+      "data": {
+        "label": "Powered Speaker (IEC) 1",
+        "ports": [
+          {
+            "id": "spk-iec-in",
+            "label": "IEC AC In",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          },
+          {
+            "id": "spk-xlr-in",
+            "label": "XLR In",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "xlr-3"
+          }
+        ],
+        "deviceType": "speaker",
+        "model": "Powered Speaker (IEC)",
+        "baseLabel": "Powered Speaker (IEC)",
+        "manufacturer": "TestCo",
+        "modelNumber": "PS-12",
+        "powerDrawW": 300,
+        "unitCost": 1100,
+        "auxiliaryData": [
+          {
+            "text": "{{deviceType}}",
+            "position": "header"
+          }
+        ]
+      }
+    },
+    {
+      "id": "device-9",
+      "type": "device",
+      "position": {
+        "x": 32,
+        "y": 336
+      },
+      "parentId": "room-2",
+      "measured": {
+        "width": 176,
+        "height": 160
+      },
+      "data": {
+        "label": "Core Switch 48-Port",
+        "ports": [
+          {
+            "id": "sw-port-1",
+            "label": "Port 1",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45",
+            "networkConfig": {
+              "ip": "10.20.0.1",
+              "subnetMask": "255.255.255.0",
+              "gateway": "10.20.0.1",
+              "vlan": 20
+            }
+          },
+          {
+            "id": "sw-port-2",
+            "label": "Port 2",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "sw-port-3",
+            "label": "Port 3",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "sw-port-4",
+            "label": "Port 4",
+            "signalType": "ethernet",
+            "direction": "bidirectional",
+            "connectorType": "rj45"
+          },
+          {
+            "id": "sw-uplink",
+            "label": "Uplink (SFP)",
+            "signalType": "fiber",
+            "direction": "bidirectional",
+            "connectorType": "lc"
+          },
+          {
+            "id": "sw-power",
+            "label": "AC In",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          }
+        ],
+        "deviceType": "network-switch",
+        "model": "Core Switch 48-Port",
+        "manufacturer": "TestCo",
+        "modelNumber": "SW-48P",
+        "hostname": "core-sw",
+        "powerDrawW": 120,
+        "poeBudgetW": 370,
+        "unitCost": 2400,
+        "serialNumber": "TS-SW-001",
+        "dhcpServer": {
+          "enabled": true,
+          "rangeStart": "10.20.0.100",
+          "rangeEnd": "10.20.0.200",
+          "subnetMask": "255.255.255.0",
+          "gateway": "10.20.0.1"
+        },
+        "auxiliaryData": [
+          {
+            "text": "{{deviceType}}",
+            "position": "header"
+          },
+          {
+            "text": "{{hostname}}",
+            "position": "header"
+          }
+        ]
+      }
+    },
+    {
+      "id": "device-13",
+      "type": "device",
+      "position": {
+        "x": 32,
+        "y": 656
+      },
+      "parentId": "room-2",
+      "measured": {
+        "width": 176,
+        "height": 80
+      },
+      "data": {
+        "label": "Powered Speaker (IEC) 2",
+        "ports": [
+          {
+            "id": "spk2-iec-in",
+            "label": "IEC AC In",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          },
+          {
+            "id": "spk2-xlr-in",
+            "label": "XLR In",
+            "signalType": "analog-audio",
+            "direction": "input",
+            "connectorType": "xlr-3"
+          }
+        ],
+        "deviceType": "speaker",
+        "model": "Powered Speaker (IEC)",
+        "baseLabel": "Powered Speaker (IEC)",
+        "manufacturer": "TestCo",
+        "modelNumber": "PS-12",
+        "powerDrawW": 300,
+        "unitCost": 1100,
+        "auxiliaryData": [
+          {
+            "text": "{{deviceType}}",
+            "position": "header"
+          }
+        ]
+      }
+    },
+    {
+      "id": "device-11",
+      "type": "device",
+      "position": {
+        "x": 528,
+        "y": 96
+      },
+      "parentId": "room-2",
+      "measured": {
+        "width": 176,
+        "height": 112
+      },
+      "data": {
+        "label": "Rack UPS",
+        "ports": [
+          {
+            "id": "ups-iec-in",
+            "label": "IEC AC In",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "iec"
+          },
+          {
+            "id": "ups-edison-out-1",
+            "label": "Edison Out 1",
+            "signalType": "power",
+            "direction": "output",
+            "connectorType": "edison"
+          },
+          {
+            "id": "ups-edison-out-2",
+            "label": "Edison Out 2",
+            "signalType": "power",
+            "direction": "output",
+            "connectorType": "edison"
+          },
+          {
+            "id": "ups-edison-out-3",
+            "label": "Edison Out 3",
+            "signalType": "power",
+            "direction": "output",
+            "connectorType": "edison"
+          },
+          {
+            "id": "ups-iec-out-1",
+            "label": "IEC Out 1",
+            "signalType": "power",
+            "direction": "output",
+            "connectorType": "iec"
+          }
+        ],
+        "deviceType": "power-distribution",
+        "model": "Rack UPS",
+        "manufacturer": "TestCo",
+        "modelNumber": "UPS-1500",
+        "powerCapacityW": 1500,
+        "voltage": "120V",
+        "unitCost": 890,
+        "auxiliaryData": [
+          {
+            "text": "{{deviceType}}",
+            "position": "header"
+          }
+        ]
+      }
+    },
+    {
+      "id": "device-10",
+      "type": "device",
+      "position": {
+        "x": 528,
+        "y": 368
+      },
+      "parentId": "room-2",
+      "measured": {
+        "width": 176,
+        "height": 80
+      },
+      "data": {
+        "label": "USB Hub (USB-A)",
+        "ports": [
+          {
+            "id": "hub-usb-out-1",
+            "label": "USB-A Out 1",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "hub-usb-out-2",
+            "label": "USB-A Out 2",
+            "signalType": "usb",
+            "direction": "output",
+            "connectorType": "usb-a"
+          },
+          {
+            "id": "hub-usb-in",
+            "label": "USB-A In",
+            "signalType": "usb",
+            "direction": "input",
+            "connectorType": "usb-a"
+          }
+        ],
+        "deviceType": "usb",
+        "model": "USB Hub (USB-A)",
+        "manufacturer": "TestCo",
+        "modelNumber": "HUB-4A",
+        "auxiliaryData": [
+          {
+            "text": "{{deviceType}}",
+            "position": "header"
+          }
+        ]
+      }
+    },
+    {
+      "id": "device-14",
+      "type": "device",
+      "position": {
+        "x": 1024,
+        "y": 96
+      },
+      "parentId": "room-2",
+      "measured": {
+        "width": 176,
+        "height": 80
+      },
+      "data": {
+        "label": "Utility Bar (Edison)",
+        "ports": [
+          {
+            "id": "bar-edison-in",
+            "label": "Edison In",
+            "signalType": "power",
+            "direction": "input",
+            "connectorType": "edison"
+          },
+          {
+            "id": "bar-edison-out-1",
+            "label": "Edison Out 1",
+            "signalType": "power",
+            "direction": "output",
+            "connectorType": "edison"
+          },
+          {
+            "id": "bar-edison-out-2",
+            "label": "Edison Out 2",
+            "signalType": "power",
+            "direction": "output",
+            "connectorType": "edison"
+          }
+        ],
+        "deviceType": "power-distribution",
+        "model": "Utility Bar (Edison)",
+        "manufacturer": "TestCo",
+        "modelNumber": "UB-6",
+        "powerCapacityW": 1800,
+        "voltage": "120V",
+        "auxiliaryData": [
+          {
+            "text": "{{deviceType}}",
+            "position": "header"
+          }
+        ]
       }
     },
     {
       "id": "device-8",
       "type": "device",
       "position": {
-        "x": 32,
-        "y": 96
+        "x": 1024,
+        "y": 336
       },
       "parentId": "room-2",
       "measured": {
@@ -562,358 +910,10 @@
       }
     },
     {
-      "id": "device-9",
-      "type": "device",
-      "position": {
-        "x": 304,
-        "y": 96
-      },
-      "parentId": "room-2",
-      "measured": {
-        "width": 176,
-        "height": 160
-      },
-      "data": {
-        "label": "Core Switch 48-Port",
-        "ports": [
-          {
-            "id": "sw-port-1",
-            "label": "Port 1",
-            "signalType": "ethernet",
-            "direction": "bidirectional",
-            "connectorType": "rj45",
-            "networkConfig": {
-              "ip": "10.20.0.1",
-              "subnetMask": "255.255.255.0",
-              "gateway": "10.20.0.1",
-              "vlan": 20
-            }
-          },
-          {
-            "id": "sw-port-2",
-            "label": "Port 2",
-            "signalType": "ethernet",
-            "direction": "bidirectional",
-            "connectorType": "rj45"
-          },
-          {
-            "id": "sw-port-3",
-            "label": "Port 3",
-            "signalType": "ethernet",
-            "direction": "bidirectional",
-            "connectorType": "rj45"
-          },
-          {
-            "id": "sw-port-4",
-            "label": "Port 4",
-            "signalType": "ethernet",
-            "direction": "bidirectional",
-            "connectorType": "rj45"
-          },
-          {
-            "id": "sw-uplink",
-            "label": "Uplink (SFP)",
-            "signalType": "fiber",
-            "direction": "bidirectional",
-            "connectorType": "lc"
-          },
-          {
-            "id": "sw-power",
-            "label": "AC In",
-            "signalType": "power",
-            "direction": "input",
-            "connectorType": "iec"
-          }
-        ],
-        "deviceType": "network-switch",
-        "model": "Core Switch 48-Port",
-        "manufacturer": "TestCo",
-        "modelNumber": "SW-48P",
-        "hostname": "core-sw",
-        "powerDrawW": 120,
-        "poeBudgetW": 370,
-        "unitCost": 2400,
-        "serialNumber": "TS-SW-001",
-        "dhcpServer": {
-          "enabled": true,
-          "rangeStart": "10.20.0.100",
-          "rangeEnd": "10.20.0.200",
-          "subnetMask": "255.255.255.0",
-          "gateway": "10.20.0.1"
-        },
-        "auxiliaryData": [
-          {
-            "text": "{{deviceType}}",
-            "position": "header"
-          },
-          {
-            "text": "{{hostname}}",
-            "position": "header"
-          }
-        ]
-      }
-    },
-    {
-      "id": "device-10",
-      "type": "device",
-      "position": {
-        "x": 304,
-        "y": 320
-      },
-      "parentId": "room-2",
-      "measured": {
-        "width": 176,
-        "height": 80
-      },
-      "data": {
-        "label": "USB Hub (USB-A)",
-        "ports": [
-          {
-            "id": "hub-usb-out-1",
-            "label": "USB-A Out 1",
-            "signalType": "usb",
-            "direction": "output",
-            "connectorType": "usb-a"
-          },
-          {
-            "id": "hub-usb-out-2",
-            "label": "USB-A Out 2",
-            "signalType": "usb",
-            "direction": "output",
-            "connectorType": "usb-a"
-          },
-          {
-            "id": "hub-usb-in",
-            "label": "USB-A In",
-            "signalType": "usb",
-            "direction": "input",
-            "connectorType": "usb-a"
-          }
-        ],
-        "deviceType": "usb",
-        "model": "USB Hub (USB-A)",
-        "manufacturer": "TestCo",
-        "modelNumber": "HUB-4A",
-        "auxiliaryData": [
-          {
-            "text": "{{deviceType}}",
-            "position": "header"
-          }
-        ]
-      }
-    },
-    {
-      "id": "device-11",
-      "type": "device",
-      "position": {
-        "x": 576,
-        "y": 96
-      },
-      "parentId": "room-2",
-      "measured": {
-        "width": 176,
-        "height": 112
-      },
-      "data": {
-        "label": "Rack UPS",
-        "ports": [
-          {
-            "id": "ups-iec-in",
-            "label": "IEC AC In",
-            "signalType": "power",
-            "direction": "input",
-            "connectorType": "iec"
-          },
-          {
-            "id": "ups-edison-out-1",
-            "label": "Edison Out 1",
-            "signalType": "power",
-            "direction": "output",
-            "connectorType": "edison"
-          },
-          {
-            "id": "ups-edison-out-2",
-            "label": "Edison Out 2",
-            "signalType": "power",
-            "direction": "output",
-            "connectorType": "edison"
-          },
-          {
-            "id": "ups-edison-out-3",
-            "label": "Edison Out 3",
-            "signalType": "power",
-            "direction": "output",
-            "connectorType": "edison"
-          },
-          {
-            "id": "ups-iec-out-1",
-            "label": "IEC Out 1",
-            "signalType": "power",
-            "direction": "output",
-            "connectorType": "iec"
-          }
-        ],
-        "deviceType": "power-distribution",
-        "model": "Rack UPS",
-        "manufacturer": "TestCo",
-        "modelNumber": "UPS-1500",
-        "powerCapacityW": 1500,
-        "voltage": "120V",
-        "unitCost": 890,
-        "auxiliaryData": [
-          {
-            "text": "{{deviceType}}",
-            "position": "header"
-          }
-        ]
-      }
-    },
-    {
-      "id": "device-12",
-      "type": "device",
-      "position": {
-        "x": 576,
-        "y": 272
-      },
-      "parentId": "room-2",
-      "measured": {
-        "width": 176,
-        "height": 80
-      },
-      "data": {
-        "label": "Powered Speaker (IEC) 1",
-        "ports": [
-          {
-            "id": "spk-iec-in",
-            "label": "IEC AC In",
-            "signalType": "power",
-            "direction": "input",
-            "connectorType": "iec"
-          },
-          {
-            "id": "spk-xlr-in",
-            "label": "XLR In",
-            "signalType": "analog-audio",
-            "direction": "input",
-            "connectorType": "xlr-3"
-          }
-        ],
-        "deviceType": "speaker",
-        "model": "Powered Speaker (IEC)",
-        "baseLabel": "Powered Speaker (IEC)",
-        "manufacturer": "TestCo",
-        "modelNumber": "PS-12",
-        "powerDrawW": 300,
-        "unitCost": 1100,
-        "auxiliaryData": [
-          {
-            "text": "{{deviceType}}",
-            "position": "header"
-          }
-        ]
-      }
-    },
-    {
-      "id": "device-13",
-      "type": "device",
-      "position": {
-        "x": 576,
-        "y": 416
-      },
-      "parentId": "room-2",
-      "measured": {
-        "width": 176,
-        "height": 80
-      },
-      "data": {
-        "label": "Powered Speaker (IEC) 2",
-        "ports": [
-          {
-            "id": "spk2-iec-in",
-            "label": "IEC AC In",
-            "signalType": "power",
-            "direction": "input",
-            "connectorType": "iec"
-          },
-          {
-            "id": "spk2-xlr-in",
-            "label": "XLR In",
-            "signalType": "analog-audio",
-            "direction": "input",
-            "connectorType": "xlr-3"
-          }
-        ],
-        "deviceType": "speaker",
-        "model": "Powered Speaker (IEC)",
-        "baseLabel": "Powered Speaker (IEC)",
-        "manufacturer": "TestCo",
-        "modelNumber": "PS-12",
-        "powerDrawW": 300,
-        "unitCost": 1100,
-        "auxiliaryData": [
-          {
-            "text": "{{deviceType}}",
-            "position": "header"
-          }
-        ]
-      }
-    },
-    {
-      "id": "device-14",
-      "type": "device",
-      "position": {
-        "x": 576,
-        "y": 560
-      },
-      "parentId": "room-2",
-      "measured": {
-        "width": 176,
-        "height": 80
-      },
-      "data": {
-        "label": "Utility Bar (Edison)",
-        "ports": [
-          {
-            "id": "bar-edison-in",
-            "label": "Edison In",
-            "signalType": "power",
-            "direction": "input",
-            "connectorType": "edison"
-          },
-          {
-            "id": "bar-edison-out-1",
-            "label": "Edison Out 1",
-            "signalType": "power",
-            "direction": "output",
-            "connectorType": "edison"
-          },
-          {
-            "id": "bar-edison-out-2",
-            "label": "Edison Out 2",
-            "signalType": "power",
-            "direction": "output",
-            "connectorType": "edison"
-          }
-        ],
-        "deviceType": "power-distribution",
-        "model": "Utility Bar (Edison)",
-        "manufacturer": "TestCo",
-        "modelNumber": "UB-6",
-        "powerCapacityW": 1800,
-        "voltage": "120V",
-        "auxiliaryData": [
-          {
-            "text": "{{deviceType}}",
-            "position": "header"
-          }
-        ]
-      }
-    },
-    {
       "id": "room-3",
       "type": "room",
       "position": {
-        "x": 1824,
+        "x": 2848,
         "y": 0
       },
       "data": {
@@ -921,13 +921,13 @@
         "locked": true
       },
       "style": {
-        "width": 512,
-        "height": 576
+        "width": 736,
+        "height": 768
       },
       "zIndex": -1,
       "measured": {
-        "width": 512,
-        "height": 576
+        "width": 736,
+        "height": 768
       }
     },
     {
@@ -1005,7 +1005,7 @@
       "type": "device",
       "position": {
         "x": 32,
-        "y": 272
+        "y": 368
       },
       "parentId": "room-3",
       "measured": {
@@ -1060,7 +1060,7 @@
       "id": "device-17",
       "type": "device",
       "position": {
-        "x": 304,
+        "x": 528,
         "y": 96
       },
       "parentId": "room-3",
@@ -1119,8 +1119,8 @@
       "id": "device-18",
       "type": "device",
       "position": {
-        "x": 304,
-        "y": 240
+        "x": 528,
+        "y": 336
       },
       "parentId": "room-3",
       "measured": {
@@ -1172,8 +1172,8 @@
       "id": "device-21",
       "type": "device",
       "position": {
-        "x": 304,
-        "y": 400
+        "x": 528,
+        "y": 592
       },
       "parentId": "room-3",
       "measured": {
@@ -1284,7 +1284,7 @@
       "type": "device",
       "position": {
         "x": 0,
-        "y": 848
+        "y": 960
       },
       "measured": {
         "width": 176,
@@ -1347,8 +1347,8 @@
       "id": "device-20",
       "type": "device",
       "position": {
-        "x": 272,
-        "y": 848
+        "x": 496,
+        "y": 960
       },
       "measured": {
         "width": 176,
