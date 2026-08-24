@@ -62,6 +62,13 @@ import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, par
 import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, SchematicNode, StubLabelData, TextStubData } from "./types";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
 import { findPortByHandle } from "./portHandles";
+import {
+  CONNECT_SNAP_RADIUS,
+  isConnectableDevice,
+  resolveConnectTarget,
+  resolveRelease,
+  type SnapHandle,
+} from "./connectSnap";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
 import { loadSharedSchematic, checkSession } from "./templateApi";
 import { loadTestSchematicFromUrl } from "./testSchematic/load";
@@ -492,6 +499,11 @@ function SchematicCanvas() {
 
   // Edge reconnection state (React Flow's reconnection path)
   const reconnectingRef = useRef(false);
+  // True for the whole span of a re-route drag, start to end. reconnectingRef can't
+  // stand in for this: onReconnect clears it as soon as the re-wire lands, which is
+  // before React Flow calls onConnectEnd, and the release backstop needs to know it is
+  // looking at a re-route even then (#366).
+  const reconnectDragRef = useRef(false);
 
   // Click-to-connect preview line state
   const clickConnectFromRef = useRef<{
@@ -937,6 +949,7 @@ function SchematicCanvas() {
   // actions below take the snapshot on the paths that actually write.
   const onReconnectStart = useCallback((_event: React.MouseEvent, edge: Edge) => {
     reconnectingRef.current = true;
+    reconnectDragRef.current = true;
     setReconnectingEdgeId(edge.id);
   }, []);
 
@@ -954,6 +967,8 @@ function SchematicCanvas() {
   const onReconnectEnd = useCallback(
     (_event: MouseEvent | TouchEvent, edge: Edge, handleType: HandleType) => {
       setReconnectingEdgeId(null);
+      // The drag is over — React Flow calls this last, after onConnectEnd.
+      reconnectDragRef.current = false;
       // If the edge wasn't reconnected, delete it (disconnect)
       if (reconnectingRef.current) {
         reconnectingRef.current = false;
@@ -969,6 +984,63 @@ function SchematicCanvas() {
       }
     },
     [],
+  );
+
+  /** Every device port handle a drag could land on, centred in flow space. The ghost
+   *  preview and the release both search this one list so they can't disagree (#366).
+   *
+   *  Devices that aren't drawn are left out even though React Flow still holds their
+   *  handle bounds. A virtual patch panel keeps the position and handles it had when it
+   *  was last on canvas, so a search over raw internals would snap to phantom ports in
+   *  an empty patch of canvas — and wiring one would break the invariant setPanelOffCanvas
+   *  enforces ("a physically wired panel must stay on canvas"), besides being dropped from
+   *  the router's node set so the connection would have nowhere to render. An auto-inserted
+   *  adapter renders as a 1x1 invisible placeholder mid-connection for the same reason. */
+  const connectableHandles = useCallback((): SnapHandle[] => {
+    const state = useSchematicStore.getState();
+    const out: SnapHandle[] = [];
+    for (const node of state.nodes) {
+      if (!isConnectableDevice(node, state.hiddenAdapterNodeIds)) continue;
+      const intNode = rfInstance.getInternalNode(node.id);
+      if (!intNode) continue;
+      const hBounds = intNode.internals.handleBounds;
+      const handles = [...(hBounds?.source ?? []), ...(hBounds?.target ?? [])];
+      if (!handles.length) continue;
+      const absX = intNode.internals.positionAbsolute.x;
+      const absY = intNode.internals.positionAbsolute.y;
+      for (const h of handles) {
+        if (!h.id) continue;
+        out.push({
+          nodeId: node.id,
+          handleId: h.id,
+          x: absX + h.x + h.width / 2,
+          y: absY + h.y + h.height / 2,
+        });
+      }
+    }
+    return out;
+  }, [rfInstance]);
+
+  /** The port handle sitting directly under these client coords, if any. */
+  const handleElementAt = useCallback((clientX: number, clientY: number) => {
+    const el = document.elementFromPoint(clientX, clientY);
+    const handleEl = el?.closest(".react-flow__handle") as HTMLElement | null;
+    if (!handleEl) return null;
+    const nodeId = handleEl.closest(".react-flow__node")?.getAttribute("data-id");
+    const handleId = handleEl.getAttribute("data-handleid");
+    return nodeId && handleId ? { nodeId, handleId } : null;
+  }, []);
+
+  /** Where a pointer is, in the two terms both the ghost and the release need: the flow
+   *  position, and the port handle (if any) literally under the cursor.
+   *  `snapToGrid: false` matters — the flow's snap grid is on, and letting the pointer
+   *  round to the 16-px grid would move it up to 11 units away from where it really is. */
+  const pointerConnectContext = useCallback(
+    (clientX: number, clientY: number) => ({
+      flow: screenToFlowPosition({ x: clientX, y: clientY }, { snapToGrid: false }),
+      handleUnderCursor: handleElementAt(clientX, clientY),
+    }),
+    [handleElementAt, screenToFlowPosition],
   );
 
   // Shared helper: start preview line tracking from a handle
@@ -989,10 +1061,13 @@ function SchematicCanvas() {
       } else {
         const el = event.target as HTMLElement;
         const rect = el.getBoundingClientRect();
-        pos = screenToFlowPosition({
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        });
+        // snapToGrid: false for the same reason connectTargetAt passes it — the flow's
+        // 16-px snap grid is on, and rounding the ghost's own origin to it would start
+        // the line up to 11 units off the port it left.
+        pos = screenToFlowPosition(
+          { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+          { snapToGrid: false },
+        );
       }
       clickConnectFromRef.current = { ...pos, fromSource, nodeId, handleId };
       connectHandledRef.current = false;
@@ -1018,37 +1093,13 @@ function SchematicCanvas() {
 
       // Snap detection
       const from = { ...pos, fromSource };
-      const SNAP_RADIUS = 30;
       const sourceNodeId = nodeId;
       const sourceHandleId = handleId;
+      const origin = { nodeId: sourceNodeId, handleId: sourceHandleId };
 
-      const findSnapTarget = (mouseX: number, mouseY: number) => {
-        const state = useSchematicStore.getState();
-        let best: { x: number; y: number; dist: number; nodeId: string; handleId: string } | null = null;
-
-        for (const node of state.nodes) {
-          if (node.type !== "device") continue;
-          const intNode = rfInstance.getInternalNode(node.id);
-          if (!intNode) continue;
-          const hBounds = intNode.internals.handleBounds;
-          const handles = [...(hBounds?.source ?? []), ...(hBounds?.target ?? [])];
-          if (!handles.length) continue;
-          const absX = intNode.internals.positionAbsolute.x;
-          const absY = intNode.internals.positionAbsolute.y;
-
-          for (const h of handles) {
-            if (!h.id) continue;
-            if (node.id === sourceNodeId && h.id === sourceHandleId) continue;
-            const hx = absX + h.x + h.width / 2;
-            const hy = absY + h.y + h.height / 2;
-            const dx = hx - mouseX;
-            const dy = hy - mouseY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < SNAP_RADIUS && (!best || dist < best.dist)) {
-              best = { x: hx, y: hy, dist, nodeId: node.id, handleId: h.id };
-            }
-          }
-        }
+      const findSnapTarget = (clientX: number, clientY: number) => {
+        const { flow, handleUnderCursor } = pointerConnectContext(clientX, clientY);
+        const best = resolveConnectTarget(flow.x, flow.y, handleUnderCursor, connectableHandles(), origin);
         if (!best) return null;
 
         const connection = fromSource
@@ -1056,6 +1107,16 @@ function SchematicCanvas() {
           : { source: best.nodeId, sourceHandle: best.handleId, target: sourceNodeId, targetHandle: sourceHandleId };
         const state2 = useSchematicStore.getState();
         const valid = state2.isValidConnection(connection as Connection);
+
+        // Two ports the release won't act on, so the ghost mustn't colour them (#366):
+        //  - a port on the drag's own device. React Flow connects a valid one itself
+        //    (patch-panel front-to-front), but nothing acts on an invalid one, and
+        //    without this the ghost lit up the port 16 units below the one being dragged.
+        //  - during a re-route, a port the cursor isn't actually on. React Flow re-wires
+        //    a valid one from anywhere in the radius, but the release backstop stays out
+        //    of that gesture unless the cursor is on the port — see resolveRelease.
+        if (!valid && best.nodeId === sourceNodeId) return null;
+        if (!valid && reconnectDragRef.current && !handleUnderCursor) return null;
 
         // Check if an adapter exists for this mismatch (yellow indicator)
         let adaptable = false;
@@ -1090,7 +1151,7 @@ function SchematicCanvas() {
 
       const onMove = (e: MouseEvent) => {
         const mouse = toFlowCoords(e.clientX, e.clientY);
-        const snap = findSnapTarget(mouse.x, mouse.y);
+        const snap = findSnapTarget(e.clientX, e.clientY);
         setConnectPreview({
           fromX: from.x, fromY: from.y,
           toX: snap ? snap.x : mouse.x, toY: snap ? snap.y : mouse.y,
@@ -1105,7 +1166,7 @@ function SchematicCanvas() {
         window.removeEventListener("mousemove", onMove);
       };
     },
-    [rfInstance, screenToFlowPosition],
+    [connectableHandles, pointerConnectContext, rfInstance, screenToFlowPosition],
   );
 
   // Click-to-connect: first click on a handle
@@ -1120,33 +1181,52 @@ function SchematicCanvas() {
   );
 
   /**
-   * React Flow only fires onConnect for connections that pass isValidConnection, so a
-   * connection needing an adapter would otherwise end silently. Resolve the port under
-   * the pointer and, when the connection is invalid, hand it to onConnect so the
-   * signal/connector mismatch check (and adapter auto-insert) runs. Used by both the
-   * drag path and the click path — the click path had no equivalent at all, which is
-   * why clicking two ports that need an adapter did nothing.
+   * The backstop that makes the ghost preview binding (#366): whatever port the ghost
+   * snapped to, the release acts on it. Runs only when React Flow declined the drop
+   * itself (connectHandledRef is still clear), which happens in two ways —
+   *
+   *  - the connection needs an adapter, so it fails isValidConnection and React Flow
+   *    never fires onConnect. The store's onConnect raises the signal/connector
+   *    mismatch and auto-inserts the adapter. Used by the click path too, which had no
+   *    equivalent at all — clicking two ports that need an adapter did nothing.
+   *  - the connection is perfectly valid but React Flow resolved the release against a
+   *    different handle than the ghost did. It picks the closest handle on the whole
+   *    canvas, stub-tag handles included, and refuses when that one isn't connectable.
+   *
+   * Either way the port comes from the same CONNECT_SNAP_RADIUS search the ghost used,
+   * instead of the old "cursor must be literally on the ~10-unit handle" rule, which is
+   * what made a coloured ghost fizzle unless the user crept closer.
+   *
+   * A re-route drag is the exception, and resolveRelease holds the reasoning: React Flow
+   * fires the connect callbacks for those too, so the backstop keeps the narrow pre-#366
+   * rule there rather than duplicating a re-wire or inventing a connection out of a
+   * release meant to disconnect.
    */
-  const handleIncompatibleConnectAt = useCallback((clientX: number, clientY: number) => {
+  const completeConnectAt = useCallback((clientX: number, clientY: number) => {
     const from = clickConnectFromRef.current;
-    // React Flow already made the connection — don't re-run it against the now-occupied port.
-    if (!from || connectHandledRef.current) return;
-    const el = document.elementFromPoint(clientX, clientY);
-    const handleEl = el?.closest(".react-flow__handle") as HTMLElement | null;
-    if (!handleEl) return;
-    const targetNodeEl = handleEl.closest(".react-flow__node");
-    const targetNodeId = targetNodeEl?.getAttribute("data-id");
-    const targetHandleId = handleEl.getAttribute("data-handleid");
-    if (!targetNodeId || !targetHandleId || targetNodeId === from.nodeId) return;
-    const connection = from.fromSource
-      ? { source: from.nodeId, sourceHandle: from.handleId, target: targetNodeId, targetHandle: targetHandleId }
-      : { source: targetNodeId, sourceHandle: targetHandleId, target: from.nodeId, targetHandle: from.handleId };
-    const state = useSchematicStore.getState();
-    if (!state.isValidConnection(connection as Connection)) {
-      // Trigger the signal-type mismatch check in onConnect
-      state.onConnect(connection as Connection);
-    }
-  }, []);
+    if (!from) return;
+    const connectionFor = (target: { nodeId: string; handleId: string }): Connection =>
+      (from.fromSource
+        ? { source: from.nodeId, sourceHandle: from.handleId, target: target.nodeId, targetHandle: target.handleId }
+        : { source: target.nodeId, sourceHandle: target.handleId, target: from.nodeId, targetHandle: from.handleId }) as Connection;
+    const { flow, handleUnderCursor } = pointerConnectContext(clientX, clientY);
+    const target = resolveRelease(
+      {
+        origin: from,
+        // React Flow already made the connection — don't re-run it against the
+        // now-occupied port.
+        flowHandledConnect: connectHandledRef.current,
+        reconnecting: reconnectDragRef.current,
+        pointerX: flow.x,
+        pointerY: flow.y,
+        handleUnderCursor,
+        candidates: connectableHandles(),
+      },
+      (t) => useSchematicStore.getState().isValidConnection(connectionFor(t)),
+    );
+    if (!target) return;
+    useSchematicStore.getState().onConnect(connectionFor(target));
+  }, [connectableHandles, pointerConnectContext]);
 
   // Click-to-connect: second click completes or cancels
   const onClickConnectEnd = useCallback(
@@ -1154,11 +1234,11 @@ function SchematicCanvas() {
       const clientX = !event ? undefined : "clientX" in event ? event.clientX : event.changedTouches?.[0]?.clientX;
       const clientY = !event ? undefined : "clientY" in event ? event.clientY : event.changedTouches?.[0]?.clientY;
       if (clientX !== undefined && clientY !== undefined) {
-        handleIncompatibleConnectAt(clientX, clientY);
+        completeConnectAt(clientX, clientY);
       }
       clearClickConnect();
     },
-    [clearClickConnect, handleIncompatibleConnectAt],
+    [clearClickConnect, completeConnectAt],
   );
 
   // Drag-to-connect: show preview on drag start
@@ -1171,18 +1251,18 @@ function SchematicCanvas() {
   );
 
   // Drag-to-connect: clear preview on drag end (but not if in click-connect mode)
-  // Also detect drops on incompatible handles → show adapter dialog
+  // Also honours the release on whatever port the ghost had snapped to (#366)
   const onConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
     if (!isClickConnectMode.current) {
-      // Before clearing, check if user dropped on an incompatible handle
+      // Before clearing, act on the port the drop landed on if React Flow didn't
       const clientX = "clientX" in event ? event.clientX : event.changedTouches?.[0]?.clientX;
       const clientY = "clientY" in event ? event.clientY : event.changedTouches?.[0]?.clientY;
       if (clientX !== undefined && clientY !== undefined) {
-        handleIncompatibleConnectAt(clientX, clientY);
+        completeConnectAt(clientX, clientY);
       }
       clearClickConnect();
     }
-  }, [clearClickConnect, handleIncompatibleConnectAt]);
+  }, [clearClickConnect, completeConnectAt]);
 
   // Clicking empty space cancels click-to-connect; double-click opens quick-add
   const onPaneClick = useCallback(
@@ -1665,7 +1745,8 @@ function SchematicCanvas() {
       connectOnClick
       edgesReconnectable
       reconnectRadius={12}
-      connectionRadius={30}
+      // Same number the ghost preview snaps at — see connectSnap.ts (#366).
+      connectionRadius={CONNECT_SNAP_RADIUS}
       defaultEdgeOptions={{ type: "smoothstep", interactionWidth: edgeHitboxSize }}
       connectionLineType={ConnectionLineType.SmoothStep}
       connectionLineStyle={{ opacity: 0 }}
