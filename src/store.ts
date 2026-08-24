@@ -1121,9 +1121,38 @@ function applyDefaultConnectionType(edgeId: string): boolean {
   const topBefore = undoStack[undoStack.length - 1];
   store.convertEdgeToStubs(edgeId);
   if (undoStack[undoStack.length - 1] === topBefore) return false;
-  undoStack.pop();
+  undoFailedPush();
   useSchematicStore.setState({ undoSize: undoStack.length });
   return true;
+}
+
+/**
+ * Unwind a pushUndo() that turned out to precede a failure, so the failed action leaves no
+ * undo entry behind (#365).
+ *
+ * A bare `undoStack.pop()` at the call site assumes the preceding pushUndo actually pushed —
+ * true outside a batch, but inside a suppressed runAsSingleUndoStep batch pushUndo only
+ * incremented the suppression counter and touched neither stack. Popping the real stack there
+ * would destroy an unrelated pre-batch entry instead of the (never-pushed) suppressed one, so
+ * this routes the unwind through whichever bookkeeping the matching pushUndo actually did.
+ *
+ * The dev-mode checks assert the invariant a corrupting pop would have violated: pops never
+ * outnumber pushes, in the live suppression counter or on the real stack.
+ */
+function undoFailedPush(): void {
+  if (suppressedUndoPushes) {
+    if (import.meta.env.DEV && suppressedUndoPushes.count <= 0) {
+      throw new Error(
+        "undoFailedPush: popped more times than pushed in the current suppressed undo batch",
+      );
+    }
+    suppressedUndoPushes.count = Math.max(0, suppressedUndoPushes.count - 1);
+    return;
+  }
+  if (import.meta.env.DEV && undoStack.length === 0) {
+    throw new Error("undoFailedPush: popped an empty undo stack");
+  }
+  undoStack.pop();
 }
 
 /**
@@ -1166,6 +1195,14 @@ function runAsSingleUndoStep(ids: string[], apply: (id: string) => void) {
   pendingUndoSnapshot = previousPending; // pushUndo cleared it; hand any outer gesture its own back
   if (save.pending) useSchematicStore.getState().saveToLocalStorage();
 }
+
+/**
+ * Test-only seam (#365): exposes the bulk-undo suppression machinery — runAsSingleUndoStep
+ * and its matching failure-unwind helper — so tests can drive a per-item action that pushes
+ * and then fails mid-batch, the exact shape that used to spring the bare-pop trap, without
+ * waiting for a real bulk action to grow one. Not read by any UI path.
+ */
+export const __undoBatchInternalsForTest = { runAsSingleUndoStep, undoFailedPush };
 
 // ── Async routing (Web Worker) plumbing ──────────────────────────────────
 // recomputeRoutes posts a seq-tagged request to the routing worker and stashes the main-thread-only
@@ -4388,7 +4425,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const sourceNode = state.nodes.find((n) => n.id === pending.connection.source);
     const targetNode = state.nodes.find((n) => n.id === pending.connection.target);
     if (!sourceNode || !targetNode) {
-      undoStack.pop();
+      undoFailedPush();
       set({ pendingIncompatibleConnection: null, undoSize: undoStack.length });
       return false;
     }
@@ -4577,7 +4614,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     // the cable and state untouched and report failure so the caller can re-offer the
     // remaining resolutions.
     if (pending.replaceEdgeId && (!adapterInput || !adapterOutput)) {
-      undoStack.pop();
+      undoFailedPush();
       set({ pendingIncompatibleConnection: null, undoSize: undoStack.length });
       return false;
     }
@@ -4593,7 +4630,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     // half-draw (#310).
     if ((adapterInput && pending.sourcePort.direction === "input") ||
         (adapterOutput && adapterOutput.direction === "input")) {
-      undoStack.pop();
+      undoFailedPush();
       set({ pendingIncompatibleConnection: null, undoSize: undoStack.length });
       return false;
     }
