@@ -10,8 +10,13 @@
  * compose stub text — so none of the three can drift from the others.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
-import { resolveStubLabelParts } from "../stubLabelResolve";
-import { MISSING_CABLE_ID, buildStubLabelText, type StubLabelParts } from "../stubLabelText";
+import { resolveStubLabelParts, resolveStubLabelPartsForMode } from "../stubLabelResolve";
+import {
+  MISSING_CABLE_ID,
+  UNRESOLVED_STUB_LABEL_TEXT,
+  buildStubLabelText,
+  type StubLabelParts,
+} from "../stubLabelText";
 import { DEFAULT_STUB_LABEL_MODE } from "../types";
 import type { ConnectionEdge, SchematicNode, StubLabelData } from "../types";
 
@@ -208,5 +213,90 @@ describe("the mode survives a save/load round-trip (#270)", () => {
       ...everythingOn,
       labelMode: (tag.data as StubLabelData).labelMode,
     })).toBe("→ PROJECTOR [HDMI In 1] (Main Hall)");
+  });
+});
+
+/**
+ * #364 — a cable-ID-only tag whose partner leg has been deleted.
+ *
+ * Both surfaces used to hand the resolver's null straight to "?" before the mode was
+ * consulted, so a tag that promises "the cable ID alone" printed a question mark while
+ * the leg it sits on still printed the ID a few pixels away. The far end is genuinely
+ * gone; the cable ID is not.
+ */
+
+/** The text StubLabelNode and emitStubLabel both compose for one tag — the mode-aware
+ *  resolve, the shared composer, and the "?" both surfaces fall back to. */
+function tagText(tagId: string) {
+  const s = useSchematicStore.getState();
+  const tag = s.nodes.find((n) => n.id === tagId)!;
+  const data = tag.data as StubLabelData;
+  const parts = resolveStubLabelPartsForMode(tagId, data, {
+    nodes: s.nodes,
+    edges: s.edges,
+    cableIdMap: s.cableIdMap,
+  });
+  return parts
+    ? buildStubLabelText(parts, { ...everythingOn, labelMode: data.labelMode })
+    : UNRESOLVED_STUB_LABEL_TEXT;
+}
+
+/** Delete one leg, leaving the other's tag pointing at nothing — the half-deleted
+ *  connection the "?" fallback exists for. */
+function dropLeg(edgeId: string) {
+  useSchematicStore.setState((s) => ({ edges: s.edges.filter((e) => e.id !== edgeId) }));
+}
+
+describe("a cable-ID tag whose partner leg is gone (#364)", () => {
+  it("prints the ID off its own leg instead of '?'", () => {
+    seedStubbedRun();
+    useSchematicStore.getState().patchStubLabelData("stub-e-run-src", { labelMode: "cableId" });
+    dropLeg("e-run-tgt");
+
+    // Premise: the full resolution genuinely fails — there is no far end left to name.
+    const s = useSchematicStore.getState();
+    const tag = s.nodes.find((n) => n.id === "stub-e-run-src")!;
+    expect(resolveStubLabelParts("stub-e-run-src", tag.data as StubLabelData, {
+      nodes: s.nodes, edges: s.edges, cableIdMap: s.cableIdMap,
+    })).toBeNull();
+
+    expect(tagText("stub-e-run-src")).toBe("HDMI-001");
+  });
+
+  it("keeps reading '?' in the default mode, where the tag promised a destination", () => {
+    seedStubbedRun();
+    dropLeg("e-run-tgt");
+    expect(tagText("stub-e-run-src")).toBe(UNRESOLVED_STUB_LABEL_TEXT);
+  });
+
+  it("reaches the ID through the store's map from the target side", () => {
+    seedStubbedRun();
+    // What recomputeCableIds leaves behind: both legs mapped, though only the source leg
+    // stores the ID on itself. The target tag's own leg is the one that survives here.
+    useSchematicStore.setState({ cableIdMap: { "e-run-src": "HDMI-001", "e-run-tgt": "HDMI-001" } });
+    useSchematicStore.getState().patchStubLabelData("stub-e-run-tgt", { labelMode: "cableId" });
+    dropLeg("e-run-src");
+
+    expect(tagText("stub-e-run-tgt")).toBe("HDMI-001");
+  });
+
+  it("marks an unnumbered connection rather than an unresolved one", () => {
+    seedStubbedRun();
+    useSchematicStore.getState().patchStubLabelData("stub-e-run-tgt", { labelMode: "cableId" });
+    dropLeg("e-run-src");
+    // convertEdgeToStubs strips cableId from the target leg and nothing has rebuilt the
+    // map, so with the source leg deleted no ID survives anywhere. That is an unnumbered
+    // cable, which the mode already has a marker for — not a reason to go back to "?".
+    expect(useSchematicStore.getState().cableIdMap["e-run-tgt"]).toBeUndefined();
+    expect(tagText("stub-e-run-tgt")).toBe(MISSING_CABLE_ID);
+  });
+
+  it("still reads '?' when the tag's OWN leg is gone, in either mode", () => {
+    seedStubbedRun();
+    useSchematicStore.getState().patchStubLabelData("stub-e-run-src", { labelMode: "cableId" });
+    dropLeg("e-run-src");
+    // Nothing is left to name and nothing is left to number — a fully orphaned tag.
+    expect(tagText("stub-e-run-src")).toBe(UNRESOLVED_STUB_LABEL_TEXT);
+    expect(tagText("stub-e-run-tgt")).toBe(UNRESOLVED_STUB_LABEL_TEXT);
   });
 });

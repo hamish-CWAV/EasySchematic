@@ -13,6 +13,7 @@ import { hopHiddenAdapters } from "./adapterVisibility";
 import { computePageGrid } from "./printPageGrid";
 import { getPaperSize, type Orientation } from "./printConfig";
 import type { StubLabelParts } from "./stubLabelText";
+import { DEFAULT_STUB_LABEL_MODE } from "./types";
 import type {
   ConnectionEdge,
   SchematicNode,
@@ -154,21 +155,59 @@ export function resolveStubLabelParts(
 }
 
 /**
+ * The parts a tag composes from, its label mode taken into account.
+ *
+ * In the default modes this is just resolveStubLabelParts, "?" and all. In cable-ID-only
+ * mode (#270) the tag promises the cable ID and nothing else, and the ID is on the tag's
+ * OWN leg — so a missing partner leg or an unresolvable far device, which is all
+ * resolveStubLabelParts's null means, does not take it away. Returning "?" there was
+ * #364: the wire beside the tag still printed the ID the tag had given up on.
+ *
+ * Still null when even the own leg is gone — a fully orphaned tag has no connection left
+ * to name, in any mode, and reads UNRESOLVED_STUB_LABEL_TEXT.
+ */
+export function resolveStubLabelPartsForMode(
+  stubId: string,
+  data: Pick<StubLabelData, "side" | "linkedConnectionId" | "labelMode">,
+  ctx: StubLabelContext,
+): StubLabelParts | null {
+  const parts = resolveStubLabelParts(stubId, data, ctx);
+  if (parts) return parts;
+  if ((data.labelMode ?? DEFAULT_STUB_LABEL_MODE) !== "cableId") return null;
+
+  const ownEdge = findOwnEdge(stubId, data.side, ctx.edges);
+  if (!ownEdge) return null;
+  // The partner leg is usually what's missing here, but look for it anyway: the far
+  // device can be the unresolvable half, and then the partner is still the leg carrying
+  // the ID for a target-side tag.
+  const partnerEdge = ctx.edges.find(
+    (e) => e.data?.linkedConnectionId === data.linkedConnectionId && e.id !== ownEdge.id,
+  );
+  // No far end survives to describe, so every far-end part is empty — in this mode
+  // buildStubLabelText reads none of them.
+  return {
+    arrow: "", farLabel: "", farPort: "", farRoom: "", myPage: "", farPage: "",
+    cableId: resolveCableId(ownEdge, partnerEdge, ctx.cableIdMap),
+  };
+}
+
+/**
  * The cable ID of the logical connection, from whichever leg carries it. convertEdgeToStubs
  * strips cableId from the target-side leg (the source leg owns it, and recomputeCableIds
  * mirrors it back through cableIdMap), so a target-side tag has to look at its partner or
- * it would come back blank.
+ * it would come back blank. The partner is optional because a half-deleted connection has
+ * none left, and the ID on the surviving leg is still worth printing (#364).
  */
 function resolveCableId(
   ownEdge: ConnectionEdge,
-  partnerEdge: ConnectionEdge,
+  partnerEdge: ConnectionEdge | undefined,
   cableIdMap: Record<string, string> | undefined,
 ): string {
   return (
     cableIdMap?.[ownEdge.id] ||
     (ownEdge.data?.cableId as string | undefined) ||
-    cableIdMap?.[partnerEdge.id] ||
-    (partnerEdge.data?.cableId as string | undefined) ||
+    (partnerEdge && cableIdMap?.[partnerEdge.id]) ||
+    (partnerEdge?.data?.cableId as string | undefined) ||
     ""
   );
 }

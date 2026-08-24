@@ -31,7 +31,7 @@ import {
   type SchematicDisplayDefaults,
 } from "../displayName";
 import { buildStubLabelText, UNRESOLVED_STUB_LABEL_TEXT } from "../stubLabelText";
-import { resolveStubLabelParts, type StubLabelContext } from "../stubLabelResolve";
+import { resolveStubLabelPartsForMode, type StubLabelContext } from "../stubLabelResolve";
 import { STUB_H_EST, STUB_W_EST } from "../stubPlacement";
 
 /** Matches Tailwind `rounded-lg` on the canvas DeviceNode (8px = 0.083"). */
@@ -569,11 +569,12 @@ export function emitStubLabel(
   if (!internal) return;
   const data = node.data as StubLabelData;
 
-  const parts = resolveStubLabelParts(node.id, data, ctx);
+  const parts = resolveStubLabelPartsForMode(node.id, data, ctx);
   // A stub whose partner leg or far device can't be resolved reads "?" on the canvas.
   // Dropping the node from the drawing instead would leave the leg's cable ID as the
   // only text at that end — the same silent loss of the tag #319 is about — and hide
-  // from the reader that the connection is broken.
+  // from the reader that the connection is broken. A cable-ID-only tag is the exception
+  // the resolver above handles: its ID comes off its own leg, so it survives (#364).
   const text = parts
     ? buildStubLabelText(
         // Only the name-ish parts take the display-case preference — the arrow and the

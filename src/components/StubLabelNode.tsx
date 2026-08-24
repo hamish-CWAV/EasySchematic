@@ -6,7 +6,7 @@ import { useSchematicStore, GRID_SIZE } from "../store";
 import { STUB_GAP } from "../stubPlacement";
 import { getPortAbsolutePositions } from "../snapUtils";
 import { buildStubLabelText, UNRESOLVED_STUB_LABEL_TEXT } from "../stubLabelText";
-import { buildPrintPageLookup, resolveStubLabelParts } from "../stubLabelResolve";
+import { buildPrintPageLookup, resolveStubLabelPartsForMode } from "../stubLabelResolve";
 import { useDisplayLabel } from "../labelCaseUtils";
 
 /** Find the connecting edge: source-side stub is the TARGET of an edge from a device;
@@ -38,7 +38,9 @@ function StubLabelNodeComponent({ id, data, selected }: NodeProps<StubLabelNodeT
   // The resolution itself lives in stubLabelResolve so the DXF export emits the same
   // text this box shows (#319); only the serialization is local.
   const labelStr = useSchematicStore((s) => {
-    const parts = resolveStubLabelParts(id, data, {
+    // Mode-aware: a cable-ID-only tag whose partner leg is gone still prints the ID off
+    // its own leg, rather than the "?" the destination-naming modes fall back to (#364).
+    const parts = resolveStubLabelPartsForMode(id, data, {
       nodes: s.nodes,
       edges: s.edges,
       // Page tags only appear in print view (matches OffsetEdge.tsx legacy behavior).

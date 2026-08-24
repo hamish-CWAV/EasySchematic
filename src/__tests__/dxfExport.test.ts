@@ -1683,6 +1683,34 @@ describe("buildDxf — stub labels (#319)", () => {
     expect(labelTexts(dxf)).toContain("?");
     expect(stubPillIndex(rawEntityStream(dxf), 208, 33, 96, 14)).toBeGreaterThan(-1);
   });
+
+  // ...except in cable-ID-only mode, where the tag's whole contract is the ID and the ID
+  // is on the tag's OWN leg — the leg that survived. Printing "?" beside a wire still
+  // carrying the number was #364.
+  it("prints a cable-ID tag's own-leg ID when its partner leg is gone (#364)", () => {
+    const orphaned = edges.filter((e) => e.id === "e-leg-a");
+    const texts = labelTexts(exportWithStubs({
+      nodes: withLabelMode("cableId"),
+      edges: orphaned,
+      routedEdges: { "e-leg-a": routedEdges["e-leg-a"] },
+    }));
+    // The tag itself plus the surviving leg's device-end chip — and no "?" from stub-a.
+    expect(texts.filter((t) => t === "C-014").length).toBe(2);
+    // stub-b lost its own leg as well, so nothing is left to name OR number there.
+    expect(texts.filter((t) => t === "?").length).toBe(1);
+  });
+
+  // Canvas and DXF have to agree on the exception too: with the tag left in the default
+  // mode the same orphaned stub still reads "?" in the CAD drawing.
+  it("leaves the default-mode tag on '?' in the same orphaned drawing (#364)", () => {
+    const orphaned = edges.filter((e) => e.id === "e-leg-a");
+    const texts = labelTexts(exportWithStubs({
+      edges: orphaned,
+      routedEdges: { "e-leg-a": routedEdges["e-leg-a"] },
+    }));
+    expect(texts.filter((t) => t === "?").length).toBe(2);
+    expect(texts.filter((t) => t === "C-014").length).toBe(1);
+  });
 });
 
 // ─── Stub labels across a hidden inline adapter (#348) ───────────────────────
