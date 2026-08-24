@@ -41,7 +41,8 @@ import type {
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ConnectorType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, DefaultConnectionType, ProjectStatus } from "./types";
 import { defaultStubPlacement, healStubPortAlignment, nearestStubHandleSide, reconcileStubPairs, stubTagEndOf, STUB_H_EST, STUB_W_EST } from "./stubPlacement";
-import { getPortAbsolutePositions, parentOffsetFromMap, settleTagsAfterMove, tagHostId } from "./snapUtils";
+import { estimateDeviceHeight, getPortAbsolutePositions, parentOffsetFromMap, settleTagsAfterMove, tagHostId } from "./snapUtils";
+import { findFreeAdapterSlot, ADAPTER_GAP, DEVICE_W_EST } from "./adapterPlacement";
 import { resolveHiddenAdapterIds } from "./adapterVisibility";
 import { findPortByHandle } from "./portHandles";
 import { textStubSideForPort, textStubBoxPosition } from "./textStub";
@@ -4478,35 +4479,37 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     const srcAbs = absPos(sourceNode);
     const tgtAbs = absPos(targetNode);
-    const srcW = sourceNode.measured?.width ?? 144;
-    const tgtW = targetNode.measured?.width ?? 144;
+    // Same width fallback chain the placement search below uses, so the midpoint it
+    // aims for and the boxes it tests agree about how wide an unmeasured device is.
+    const deviceWidth = (n: SchematicNode) =>
+      n.measured?.width ?? (n.width as number) ?? (n.style?.width as number) ?? DEVICE_W_EST;
+    const srcW = deviceWidth(sourceNode);
+    const tgtW = deviceWidth(targetNode);
 
     // Midpoint between the right edge of the left device and left edge of the right device
     // (or just center-to-center if they're stacked vertically)
     const srcCenterX = srcAbs.x + srcW / 2;
     const tgtCenterX = tgtAbs.x + tgtW / 2;
-    const srcCenterY = srcAbs.y + (sourceNode.measured?.height ?? 48) / 2;
-    const tgtCenterY = tgtAbs.y + (targetNode.measured?.height ?? 48) / 2;
+    // Port rows, not a flat 48px: the same estimate the placement search below uses to
+    // size neighbours, so the row it aims for is the row the cable actually runs on.
+    const srcCenterY = srcAbs.y + (sourceNode.measured?.height ?? estimateDeviceHeight(sourceNode)) / 2;
+    const tgtCenterY = tgtAbs.y + (targetNode.measured?.height ?? estimateDeviceHeight(targetNode)) / 2;
 
-    let idealX = Math.round(((srcCenterX + tgtCenterX) / 2) / GRID_SIZE) * GRID_SIZE;
-    let idealY = Math.round(((srcCenterY + tgtCenterY) / 2) / GRID_SIZE) * GRID_SIZE;
+    const idealAbsX = Math.round(((srcCenterX + tgtCenterX) / 2) / GRID_SIZE) * GRID_SIZE;
+    const idealAbsY = Math.round(((srcCenterY + tgtCenterY) / 2) / GRID_SIZE) * GRID_SIZE;
 
     // If both are in the same room, parent the adapter there too
     const adapterParentId = (sourceNode.parentId && sourceNode.parentId === targetNode.parentId)
       ? sourceNode.parentId : undefined;
 
-    // Convert back to parent-relative coords if parented
-    if (adapterParentId) {
-      const parentNode = state.nodes.find((n) => n.id === adapterParentId);
-      if (parentNode) {
-        idealX -= parentNode.position.x;
-        idealY -= parentNode.position.y;
-      }
-    }
+    // Everything below works in the adapter's own frame: parent-relative when it is
+    // parented, absolute when it isn't. The offset walks the full parent chain so a
+    // room nested in another room resolves like every other coordinate here.
+    const adapterParent = adapterParentId ? adapterNodeMap.get(adapterParentId) : undefined;
+    const parentOrigin = adapterParent ? absPos(adapterParent) : { x: 0, y: 0 };
 
-    // Snap to grid
-    idealX = Math.round(idealX / GRID_SIZE) * GRID_SIZE;
-    idealY = Math.round(idealY / GRID_SIZE) * GRID_SIZE;
+    const idealX = Math.round((idealAbsX - parentOrigin.x) / GRID_SIZE) * GRID_SIZE;
+    const idealY = Math.round((idealAbsY - parentOrigin.y) / GRID_SIZE) * GRID_SIZE;
 
     // Create adapter device
     const preset = template.id ? state.templatePresets[template.id] : undefined;
@@ -4557,33 +4560,56 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       },
     };
 
-    // Nudge adapter position if it overlaps existing devices
-    const MIN_GAP = GRID_SIZE * 5; // 80px — enough for stubs + routing
-    const adapterW = 144; // approximate width before measurement
-    const adapterH = 48;
-    let posX = adapterNode.position.x;
-    const posY = adapterNode.position.y;
-    for (const other of state.nodes) {
-      if (other.type !== "device") continue;
-      if (other.parentId !== adapterParentId) continue;
-      const ow = other.measured?.width ?? 144;
-      const oh = other.measured?.height ?? 48;
-      // Check AABB overlap with gap
-      const overlapX = posX < other.position.x + ow + MIN_GAP && posX + adapterW + MIN_GAP > other.position.x;
-      const overlapY = posY < other.position.y + oh && posY + adapterH > other.position.y;
-      if (overlapX && overlapY) {
-        // Push horizontally toward the midpoint direction
-        const pushRight = other.position.x + ow + MIN_GAP;
-        const pushLeft = other.position.x - adapterW - MIN_GAP;
-        // Pick whichever side is closer to the ideal position
-        if (Math.abs(pushRight - idealX) < Math.abs(pushLeft - idealX)) {
-          posX = Math.round(pushRight / GRID_SIZE) * GRID_SIZE;
-        } else {
-          posX = Math.round(pushLeft / GRID_SIZE) * GRID_SIZE;
+    // Move the adapter off the midpoint if devices are already sitting there. Every
+    // neighbour is re-checked against every candidate slot, on both axes: the old
+    // single pass only moved along X and never revisited a device it had cleared, so
+    // it could push the adapter straight onto one it had already checked (#363).
+    //
+    // Every device on the page is an obstacle, resolved into the adapter's own frame.
+    // The old loop only looked at devices sharing the adapter's parent, which meant
+    // that on the ordinary cross-room drag — endpoints in two different rooms, so the
+    // adapter is unparented — the filter matched nothing and the adapter dropped
+    // straight onto whatever room-parented device happened to sit at the midpoint.
+    //
+    // Heights come from the shared port-row estimate — the flat 48px guess used to
+    // miss an overlap outright whenever a neighbour's first port row was the part
+    // being covered — and sizes follow the same fallback chain snapUtils uses, so a
+    // device carrying an explicit size but no measurement yet is not guessed at.
+    const deviceBox = (n: SchematicNode) => {
+      const abs = absPos(n);
+      return {
+        x: abs.x - parentOrigin.x,
+        y: abs.y - parentOrigin.y,
+        w: deviceWidth(n),
+        h: n.measured?.height ?? (n.height as number) ?? (n.style?.height as number) ?? estimateDeviceHeight(n),
+      };
+    };
+    const obstacles = state.nodes.filter((n) => n.type === "device").map(deviceBox);
+
+    // Staying inside the parent room is more than cosmetic: room membership is
+    // geometric (findBestEnclosingRoom), so an adapter parked outside the room it
+    // claims is detached by the next reparent pass — silently changing which room it
+    // is filed under in the room-grouped reports. Sizes use the same fallback order
+    // that membership check does, so the two can't disagree about the room's edges.
+    const roomBounds = adapterParent
+      ? {
+          x: 0,
+          y: 0,
+          w: adapterParent.measured?.width ?? (adapterParent.style?.width as number) ?? (adapterParent.width as number) ?? 400,
+          h: adapterParent.measured?.height ?? (adapterParent.style?.height as number) ?? (adapterParent.height as number) ?? 300,
         }
-      }
-    }
-    adapterNode = { ...adapterNode, position: { x: posX, y: posY } };
+      : undefined;
+
+    adapterNode = {
+      ...adapterNode,
+      position: findFreeAdapterSlot(
+        { x: idealX, y: idealY },
+        { w: DEVICE_W_EST, h: estimateDeviceHeight(adapterNode) },
+        obstacles,
+        ADAPTER_GAP,
+        roomBounds,
+      ),
+    };
 
     // Find matching ports on adapter, using the same resolver the matcher used so the
     // two can't disagree. Both resolvers also match the adapter used in reverse —

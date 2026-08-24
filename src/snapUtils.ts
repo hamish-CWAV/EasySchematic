@@ -57,7 +57,7 @@ interface Rect {
   centerY: number;
 }
 
-function estimateDeviceHeight(node: SchematicNode): number {
+export function estimateDeviceHeight(node: SchematicNode): number {
   const data = node.data as DeviceData;
   const ports = data.ports ?? [];
   const left = ports.filter((p) => p.direction !== "bidirectional" && (p.direction === "input" ? !p.flipped : !!p.flipped)).length;
