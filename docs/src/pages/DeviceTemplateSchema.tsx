@@ -101,6 +101,7 @@ export default function DeviceTemplateSchemaPage() {
           <tr><td><code>unitCost</code></td><td>number</td><td>MSRP / typical unit cost in USD</td></tr>
           <tr><td><code>searchTerms</code></td><td>string[]</td><td>Extra keywords for the device library search</td></tr>
           <tr><td><code>color</code></td><td>string</td><td>Hex color (e.g. "#3b82f6") for the device card</td></tr>
+          <tr><td><code>headerColor</code></td><td>string</td><td>Hex color for the device's header bar. Set on a user template by saving a device whose header color you picked yourself; devices placed from the template take it ahead of the project and app default header color settings. Omit to leave those defaults in charge.</td></tr>
         </tbody>
       </table>
 

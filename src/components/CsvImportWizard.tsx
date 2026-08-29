@@ -30,6 +30,7 @@ export default function CsvImportWizard({ onClose }: { onClose: () => void }) {
   const importCsvData = useSchematicStore((s) => s.importCsvData);
   const projectHeaderColor = useSchematicStore((s) => s.defaultDeviceHeaderColor);
   const appHeaderColor = useSchematicStore((s) => s.appDefaultDeviceHeaderColor);
+  const templatePresets = useSchematicStore((s) => s.templatePresets);
 
   // Step state
   const [step, setStep] = useState<1 | 2>(1);
@@ -137,13 +138,15 @@ export default function CsvImportWizard({ onClose }: { onClose: () => void }) {
   }, [deviceMatches]);
 
   const handleImport = useCallback(() => {
-    // Imported devices are new devices, so they take the default header color too (#354).
+    // Imported devices are new devices, so they resolve their header color the same way a
+    // device dragged out of the library does — preset, template, then the defaults (#354).
     const result = buildImportResult(connections, deviceMatches, {
       defaultHeaderColor: resolveDefaultDeviceHeaderColor(projectHeaderColor, appHeaderColor),
+      templatePresets,
     });
     importCsvData(result.nodes, result.edges);
     onClose();
-  }, [connections, deviceMatches, importCsvData, onClose, projectHeaderColor, appHeaderColor]);
+  }, [connections, deviceMatches, importCsvData, onClose, projectHeaderColor, appHeaderColor, templatePresets]);
 
   // ---------- Render ----------
 

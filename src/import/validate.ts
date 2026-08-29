@@ -60,6 +60,10 @@ export function validateTemplate(t: Partial<DeviceTemplate>): TemplateValidation
     errors.push("color must be a valid hex (e.g. #3b82f6)");
   }
 
+  if (t.headerColor != null && (typeof t.headerColor !== "string" || !/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(t.headerColor))) {
+    errors.push("headerColor must be a valid hex (e.g. #3b82f6)");
+  }
+
   // Numeric fields
   for (const field of ["powerDrawW", "powerCapacityW", "thermalBtuh", "heightMm", "widthMm", "depthMm", "weightKg"] as const) {
     const v = t[field];

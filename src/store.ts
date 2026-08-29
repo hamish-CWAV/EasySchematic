@@ -50,7 +50,7 @@ import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, D
 import {
   loadAppDefaultHeaderColor,
   normalizeHeaderColor,
-  resolveDefaultDeviceHeaderColor,
+  resolveDeviceHeaderColor,
   saveAppDefaultHeaderColor,
 } from "./deviceHeaderColor";
 import { pairKey } from "./roomDistance";
@@ -2357,10 +2357,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       ports.forEach((p, i) => { p.templatePortId = template.ports[i].id; });
     }
 
-    // Header color for a freshly placed device — project override, then app preference,
-    // then nothing at all (the theme's surface color). Stamped here so a later change to
-    // either setting leaves this device alone (#354).
-    const headerColor = resolveDefaultDeviceHeaderColor(
+    // Header color for a freshly placed device — the project preset's saved color, then the
+    // template's own saved color, then the project override, then the app preference, then
+    // nothing at all (the theme's surface color). A color saved onto this template or its
+    // preset is about this device specifically, so it beats both defaults. Stamped here so a
+    // later change to any of them leaves this device alone (#354).
+    const headerColor = resolveDeviceHeaderColor(
+      preset?.headerColor,
+      template.headerColor,
       state.defaultDeviceHeaderColor,
       state.appDefaultDeviceHeaderColor,
     );
@@ -3378,6 +3382,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     //    of instance-level customizations from the old device.
     const userRenamed = !isAutoNamedDevice(oldData);
     const preservedLabel = userRenamed ? oldData.label : newTemplate.label;
+    // The device's own header color survives the swap — a swap changes the model, not the
+    // color the user (or the default header color setting) gave this device. Only a device
+    // that never had one picks up a color the new template carries, so swapping into a
+    // template that was saved with a header color still colors the device (#354).
+    const swappedHeaderColor = oldData.headerColor ?? normalizeHeaderColor(newTemplate.headerColor);
     const newData: DeviceData = {
       label: preservedLabel,
       deviceType: newTemplate.deviceType,
@@ -3415,9 +3424,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       ...(oldData.hostname ? { hostname: oldData.hostname } : (newTemplate.hostname ? { hostname: newTemplate.hostname } : {})),
       ...(oldData.useShortName !== undefined ? { useShortName: oldData.useShortName } : {}),
       ...(oldData.wrapLabel !== undefined ? { wrapLabel: oldData.wrapLabel } : {}),
-      // The header color is the device's own, not the template's — a swap changes the
-      // model, not the color the user (or the default header color setting) gave it (#354).
-      ...(oldData.headerColor ? { headerColor: oldData.headerColor } : {}),
+      ...(swappedHeaderColor ? { headerColor: swappedHeaderColor } : {}),
     };
 
     // 6. Remap edges. For each mapping with a target, compute the new handle. Otherwise drop.
@@ -4528,9 +4535,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       adapterPorts = clonePorts(template.ports);
     }
 
-    // An auto-inserted adapter is a new device like any other, so it takes the same
-    // default header color (#354).
-    const adapterHeaderColor = resolveDefaultDeviceHeaderColor(
+    // An auto-inserted adapter is a new device like any other, so it resolves its header
+    // color the same way — preset, then template, then the two defaults (#354).
+    const adapterHeaderColor = resolveDeviceHeaderColor(
+      preset?.headerColor,
+      template.headerColor,
       state.defaultDeviceHeaderColor,
       state.appDefaultDeviceHeaderColor,
     );

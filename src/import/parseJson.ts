@@ -60,6 +60,9 @@ function normalizeTemplate(raw: Record<string, unknown>): Partial<DeviceTemplate
     modelNumber: str(raw.modelNumber),
     referenceUrl: str(raw.referenceUrl),
     color: str(raw.color),
+    // Passed through as written so the validator can report a bad hex the way it does for
+    // `color`; placement normalizes whatever survives (#354).
+    headerColor: str(raw.headerColor),
     imageUrl: str(raw.imageUrl),
     searchTerms: Array.isArray(raw.searchTerms)
       ? raw.searchTerms.filter((s): s is string => typeof s === "string")

@@ -36,7 +36,8 @@ import FacePlateEditor from "./FacePlateEditor";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
-import { HEADER_COLOR_SWATCH_FALLBACK, resolveDefaultDeviceHeaderColor } from "../deviceHeaderColor";
+import { HEADER_COLOR_SWATCH_FALLBACK, normalizeHeaderColor, resolveDeviceHeaderColor, type HeaderColorCapture } from "../deviceHeaderColor";
+import { buildDeviceTemplate, buildTemplatePreset, type PortDraft } from "../deviceTemplateBuild";
 import { carriesPowerCapacity } from "../deviceTypeCategories";
 import { visibleSaveActions, SAVE_ACTION_LABELS, SAVE_ACTION_TITLES, type SaveActionId } from "../deviceEditorActions";
 import { visiblePortRowControls, PORT_ROW_CONTROL_TITLES, type PortRowControlId } from "../portRowControls";
@@ -70,35 +71,6 @@ const CONNECTOR_GROUP_ENTRIES: Array<[string, ConnectorType[]]> = (() => {
   }
   return groups;
 })();
-
-interface PortDraft {
-  id: string;
-  label: string;
-  signalType: SignalType;
-  direction: PortDirection;
-  section?: string;
-  connectorType?: ConnectorType;
-  gender?: Gender;
-  networkConfig?: PortNetworkConfig;
-  addressable?: boolean;
-  capabilities?: PortCapabilities;
-  isMulticable?: boolean;
-  channelCount?: number;
-  multiConnect?: boolean;
-  directAttach?: boolean;
-  notes?: string;
-  poeDrawW?: number;
-  usbcPowerSourceW?: number;
-  usbcPowerDrawW?: number;
-  linkSpeed?: string;
-  flipped?: boolean;
-  // Passthrough-only fields
-  rearConnectorType?: ConnectorType;
-  rearGender?: Gender;
-  frontConnectorType?: ConnectorType;
-  frontGender?: Gender;
-  inheritsSignal?: boolean;
-}
 
 function newPortDraft(direction: PortDirection): PortDraft {
   const signalType: SignalType = "sdi";
@@ -172,6 +144,12 @@ export default function DeviceEditor() {
   const [category, setCategory] = useState("");
   const [color, setColor] = useState<string | undefined>(undefined);
   const [headerColor, setHeaderColor] = useState<string | undefined>(undefined);
+  // True once the user has worked the header-color picker on this device. Placement stamps the
+  // resolved default header color onto every device (#354), so a device showing a color is not
+  // by itself evidence anyone chose that color for it — without this flag a template or preset
+  // saved from such a device would bake the default in, and the project override would then be
+  // dead for that template with nothing on screen to say why.
+  const [headerColorEdited, setHeaderColorEdited] = useState(false);
   const [ports, setPorts] = useState<PortDraft[]>([]);
 
   // Port visibility local state
@@ -287,6 +265,7 @@ export default function DeviceEditor() {
     setCategory(node.data.category ?? tpl?.category ?? "");
     setColor(node.data.color);
     setHeaderColor(node.data.headerColor);
+    setHeaderColorEdited(false);
     setShowAllPorts(node.data.showAllPorts ?? false);
     setPortVisOpen(false);
     setDhcpServer(node.data.dhcpServer ? { ...node.data.dhcpServer } : undefined);
@@ -496,62 +475,62 @@ export default function DeviceEditor() {
     }
   }, [handleSave, pendingInstanceUpdate]);
 
+  // What a template-family save should record as the header color. `savedHeaderColor` is
+  // whatever the object being written already carried, so updating a template that owns a
+  // color never silently erases it (#354).
+  const headerColorCapture = useCallback(
+    (savedHeaderColor: string | undefined): HeaderColorCapture => ({
+      deviceHeaderColor: headerColor,
+      edited: headerColorEdited,
+      savedHeaderColor,
+      projectDefault: projectHeaderColor,
+      appDefault: appHeaderColor,
+    }),
+    [headerColor, headerColorEdited, projectHeaderColor, appHeaderColor],
+  );
+
   // Shared builder for the "save as template", "update template" and "fork built-in" flows.
   // `overrides` carries the id (always) and, for updates/forks, version + a renamed label.
+  // The object itself is assembled by the pure builder in deviceTemplateBuild.ts.
   const buildTemplateFromForm = useCallback(
-    (overrides: Partial<DeviceTemplate> & Pick<DeviceTemplate, "id">): DeviceTemplate => {
-      const finalPorts: Port[] = ports
-        .filter((p) => p.label.trim())
-        .map((p, i) => ({
-          ...p,
-          id: `tpl-${i}`,
-          label: p.label.trim(),
-        }));
-      const trimmedAux = trimTrailingEmpty(auxiliaryData);
-      const existing = node?.data;
-      return {
-        deviceType: deviceType.trim() || "custom",
-        label: label.trim() || "Custom Device",
-        ...(shortName.trim() ? { shortName: shortName.trim() } : {}),
-        ports: finalPorts,
-        ...(color ? { color } : {}),
-        ...(category.trim() ? { category: category.trim() } : {}),
-        ...(manufacturer.trim() ? { manufacturer: manufacturer.trim() } : {}),
-        ...(modelNumber.trim() ? { modelNumber: modelNumber.trim() } : {}),
-        ...(referenceUrl.trim() ? { referenceUrl: referenceUrl.trim() } : {}),
-        ...(hostname.trim() ? { hostname: hostname.trim() } : {}),
-        ...(powerDrawW != null ? { powerDrawW } : {}),
-        ...(powerCapacityW != null && carriesPowerCapacity(deviceType) ? { powerCapacityW } : {}),
-        ...(voltage ? { voltage } : {}),
-        ...(thermalBtuh != null ? { thermalBtuh } : {}),
-        ...(poeBudgetW != null ? { poeBudgetW } : {}),
-        ...(poeDrawW != null ? { poeDrawW } : {}),
-        ...(unitCost != null ? { unitCost } : {}),
-        ...(heightMm != null ? { heightMm } : {}),
-        ...(widthMm != null ? { widthMm } : {}),
-        ...(depthMm != null ? { depthMm } : {}),
-        ...(weightKg != null ? { weightKg } : {}),
-        ...(rackForm ? { rackForm } : {}),
-        ...(isVenueProvided ? { isVenueProvided: true } : {}),
-        // Convert InstalledSlot[] back to the blueprint SlotDefinition[] that DeviceTemplate
-        // expects — card selections are per-placement, not part of the template spec.
-        ...(existing?.slots && existing.slots.length > 0
-          ? {
-              slots: existing.slots.map((s) => ({
-                id: s.slotId,
-                label: s.label,
-                slotFamily: s.slotFamily ?? "",
-                ...(s.cardTemplateId ? { defaultCardId: s.cardTemplateId } : {}),
-              })),
-            }
-          : {}),
-        ...(existing?.slotFamily ? { slotFamily: existing.slotFamily as string } : {}),
-        ...(trimmedAux.some((r) => r.text.trim()) ? { auxiliaryData: trimmedAux } : {}),
-        ...(() => { const t = searchTermsRaw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20); return t.length > 0 ? { searchTerms: t } : {}; })(),
-        ...overrides,
-      };
-    },
-    [ports, label, shortName, hostname, node, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, rackForm, isVenueProvided, deviceType, color, manufacturer, modelNumber, referenceUrl, category, auxiliaryData, searchTermsRaw],
+    (overrides: Partial<DeviceTemplate> & Pick<DeviceTemplate, "id">): DeviceTemplate =>
+      buildDeviceTemplate(
+        {
+          ports,
+          label,
+          shortName,
+          deviceType,
+          color,
+          headerColor: headerColorCapture(
+            node?.data.templateId
+              ? getTemplateById(node.data.templateId, customTemplates)?.headerColor
+              : undefined,
+          ),
+          category,
+          manufacturer,
+          modelNumber,
+          referenceUrl,
+          hostname,
+          powerDrawW,
+          powerCapacityW,
+          voltage,
+          thermalBtuh,
+          poeBudgetW,
+          poeDrawW,
+          unitCost,
+          heightMm,
+          widthMm,
+          depthMm,
+          weightKg,
+          rackForm,
+          isVenueProvided,
+          auxiliaryData,
+          searchTermsRaw,
+          existing: node?.data,
+        },
+        overrides,
+      ),
+    [ports, label, shortName, hostname, node, customTemplates, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, rackForm, isVenueProvided, deviceType, color, headerColorCapture, manufacturer, modelNumber, referenceUrl, category, auxiliaryData, searchTermsRaw],
   );
 
   const handleSaveAsTemplate = useCallback(() => {
@@ -721,27 +700,16 @@ export default function DeviceEditor() {
     if (!editingNodeId || !node?.data.templateId) return;
     const templateId = node.data.templateId;
 
-    // Normalize ports to stable preset IDs
-    const presetPorts: Port[] = ports
-      .filter((p) => p.label.trim())
-      .map((p, i) => ({ ...p, id: `preset-${i}`, label: p.label.trim() }));
-
-    // Remap hiddenPorts through old→new mapping
-    const idMap = new Map<string, string>();
-    ports.filter((p) => p.label.trim()).forEach((p, i) => { idMap.set(p.id, `preset-${i}`); });
-    const presetHidden = hiddenPorts
-      .map((id) => idMap.get(id) ?? id)
-      .filter((id) => presetPorts.some((p) => p.id === id));
-
-    setTemplatePreset(templateId, {
-      ports: presetPorts,
-      ...(presetHidden.length > 0 ? { hiddenPorts: presetHidden } : {}),
-      ...(color ? { color } : {}),
-    });
+    setTemplatePreset(templateId, buildTemplatePreset({
+      ports,
+      hiddenPorts,
+      color,
+      headerColor: headerColorCapture(templatePresets[templateId]?.headerColor),
+    }));
 
     // Also apply changes to current device
     handleSave();
-  }, [editingNodeId, node, ports, hiddenPorts, color, setTemplatePreset, handleSave]);
+  }, [editingNodeId, node, ports, hiddenPorts, color, headerColorCapture, templatePresets, setTemplatePreset, handleSave]);
 
   const handleRevertToTemplate = useCallback(() => {
     if (!node) return;
@@ -1166,29 +1134,38 @@ export default function DeviceEditor() {
               type="color"
               className="w-6 h-6 rounded border border-[var(--color-border)] cursor-pointer p-0"
               value={headerColor ?? HEADER_COLOR_SWATCH_FALLBACK}
-              onChange={(e) => setHeaderColor(e.target.value)}
+              onChange={(e) => { setHeaderColor(e.target.value); setHeaderColorEdited(true); }}
             />
             {headerColor ? (
               <button
                 className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
-                onClick={() => setHeaderColor(undefined)}
+                onClick={() => { setHeaderColor(undefined); setHeaderColorEdited(true); }}
               >
                 Reset
               </button>
             ) : (
               // This device has no header color of its own — show what a device placed now
               // would get, as a hint beside the picker rather than inside it, so the swatch
-              // never claims a color the device isn't actually painted with (#354).
+              // never claims a color the device isn't actually painted with. Resolved the
+              // same way placement does, and named for the rung it came from so a template's
+              // or preset's own color is never labeled as a Preferences setting (#354).
               (() => {
-                const fallback = resolveDefaultDeviceHeaderColor(projectHeaderColor, appHeaderColor);
+                const presetColor = templateId ? templatePresets[templateId]?.headerColor : undefined;
+                const templateColor = templateId ? getTemplateById(templateId, customTemplates)?.headerColor : undefined;
+                const fallback = resolveDeviceHeaderColor(presetColor, templateColor, projectHeaderColor, appHeaderColor);
                 if (!fallback) return null;
+                const source = normalizeHeaderColor(presetColor)
+                  ? "from this preset"
+                  : normalizeHeaderColor(templateColor)
+                    ? "from this template"
+                    : "default for new devices";
                 return (
                   <span className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
                     <span
                       className="w-3 h-3 shrink-0 rounded-sm border border-[var(--color-border)]"
                       style={{ backgroundColor: fallback }}
                     />
-                    default for new devices
+                    {source}
                   </span>
                 );
               })()

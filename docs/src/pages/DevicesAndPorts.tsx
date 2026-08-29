@@ -350,8 +350,10 @@ export default function DevicesAndPortsPage() {
       <p>
         Either way the color is applied as each device is placed — from the library, as a custom
         device, through a CSV import, or as an auto-inserted adapter. Devices already on the canvas
-        keep the colors they have; change one from the device editor's header color picker, and a
-        device keeps its header color through a swap.
+        keep the colors they have; change one from the device editor's header color picker. A
+        device keeps its own header color through a <strong>Swap Device...</strong>, and a device
+        that has no header color at all picks one up from the replacement model if that model was
+        saved with one.
       </p>
       <p>
         A header color is the device's color everywhere it is drawn, not only on the canvas. It
@@ -360,6 +362,61 @@ export default function DevicesAndPortsPage() {
         new device share one color in those views rather than being colored by device type — leave
         the default unset, or clear a device's header color in the device editor, if you want that
         color coding back.
+      </p>
+
+      <h3>A color saved on a template or a preset wins</h3>
+      <p>
+        Set a device's header color and then save it — <strong>Save as User Template</strong>,{" "}
+        <strong>Update User Template</strong>, <strong>Update as Custom</strong>, or{" "}
+        <strong>Save as Preset</strong> — and the color is saved with it. Every device placed from
+        that template, or from that template's project preset, comes out that color no matter what
+        the two default settings say. So the full order, highest first:
+      </p>
+      <ol>
+        <li>The color saved on the template's <strong>project preset</strong></li>
+        <li>The color saved on the <strong>template</strong> itself</li>
+        <li>The project override — <strong>This project only</strong></li>
+        <li>Your personal <strong>Default for new devices</strong></li>
+        <li>None of them — the device is drawn in the theme's own surface color</li>
+      </ol>
+      <p>
+        Only a color you pick yourself is saved this way. A device that is merely wearing one of
+        the default colors — every device is painted with whatever default was in force when it was
+        placed — saves a template that says nothing about color, so the defaults keep deciding for
+        it exactly as before. Clear a device's header color with <strong>Reset</strong> beside the
+        picker before saving to put a template or preset back in that state.
+      </p>
+
+      <h3>Where each setting lives</h3>
+      <p>
+        Most of this travels with the drawing, and one piece never does.
+      </p>
+      <ul>
+        <li>
+          The <strong>project override</strong> and the <strong>project presets</strong> are written
+          into the schematic file, so they reach anyone who opens it.
+        </li>
+        <li>
+          <strong>User templates</strong> are written into the file as well, header color and all —
+          and opening that file installs any template the reader doesn't already have into their own
+          device library. So a header color you save onto a user template follows the template onto
+          your colleagues' machines, where it outranks their project overrides in their other
+          drawings too. Save a color onto a shared template deliberately.
+        </li>
+        <li>
+          Your personal <strong>Default for new devices</strong> is the one thing that stays on the
+          computer you set it on. It is never written into the file.
+        </li>
+      </ul>
+      <p>
+        That last point matters when a file moves between machines. The personal default is consulted
+        only at the moment a device is placed, so opening the same schematic somewhere else shows{" "}
+        <strong>Not set</strong> under <strong>Preferences → Display</strong> unless that machine has
+        its own preference — and new devices added there take <em>that</em> machine's preference.
+        Devices already in the drawing are unaffected: their colors were stamped on when they were
+        placed and travel in the file like any other device property. If you want a color the whole
+        team's drawings agree on, set it as the project override, or save it onto the templates and
+        presets everyone places from.
       </p>
 
       <h2>Swapping devices</h2>

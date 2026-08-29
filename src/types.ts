@@ -575,6 +575,10 @@ export interface DeviceTemplate {
   hostname?: string;
   ports: Port[];
   color?: string;
+  /** Header bar color saved with the template. A device placed from this template takes it
+   *  ahead of the project override and the app preference (#354). Absent means "no opinion",
+   *  so the default settings decide as before. */
+  headerColor?: string;
   searchTerms?: string[];
   manufacturer?: string;
   modelNumber?: string;
@@ -615,6 +619,9 @@ export interface TemplatePreset {
   ports: Port[];
   hiddenPorts?: string[];
   color?: string;
+  /** Header bar color saved with the preset — the most specific saved color there is, so it
+   *  outranks the template's own and both default settings (#354). */
+  headerColor?: string;
 }
 
 export interface OwnedGearItem {

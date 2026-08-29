@@ -6,6 +6,7 @@
 import type { SignalType, Port, DeviceTemplate, SchematicNode, DeviceNode, ConnectionEdge } from "./types";
 import { SIGNAL_LABELS, SIGNAL_COLORS } from "./types";
 import { DEFAULT_CONNECTOR } from "./connectorTypes";
+import { normalizeHeaderColor } from "./deviceHeaderColor";
 import { scoreTemplate } from "./templateSearch";
 
 // ---------- Types ----------
@@ -572,9 +573,14 @@ let importCounter = 0;
 export function buildImportResult(
   connections: ParsedConnection[],
   deviceMatches: Map<string, DeviceMatch>,
-  /** Header color for the devices this import creates — already resolved from the project
-   *  override / app preference by the caller (#354). Omitted = no header color at all. */
-  opts?: { defaultHeaderColor?: string },
+  opts?: {
+    /** Header color for the devices this import creates — already resolved from the project
+     *  override / app preference by the caller (#354). Omitted = no header color at all. */
+    defaultHeaderColor?: string;
+    /** The project presets, by template id, so a matched template's preset color outranks the
+     *  template's own the same way it does when the device is placed from the library. */
+    templatePresets?: Record<string, { headerColor?: string }>;
+  },
 ): { nodes: SchematicNode[]; edges: ConnectionEdge[] } {
   importCounter = Date.now();
   const nodes: SchematicNode[] = [];
@@ -669,6 +675,10 @@ export function buildImportResult(
     let ports: Port[];
     let deviceType: string;
     let color: string | undefined;
+    // A header color saved onto the matched template — or onto that template's project
+    // preset — is about that device specifically, so it beats the default the caller
+    // resolved from the two settings (#354).
+    let headerColor = opts?.defaultHeaderColor;
 
     if (match.template) {
       // Use template ports with fresh IDs
@@ -679,6 +689,13 @@ export function buildImportResult(
       }));
       deviceType = match.template.deviceType;
       color = match.template.color;
+      const presetHeaderColor = match.template.id
+        ? opts?.templatePresets?.[match.template.id]?.headerColor
+        : undefined;
+      headerColor =
+        normalizeHeaderColor(presetHeaderColor) ??
+        normalizeHeaderColor(match.template.headerColor) ??
+        headerColor;
     } else {
       // Generic: use inferred ports with fresh IDs
       const prefix = `p${++importCounter}`;
@@ -703,7 +720,7 @@ export function buildImportResult(
         deviceType,
         ports,
         ...(color ? { color } : {}),
-        ...(opts?.defaultHeaderColor ? { headerColor: opts.defaultHeaderColor } : {}),
+        ...(headerColor ? { headerColor } : {}),
         ...(match.template?.manufacturer ? { manufacturer: match.template.manufacturer } : {}),
         ...(match.template?.modelNumber ? { modelNumber: match.template.modelNumber } : {}),
         baseLabel: name,
