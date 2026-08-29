@@ -17,6 +17,7 @@ import {
   CONNECT_SNAP_RADIUS,
   closestHandleWithinRadius,
   isConnectableDevice,
+  resolveClickRelease,
   resolveConnectTarget,
   resolveRelease,
   type ReleaseGesture,
@@ -35,6 +36,13 @@ const SWITCHER: SnapHandle[] = [
   { nodeId: "device-sw", handleId: "sw-net-1-in", x: 100, y: 200 },
   { nodeId: "device-sw", handleId: "sw-net-1-out", x: 180, y: 200 },
   { nodeId: "device-sw", handleId: "hub-usb-in", x: 100, y: 216 },
+];
+
+/** A patch panel's front face: two jacks of one device, the one same-device pairing
+ *  validateConnection allows (a patch cable between two front jacks, store.ts). */
+const PANEL: SnapHandle[] = [
+  { nodeId: "device-panel", handleId: "jack-1-front", x: 600, y: 200 },
+  { nodeId: "device-panel", handleId: "jack-5-front", x: 600, y: 264 },
 ];
 
 const ALL = [...PROJECTOR, ...SWITCHER];
@@ -162,7 +170,7 @@ describe("resolveRelease", () => {
     expect(resolveRelease(gesture({ origin: null }), invalid)).toBeNull();
   });
 
-  it("leaves ports on the drag's own device alone", () => {
+  it("leaves a port on the drag's own device alone when the store would refuse it", () => {
     const sameDevice = gesture({
       origin: { nodeId: "device-proj", handleId: "proj-hdmi-in" },
       pointerX: 400,
@@ -172,7 +180,19 @@ describe("resolveRelease", () => {
     expect(resolveRelease(sameDevice, invalid)).toBeNull();
   });
 
-  it("never asks about validity on a fresh drag — that is the store's job in onConnect", () => {
+  it("takes a port on the drag's own device when the store allows it — the patch cable", () => {
+    // Two front jacks of one patch panel: validateConnection permits exactly this pairing,
+    // and the ghost paints it green, so the release must not throw the gesture away.
+    const patchCable = gesture({
+      origin: { nodeId: "device-panel", handleId: "jack-1-front" },
+      pointerX: PANEL[1].x,
+      pointerY: PANEL[1].y,
+      candidates: PANEL,
+    });
+    expect(resolveRelease(patchCable, valid)?.handleId).toBe("jack-5-front");
+  });
+
+  it("asks about validity only for a port on the drag's own device", () => {
     const isValid = vi.fn(() => false);
     resolveRelease(gesture(), isValid);
     expect(isValid).not.toHaveBeenCalled();
@@ -211,6 +231,151 @@ describe("resolveRelease", () => {
         handleUnderCursor: { nodeId: "device-sw", handleId: "hub-usb-in" },
       });
       expect(resolveRelease(dropped, invalid)?.handleId).toBe("hub-usb-in");
+    });
+  });
+});
+
+/**
+ * Click-to-connect's second click (#366 rework).
+ *
+ * Dylan's follow-up: "Works correctly with dragging. It doesn't work with clicking. If I
+ * click to start a ghost than move towards the port, I get a ghost connection, but if I
+ * click it doesn't connect unless I'm right on top of the connection. If we see a ghost,
+ * a click should create the connection."
+ *
+ * Only a click landing squarely on a port reaches React Flow's own handle click; anything
+ * else lands on the pane or a device body, where the app decided for itself — the pane
+ * cancelled, and a device body scanned that whole device. These pin the one rule both now
+ * follow.
+ *
+ * The third landing spot, an existing cable, has no decision to pin here: a cable's
+ * interaction stroke reached neither handler, so the fix is the `click-connecting` class
+ * in index.css, which takes the cable layer out of the way for the length of the gesture
+ * and routes that click to the pane. Only the manual gate covers it.
+ */
+describe("resolveClickRelease", () => {
+  /** Clicked out of the laptop's HDMI output, second click 22 units short of the
+   *  projector's HDMI input — the ghost is snapped and coloured on it. */
+  const click = (over: Partial<Omit<ReleaseGesture, "reconnecting">> = {}) => ({
+    origin: ORIGIN,
+    flowHandledConnect: false,
+    pointerX: 400 - 22,
+    pointerY: 200,
+    handleUnderCursor: null,
+    candidates: ALL,
+    ...over,
+  });
+
+  const valid = () => true;
+  const invalid = () => false;
+
+  /** Clicked out of a patch panel's front jack 1, second click 22 units short of front
+   *  jack 5 on the same panel. */
+  const samePanel = (over: Partial<Omit<ReleaseGesture, "reconnecting">> = {}) =>
+    click({
+      origin: { nodeId: "device-panel", handleId: "jack-1-front" },
+      pointerX: PANEL[1].x,
+      pointerY: PANEL[1].y - 22,
+      candidates: PANEL,
+      ...over,
+    });
+
+  it("wires the port the ghost snapped to, though the click landed on open canvas", () => {
+    // The whole of the rework: this click used to hit onPaneClick and cancel outright.
+    const decision = resolveClickRelease(click(), invalid, null);
+    expect(decision).toEqual({ kind: "port", target: PROJECTOR[0] });
+  });
+
+  it("takes the snapped port for a mismatch too, so the adapter prompt still opens", () => {
+    // A mismatch on another device doesn't consult validity at all — the store raises
+    // the mismatch in onConnect, exactly as it does for a drag release.
+    const decision = resolveClickRelease(
+      click({ pointerX: 100 - 22, pointerY: 216 }),
+      invalid,
+      null,
+    );
+    expect(decision).toEqual({ kind: "port", target: SWITCHER[2] });
+  });
+
+  it("prefers the port under the cursor over a marginally nearer neighbour", () => {
+    const decision = resolveClickRelease(
+      click({
+        pointerX: 400,
+        pointerY: 204,
+        handleUnderCursor: { nodeId: "device-proj", handleId: "proj-sdi-in" },
+      }),
+      invalid,
+      "device-proj",
+    );
+    expect(decision).toEqual({ kind: "port", target: PROJECTOR[1] });
+  });
+
+  it("cancels a click on open canvas with no port in range", () => {
+    expect(resolveClickRelease(click({ pointerX: 400 - 40 }), invalid, null)).toEqual({
+      kind: "cancel",
+    });
+  });
+
+  it("cancels when no click-to-connect gesture is in flight", () => {
+    expect(resolveClickRelease(click({ origin: null }), invalid, "device-proj")).toEqual({
+      kind: "cancel",
+    });
+  });
+
+  it("stands down once React Flow has made the connection itself", () => {
+    // Both branches: neither the snapped port nor the device fallback may re-run it.
+    expect(resolveClickRelease(click({ flowHandledConnect: true }), invalid, null)).toEqual({
+      kind: "cancel",
+    });
+    expect(resolveClickRelease(click({ flowHandledConnect: true }), invalid, "device-proj")).toEqual({
+      kind: "cancel",
+    });
+  });
+
+  describe("a second port on the gesture's own device", () => {
+    it("wires the patch cable the store allows, instead of cancelling the gesture", () => {
+      // The one same-device pairing validateConnection permits. React Flow makes it
+      // itself on a drag; on the click path it only connects when the click is squarely
+      // on the handle, so cancelling here left a green ghost that did nothing.
+      expect(resolveClickRelease(samePanel(), valid, "device-panel")).toEqual({
+        kind: "port",
+        target: PANEL[1],
+      });
+    });
+
+    it("still cancels the same-device pairings the store refuses", () => {
+      // Two ports of one ordinary device: handing this to onConnect would offer an
+      // adapter between two ports of a single device.
+      const sibling = click({
+        origin: { nodeId: "device-proj", handleId: "proj-hdmi-in" },
+        pointerX: 400,
+        pointerY: 216 - 4,
+        candidates: PROJECTOR,
+      });
+      expect(resolveClickRelease(sibling, invalid, "device-proj")).toEqual({ kind: "cancel" });
+    });
+  });
+
+  describe("the device-body fallback underneath the snap", () => {
+    it("falls back to the clicked device when no port is within the radius", () => {
+      const decision = resolveClickRelease(click({ pointerX: 400 - 40 }), invalid, "device-proj");
+      expect(decision).toEqual({ kind: "device", nodeId: "device-proj" });
+    });
+
+    it("never overrides a snapped port, even on a different device", () => {
+      // Clicking the switcher's body with the ghost snapped to the projector's input
+      // takes the projector's input — the ghost is what the user was aiming at.
+      const decision = resolveClickRelease(click(), invalid, "device-sw");
+      expect(decision).toEqual({ kind: "port", target: PROJECTOR[0] });
+    });
+
+    it("never scans the gesture's own device, even one whose ports could pair", () => {
+      // The body of the panel the gesture started from, with no port in range. The scan
+      // hands the first misfit port to onConnect when none fits, which on this device
+      // means offering an adapter between two of its own ports — so it stays out. A
+      // same-device pairing that genuinely validates is taken by the snap above instead.
+      const ownDevice = samePanel({ pointerX: PANEL[1].x, pointerY: PANEL[1].y - 40 });
+      expect(resolveClickRelease(ownDevice, valid, "device-panel")).toEqual({ kind: "cancel" });
     });
   });
 });

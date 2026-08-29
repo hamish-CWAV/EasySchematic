@@ -156,8 +156,8 @@ export type ReleaseGesture = {
  * literally on a port, and the connection has to be one React Flow refused — which is
  * exactly the adapter case the backstop exists for.
  *
- * `isValidConnection` is only consulted on the re-route path, so callers can build the
- * connection lazily.
+ * `isValidConnection` is consulted only for a target on the gesture's own device and on
+ * the re-route path, so callers can build the connection lazily.
  */
 export function resolveRelease(
   gesture: ReleaseGesture,
@@ -175,10 +175,68 @@ export function resolveRelease(
     gesture.radius,
   );
   if (!target) return null;
-  // A port on the drag's own device: the store refuses those anyway (bar patch-panel
-  // front-to-front, which React Flow connects on its own), and running them through
-  // onConnect would offer an adapter between two ports of one device.
-  if (target.nodeId === origin.nodeId) return null;
+  // A port on the gesture's own device. The store refuses nearly all of those, and
+  // handing one to onConnect would offer an adapter between two ports of a single
+  // device — so an invalid one stops here. It refuses them only *nearly* all, though:
+  // a patch cable between two front jacks of one patch panel is a real connection the
+  // store allows, and the ghost paints it green. React Flow makes that one itself on a
+  // drag, but on the click path it only connects when the click is squarely on the
+  // handle, so nothing stands behind this rule there — hence a valid same-device target
+  // goes through rather than cancelling the gesture (#366).
+  if (target.nodeId === origin.nodeId && !isValidConnection(target)) return null;
   if (reconnecting && isValidConnection(target)) return null;
   return target;
+}
+
+/** What the second click of a click-to-connect gesture should act on. */
+export type ClickRelease =
+  /** The port the ghost was snapped to — wire it exactly as a drag release would. */
+  | { kind: "port"; target: SnapHandle }
+  /** No port in range, but the click landed on a device body: fall back to picking a
+   *  port on that device. */
+  | { kind: "device"; nodeId: string }
+  /** Nothing to act on — the gesture just ends. */
+  | { kind: "cancel" };
+
+/**
+ * The click-to-connect twin of resolveRelease (#366).
+ *
+ * Click-to-connect ends on a click, and only a click landing squarely on a port reaches
+ * React Flow's own handle click — everything else lands on the pane or on a device body,
+ * where the app decides for itself. Those two used rules of their own: the pane cancelled
+ * the gesture outright, and a device body scanned that whole device for "some port that
+ * fits". So a click a few units short of a port did nothing while the ghost sat snapped
+ * and coloured on it, which is Dylan's "if we see a ghost, a click should create the
+ * connection".
+ *
+ * The snapped port therefore wins first, resolved through resolveRelease so the click and
+ * the drag release cannot drift apart again — mismatches included, since those are the
+ * ones React Flow refuses and only the app's own handler can turn into an adapter prompt.
+ * The device-body fallback stays underneath it, for a click on a device with no port
+ * within the radius.
+ *
+ * A click gesture is never a re-route — React Flow re-routes on drag only — so this pins
+ * `reconnecting: false` rather than taking it from the caller. `isValidConnection` still
+ * has to be real, though: resolveRelease asks it about a port on the gesture's own
+ * device, and the one same-device connection the store allows (a patch cable across one
+ * patch panel's front jacks) has no React Flow backstop behind it on the click path.
+ */
+export function resolveClickRelease(
+  gesture: Omit<ReleaseGesture, "reconnecting">,
+  isValidConnection: (target: SnapHandle) => boolean,
+  clickedDeviceId: string | null,
+): ClickRelease {
+  const { origin, flowHandledConnect } = gesture;
+  if (!origin || flowHandledConnect) return { kind: "cancel" };
+  const target = resolveRelease({ ...gesture, reconnecting: false }, isValidConnection);
+  if (target) return { kind: "port", target };
+  // The gesture's own device is never the *fallback*, even so. The fallback scans a
+  // whole device for a port that fits and hands the first misfit to onConnect if none
+  // does, so on the device the gesture started from it would end up offering an adapter
+  // between two ports of one device. A same-device connection that genuinely validates
+  // has already been taken above, by the snapped-port branch.
+  if (clickedDeviceId && clickedDeviceId !== origin.nodeId) {
+    return { kind: "device", nodeId: clickedDeviceId };
+  }
+  return { kind: "cancel" };
 }

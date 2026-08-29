@@ -65,6 +65,7 @@ import { findPortByHandle } from "./portHandles";
 import {
   CONNECT_SNAP_RADIUS,
   isConnectableDevice,
+  resolveClickRelease,
   resolveConnectTarget,
   resolveRelease,
   type SnapHandle,
@@ -512,6 +513,11 @@ function SchematicCanvas() {
   } | null>(null);
   const clickConnectCleanupRef = useRef<(() => void) | null>(null);
   const isClickConnectMode = useRef(false);
+  // The rendered twin of isClickConnectMode: it puts `click-connecting` on the flow
+  // wrapper for the whole gesture, which is what stops the cable layer from swallowing
+  // the second click (see the rule in index.css). A ref can't do it — the class has to
+  // survive re-renders, so it has to be state (#366).
+  const [clickConnecting, setClickConnecting] = useState(false);
   // Set when React Flow accepted the connection itself, so the drag/click end
   // handlers don't hand the same connection to onConnect a second time.
   const connectHandledRef = useRef(false);
@@ -796,6 +802,7 @@ function SchematicCanvas() {
     clickConnectCleanupRef.current = null;
     // eslint-disable-next-line react-hooks/immutability -- intentional mutable ref flag
     isClickConnectMode.current = false;
+    setClickConnecting(false);
     setConnectPreview(null);
   }, []);
 
@@ -1175,9 +1182,24 @@ function SchematicCanvas() {
       if (!params.nodeId || !params.handleType) return;
       // eslint-disable-next-line react-hooks/immutability -- intentional mutable ref flag
       isClickConnectMode.current = true;
+      setClickConnecting(true);
       startPreviewTracking(event, params.nodeId, params.handleId, params.handleType);
     },
     [startPreviewTracking],
+  );
+
+  /** The connection a gesture that started at `from` makes when it lands on `target`.
+   *  The end it started from keeps the role it started with, so a drag out of an output
+   *  sources the connection and a drag out of an input receives it. */
+  const connectionBetween = useCallback(
+    (
+      from: { nodeId: string; handleId: string | null; fromSource: boolean },
+      target: { nodeId: string; handleId: string | null },
+    ): Connection =>
+      (from.fromSource
+        ? { source: from.nodeId, sourceHandle: from.handleId, target: target.nodeId, targetHandle: target.handleId }
+        : { source: target.nodeId, sourceHandle: target.handleId, target: from.nodeId, targetHandle: from.handleId }) as Connection,
+    [],
   );
 
   /**
@@ -1206,9 +1228,7 @@ function SchematicCanvas() {
     const from = clickConnectFromRef.current;
     if (!from) return;
     const connectionFor = (target: { nodeId: string; handleId: string }): Connection =>
-      (from.fromSource
-        ? { source: from.nodeId, sourceHandle: from.handleId, target: target.nodeId, targetHandle: target.handleId }
-        : { source: target.nodeId, sourceHandle: target.handleId, target: from.nodeId, targetHandle: from.handleId }) as Connection;
+      connectionBetween(from, target);
     const { flow, handleUnderCursor } = pointerConnectContext(clientX, clientY);
     const target = resolveRelease(
       {
@@ -1226,7 +1246,82 @@ function SchematicCanvas() {
     );
     if (!target) return;
     useSchematicStore.getState().onConnect(connectionFor(target));
-  }, [connectableHandles, pointerConnectContext]);
+  }, [connectableHandles, connectionBetween, pointerConnectContext]);
+
+  /** Click-to-connect landing on a device's body rather than on one of its ports: wire
+   *  the first port that takes the connection, and failing that hand the first port that
+   *  doesn't to the store, which raises the mismatch and offers the adapter.
+   *
+   *  Every handle is searched, not just the target- or source-side ones, because
+   *  bidirectional ports register both of their faces as type="source" for React Flow. */
+  const connectToDeviceBody = useCallback(
+    (from: { nodeId: string; handleId: string | null; fromSource: boolean }, nodeId: string) => {
+      const state = useSchematicStore.getState();
+      const hBounds = rfInstance.getInternalNode(nodeId)?.internals.handleBounds;
+      const handles = [...(hBounds?.source ?? []), ...(hBounds?.target ?? [])];
+      for (const h of handles) {
+        if (!h.id) continue;
+        const connection = connectionBetween(from, { nodeId, handleId: h.id });
+        if (state.isValidConnection(connection)) {
+          state.onConnect(connection);
+          return;
+        }
+      }
+      for (const h of handles) {
+        if (!h.id) continue;
+        state.onConnect(connectionBetween(from, { nodeId, handleId: h.id }));
+        if (useSchematicStore.getState().pendingIncompatibleConnection) break;
+      }
+    },
+    [connectionBetween, rfInstance],
+  );
+
+  /**
+   * The second click of click-to-connect, wherever it lands other than squarely on a
+   * port — the pane, a device body, a room (#366).
+   *
+   * A click straight on a port is React Flow's own handle click, and that one already
+   * finishes through onClickConnectEnd. Every other click used a rule of its own: the
+   * pane cancelled outright, and a device body scanned that whole device for some port
+   * that fit. Neither looked at the ghost, so a click a few units short of a port did
+   * nothing while the ghost sat snapped and coloured on it — Dylan's "if we see a ghost,
+   * a click should create the connection". resolveClickRelease puts the snapped port
+   * first, resolved by the same search the drag release uses, with the device-body scan
+   * left underneath it for a click on a device with no port inside the radius.
+   *
+   * A third landing spot has to be taken out of play rather than handled here: an
+   * existing cable. Every one carries an invisible 20-px interaction stroke, and a click
+   * on it reaches neither the pane nor a device — React Flow just selects the cable. The
+   * `click-connecting` class on the flow wrapper makes the cable layer transparent for
+   * the length of the gesture, so those clicks arrive here through the pane instead.
+   */
+  const completeClickConnectAt = useCallback(
+    (clientX: number, clientY: number, clickedDeviceId: string | null) => {
+      const from = clickConnectFromRef.current;
+      if (!from) return;
+      const connectionFor = (target: { nodeId: string; handleId: string }): Connection =>
+        connectionBetween(from, target);
+      const { flow, handleUnderCursor } = pointerConnectContext(clientX, clientY);
+      const decision = resolveClickRelease(
+        {
+          origin: from,
+          flowHandledConnect: connectHandledRef.current,
+          pointerX: flow.x,
+          pointerY: flow.y,
+          handleUnderCursor,
+          candidates: connectableHandles(),
+        },
+        (t) => useSchematicStore.getState().isValidConnection(connectionFor(t)),
+        clickedDeviceId,
+      );
+      if (decision.kind === "port") {
+        useSchematicStore.getState().onConnect(connectionFor(decision.target));
+      } else if (decision.kind === "device") {
+        connectToDeviceBody(from, decision.nodeId);
+      }
+    },
+    [connectToDeviceBody, connectableHandles, connectionBetween, pointerConnectContext],
+  );
 
   // Click-to-connect: second click completes or cancels
   const onClickConnectEnd = useCallback(
@@ -1264,10 +1359,12 @@ function SchematicCanvas() {
     }
   }, [clearClickConnect, completeConnectAt]);
 
-  // Clicking empty space cancels click-to-connect; double-click opens quick-add
+  // Clicking empty space ends click-to-connect — on the port the ghost is snapped to if
+  // there is one, otherwise cancelling (#366); double-click opens quick-add
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
       if (isClickConnectMode.current) {
+        completeClickConnectAt(event.clientX, event.clientY, null);
         clearClickConnect();
         rfStore.setState({ connectionClickStartHandle: null });
         return;
@@ -1288,7 +1385,7 @@ function SchematicCanvas() {
       }
       lastPaneClickRef.current = { time: now, x: event.clientX, y: event.clientY };
     },
-    [clearClickConnect, rfStore, screenToFlowPosition],
+    [clearClickConnect, completeClickConnectAt, rfStore, screenToFlowPosition],
   );
 
   const onNodeDragStart = useCallback(() => {
@@ -1615,6 +1712,7 @@ function SchematicCanvas() {
       ref={rfContainerRef}
       className={[
         debugEdges ? "debug-active" : "",
+        clickConnecting ? "click-connecting" : "",
         selectionDirection ? `selection-${selectionDirection}` : "",
         panMode === "pan-first" && !shiftHeld && !isMobile ? "pan-mode" : "",
       ].filter(Boolean).join(" ") || undefined}
@@ -1641,50 +1739,14 @@ function SchematicCanvas() {
 
       onNodeClick={(event, node) => {
         if (!isClickConnectMode.current) return;
-        // If clicking a handle, let the normal click-connect flow handle it
+        // A click on a port is React Flow's own — onClickConnectEnd finishes that one.
         const target = event.target as HTMLElement;
         if (target.closest('.react-flow__handle')) return;
 
-        const from = clickConnectFromRef.current;
-        if (!from || node.type !== 'device') {
-          onPaneClick(event);
-          return;
-        }
-
-        // Find first available compatible handle on the clicked device.
-        // Search all handles (not just target/source) because bidirectional port
-        // handles are all registered as type="source" for React Flow compatibility.
-        const state = useSchematicStore.getState();
-        const intNode = rfInstance.getInternalNode(node.id);
-        const hBounds = intNode?.internals.handleBounds;
-        const targetHandles = [...(hBounds?.source ?? []), ...(hBounds?.target ?? [])];
-
-        let connected = false;
-        for (const h of targetHandles ?? []) {
-          if (!h.id) continue;
-          const connection = from.fromSource
-            ? { source: from.nodeId, sourceHandle: from.handleId, target: node.id, targetHandle: h.id }
-            : { source: node.id, sourceHandle: h.id, target: from.nodeId, targetHandle: from.handleId };
-          if (state.isValidConnection(connection as Connection)) {
-            onConnect(connection as Connection);
-            connected = true;
-            break;
-          }
-        }
-
-        if (!connected) {
-          // No compatible handle — try triggering incompatible dialog on first signal-type mismatch
-          for (const h of targetHandles ?? []) {
-            if (!h.id) continue;
-            const conn = from.fromSource
-              ? { source: from.nodeId, sourceHandle: from.handleId, target: node.id, targetHandle: h.id }
-              : { source: node.id, sourceHandle: h.id, target: from.nodeId, targetHandle: from.handleId };
-            // onConnect will detect signal-type mismatch and show dialog
-            state.onConnect(conn as Connection);
-            if (useSchematicStore.getState().pendingIncompatibleConnection) break;
-          }
-        }
-
+        // Anything else — a device body, a room, a note — goes through the one snap
+        // rule: the port the ghost is showing wins, and only a click with no port in
+        // range falls back to scanning the clicked device (#366).
+        completeClickConnectAt(event.clientX, event.clientY, node.type === "device" ? node.id : null);
         clearClickConnect();
         rfStore.setState({ connectionClickStartHandle: null });
       }}

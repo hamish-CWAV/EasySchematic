@@ -134,16 +134,31 @@ html, body, #root {
   transform: translate(-50%, -50%);
 }
 
-/* During a connection drag, make node bodies transparent to pointer events
-   so only handles receive hover/drop — prevents the node from stealing focus. */
+/* NB: `.react-flow.connecting` is a React Flow 11 class. React Flow 12 never puts it on
+   the wrapper — only `connectingfrom`/`connectingto`/`clickconnecting` on handles — so
+   this rule has not matched anything since the upgrade. Left in place because reviving it
+   would change node-body hit-testing mid-drag, which is a change of its own; the drag
+   works without it because the pointer is captured for the whole gesture. Its twin, which
+   tried the same thing for cables, is replaced by the working rule below (#366). */
 .react-flow.connecting .react-flow__node *:not(.react-flow__handle) {
   pointer-events: none;
 }
 
-/* During a connection drag, prevent edges from intercepting the connection.
-   Handles remain interactive because they live on the node layer. */
-.react-flow.connecting .react-flow__edges {
-  pointer-events: none;
+/* While click-to-connect is waiting for its second click, the cable layer stops taking
+   clicks, so that click always reaches the pane or the device under it and the app's own
+   handler gets to honour the ghost (#366).
+
+   Every cable carries an invisible 20-px-wide interaction stroke, and React Flow's pane
+   click only fires when the click landed on the pane itself. So a click a few units short
+   of a port — exactly the gesture the ghost is inviting — could land on a neighbouring
+   cable instead, where React Flow simply selected that cable and no app handler ran at
+   all: "I get a ghost connection, but if I click it doesn't connect". Cable ID, length
+   and warning badges are covered too; they set pointer-events inline, hence !important.
+
+   Ports stay clickable throughout: handles live on the device layer, above this one. */
+.react-flow.click-connecting .react-flow__edge,
+.react-flow.click-connecting .react-flow__edgelabel-renderer > * {
+  pointer-events: none !important;
 }
 
 /* Locked rooms: pass through pointer events so drag-select works over them.
