@@ -85,6 +85,13 @@ function loadIntoLocal(sqlPath: string, source: string): void {
     db.exec(readFileSync(sqlPath, "utf8"));
     db.exec("COMMIT");
     db.exec("PRAGMA foreign_keys = ON");
+    try {
+      // Roll the library ETag so a browser pointed at local dev doesn't keep
+      // getting 304s for the pre-sync library. Table may predate migration 0035.
+      db.exec("UPDATE library_meta SET version = version + 1 WHERE id = 1");
+    } catch {
+      /* library_meta not migrated yet — ETag handling is skipped then anyway */
+    }
     const after = (db.prepare("SELECT COUNT(*) AS n FROM templates").get() as { n: number }).n;
     console.log(`OK  Local D1 templates: ${before} -> ${after} (from ${source})`);
   } finally {

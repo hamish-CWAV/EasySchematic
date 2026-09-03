@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { createMiddleware } from "hono/factory";
 import { rowToTemplate, rowToSummary, templateToRow } from "./db";
 import { authMiddleware, sessionMiddleware, requireSession, requireModerator, requireModeratorOrToken, requireAdmin, requireAdminOrToken } from "./auth";
 import type { Env } from "./auth";
@@ -60,6 +61,46 @@ app.use("*", sessionMiddleware);
 // Admin token auth on template write routes
 app.use("/templates/*", authMiddleware);
 app.use("/templates", authMiddleware);
+
+// Any successful template mutation bumps the library version so the ETags on
+// /templates and /templates/summary roll over. Covers direct writes, notes,
+// flag/unflag, and submission approval (the only /submissions route that
+// writes to templates).
+const bumpLibraryVersion = createMiddleware<Env>(async (c, next) => {
+  await next();
+  const method = c.req.method;
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
+  if (c.res.status >= 400) return;
+  await c.env.easyschematic_db
+    .prepare("UPDATE library_meta SET version = version + 1 WHERE id = 1")
+    .run()
+    .catch(() => {});
+});
+// Note: unlike authMiddleware above, registered on "/templates/*" only —
+// Hono's trailing wildcard also matches the bare "/templates" path, and a
+// second registration would double-bump.
+app.use("/templates/*", bumpLibraryVersion);
+app.use("/submissions/:id/approve", bumpLibraryVersion);
+
+/** Current library version, or null if the meta row is missing (then callers
+ *  skip ETag handling and serve fresh). One row read. */
+async function getLibraryVersion(db: D1Database): Promise<number | null> {
+  const row = await db
+    .prepare("SELECT version FROM library_meta WHERE id = 1")
+    .first<{ version: number }>()
+    .catch(() => null);
+  return row?.version ?? null;
+}
+
+/** Compare an If-None-Match header against our ETag, tolerating weak
+ *  validators (W/ prefixes, which CDNs may add) and comma-separated lists. */
+function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  return ifNoneMatch
+    .split(",")
+    .map((v) => v.trim().replace(/^W\//, ""))
+    .some((v) => v === etag || v === "*");
+}
 
 const CACHE_HEADERS = {
   "Cache-Control": "public, max-age=300, s-maxage=3600",
@@ -1350,24 +1391,35 @@ app.get("/contributors", async (c) => {
     editedCount: r.edited_count,
   }));
 
-  return c.json(contributors, 200, NO_CACHE_HEADERS);
+  // Leaderboard over full templates+submissions scans — let the CDN absorb
+  // repeat hits rather than re-aggregating ~11k rows per request.
+  return c.json(contributors, 200, CACHE_HEADERS);
 });
 
 app.get("/contributors/:id/templates", async (c) => {
   const userId = c.req.param("id");
+  // Two index seeks (idx_templates_submitted_by, idx_submissions_user_status)
+  // joined back through the templates PK. The old LEFT JOIN form made SQLite
+  // rescan submissions per template row — ~11M rows read per request.
   const { results } = await c.env.easyschematic_db
     .prepare(
       `SELECT t.id, t.label, t.device_type, t.category,
-              MAX(CASE WHEN t.submitted_by = ? THEN 1 ELSE 0 END) as is_creator,
-              MAX(CASE WHEN s.action = 'update' THEN 1 ELSE 0 END) as is_editor
-       FROM templates t
-       LEFT JOIN submissions s
-         ON s.template_id = t.id AND s.user_id = ? AND s.status = 'approved' AND s.action = 'update'
-       WHERE t.flagged_for_deletion = 0 AND (t.submitted_by = ? OR s.id IS NOT NULL)
+              MAX(contrib.is_creator) as is_creator,
+              MAX(contrib.is_editor) as is_editor
+       FROM (
+         SELECT id as template_id, 1 as is_creator, 0 as is_editor
+           FROM templates WHERE submitted_by = ?
+         UNION ALL
+         SELECT template_id, 0 as is_creator, 1 as is_editor
+           FROM submissions
+           WHERE user_id = ? AND status = 'approved' AND action = 'update' AND template_id IS NOT NULL
+       ) contrib
+       JOIN templates t ON t.id = contrib.template_id
+       WHERE t.flagged_for_deletion = 0
        GROUP BY t.id
        ORDER BY t.label`,
     )
-    .bind(userId, userId, userId)
+    .bind(userId, userId)
     .all();
 
   const templatesWithContribution = (results as unknown as { id: string; label: string; device_type: string; category: string; is_creator: number; is_editor: number }[]).map((r) => ({
@@ -1424,21 +1476,35 @@ app.get("/templates/search-terms", async (c) => {
 });
 
 app.get("/templates/summary", async (c) => {
+  const version = await getLibraryVersion(c.env.easyschematic_db);
+  const etag = version != null ? `"lib-${version}-summary"` : null;
+  if (etag && etagMatches(c.req.header("If-None-Match"), etag)) {
+    return c.body(null, 304, { ...NO_CACHE_HEADERS, ETag: etag });
+  }
+
   const { results } = await c.env.easyschematic_db
     .prepare("SELECT id, label, short_name, device_type, category, manufacturer, model_number, color, search_terms, ports, slots FROM templates WHERE flagged_for_deletion = 0 ORDER BY sort_order, label")
     .all();
 
   const summaries = results.map((row) => rowToSummary(row as never));
-  return c.json(summaries, 200, NO_CACHE_HEADERS);
+  return c.json(summaries, 200, etag ? { ...NO_CACHE_HEADERS, ETag: etag } : NO_CACHE_HEADERS);
 });
 
 app.get("/templates", async (c) => {
+  // "no-cache" + ETag means clients revalidate every time but a match costs a
+  // single library_meta row read (304) instead of the full ~4.5k-row scan.
+  const version = await getLibraryVersion(c.env.easyschematic_db);
+  const etag = version != null ? `"lib-${version}-full"` : null;
+  if (etag && etagMatches(c.req.header("If-None-Match"), etag)) {
+    return c.body(null, 304, { ...NO_CACHE_HEADERS, ETag: etag });
+  }
+
   const { results } = await c.env.easyschematic_db
     .prepare("SELECT * FROM templates WHERE flagged_for_deletion = 0 ORDER BY sort_order, label")
     .all();
 
   const templates = results.map((row) => rowToTemplate(row as never));
-  return c.json(templates, 200, NO_CACHE_HEADERS);
+  return c.json(templates, 200, etag ? { ...NO_CACHE_HEADERS, ETag: etag } : NO_CACHE_HEADERS);
 });
 
 app.get("/templates/:id", async (c) => {
